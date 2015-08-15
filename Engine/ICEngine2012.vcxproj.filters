@@ -1,0 +1,934 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="3rdparty">
+      <UniqueIdentifier>{a56Fda07-491f-41fc-9c63-29124b5ca231}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="3rdparty\Lua">
+      <UniqueIdentifier>{a560da07-491f-41fc-9c63-29124b5ca231}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Math">
+      <UniqueIdentifier>{cf1a7aa1-f29c-49c5-832c-2379502c1177}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Math\Matrix">
+      <UniqueIdentifier>{e03873cf-8e1d-4de5-853f-ad090f7fd6ea}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Math\Vector">
+      <UniqueIdentifier>{51203783-6088-466e-aac2-09bb84afc9e5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Memory">
+      <UniqueIdentifier>{0ac02b62-c15e-4e07-bb1e-4de4748e6b81}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Core">
+      <UniqueIdentifier>{c3f4abaa-40ac-40e4-bd26-1deb56582ee0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Core\GXDevice">
+      <UniqueIdentifier>{aeb4e055-2cbe-4a83-9e9b-1b6558797ce9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Core\IO">
+      <UniqueIdentifier>{4452b0cc-1fa6-4978-88a6-1bc141170f5e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Core\Application">
+      <UniqueIdentifier>{715e0d8a-7847-403a-9fe5-93b7c63683f0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Core\Application\Window">
+      <UniqueIdentifier>{2e1c0183-5eb4-48c6-b173-aa09c77a761d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Core\Threading">
+      <UniqueIdentifier>{9547b591-90be-41bf-b852-5427279bc90a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Util">
+      <UniqueIdentifier>{33d814c6-ef8a-4c54-b952-2906327cdc60}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Render">
+      <UniqueIdentifier>{3e7d5804-22f5-4d2d-8011-a7a3a7185e1c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Render\Camera">
+      <UniqueIdentifier>{45402ef9-503e-411e-a158-2e47e0c7c9f3}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Render\VertBuffer">
+      <UniqueIdentifier>{cc6938f3-c182-449e-b280-182627e2010a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Render\Texture">
+      <UniqueIdentifier>{255d9c00-f10a-42d6-8f1e-9f9ad628e65c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Render\IndexBuffer">
+      <UniqueIdentifier>{7056c169-c907-4f68-9b9f-4860f352409b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Render\BasicEffects">
+      <UniqueIdentifier>{4bad2ec9-e4e3-4fec-b296-ed2e0462e8ea}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Render\BasicEffects\ShadersDX9">
+      <UniqueIdentifier>{e2f6b546-692f-455b-88dd-c9e61d69702f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Render\BasicEffects\ShadersDX10">
+      <UniqueIdentifier>{660fa993-48fd-4e67-a8f1-12017a7bf8ea}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Render\BasicEffects\ShadersGL">
+      <UniqueIdentifier>{ebdacd5a-187a-4da3-aafb-4482ce5cddaf}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Render\Font">
+      <UniqueIdentifier>{b6923af4-f961-470d-87d5-48aa7d9e6e8f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Content">
+      <UniqueIdentifier>{859e218c-66c6-4b53-8c19-7cb72c8585c0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Audio">
+      <UniqueIdentifier>{3cb8e008-34b4-44ff-88e6-c85cb7f1661f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UI">
+      <UniqueIdentifier>{521ff3c1-c918-4c30-be28-62d91ded99e6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Network">
+      <UniqueIdentifier>{dcf881cf-b12c-4a2c-a8c3-5bd66ea12f64}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Core\Events">
+      <UniqueIdentifier>{bbe30970-d338-4233-a022-4189848c4860}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Scripting">
+      <UniqueIdentifier>{a2ed51be-2361-442e-9830-ab74515f919f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ObjectModel">
+      <UniqueIdentifier>{1e40befd-9797-4b05-8e42-8648b5a45367}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="3rdparty\lea_malloc">
+      <UniqueIdentifier>{6fc58864-e6ee-46d0-9541-afb8516e1362}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="AI">
+      <UniqueIdentifier>{309a0e34-d9d8-4418-ad94-36f6577ea17a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="AI\Pathing">
+      <UniqueIdentifier>{be81c284-277a-49b5-9c42-1d1e3d3b0af3}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Core\IO\RapidXML">
+      <UniqueIdentifier>{712e6dcc-f561-4216-b36d-f502bf421b19}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="3rdparty\TLSF">
+      <UniqueIdentifier>{78fffb1a-61da-46a6-9923-af0f32d65fe0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Scripting\Debugging">
+      <UniqueIdentifier>{b1d61334-8784-4367-8ee2-e53d5578b8db}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Render\Lighting">
+      <UniqueIdentifier>{4545c1cb-fd36-4590-8142-13979f540f2a}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="include\Math\icBox.h">
+      <Filter>Math</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Math\icCommonMath.h">
+      <Filter>Math</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Math\icPane.h">
+      <Filter>Math</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Math\icRand.h">
+      <Filter>Math</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Math\icSearch.h">
+      <Filter>Math</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Math\icSort.h">
+      <Filter>Math</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Math\Matrix\icMatrix33.h">
+      <Filter>Math\Matrix</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Math\Matrix\icMatrix44.h">
+      <Filter>Math\Matrix</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Math\Vector\icQuat.h">
+      <Filter>Math\Vector</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Math\Vector\icVector2.h">
+      <Filter>Math\Vector</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Math\Vector\icVector2Int.h">
+      <Filter>Math\Vector</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Math\Vector\icVector3.h">
+      <Filter>Math\Vector</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Math\Vector\icVector4.h">
+      <Filter>Math\Vector</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Memory\icMaxHeap.h">
+      <Filter>Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Memory\icMemory.h">
+      <Filter>Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Memory\icMinHeap.h">
+      <Filter>Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Memory\icString.h">
+      <Filter>Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Core\icDebug.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Core\icGlobals.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Core\GXDevice\icGLext.h">
+      <Filter>Core\GXDevice</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Core\GXDevice\icGXDevice.h">
+      <Filter>Core\GXDevice</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Core\GXDevice\icGXDeviceDX9.h">
+      <Filter>Core\GXDevice</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Core\GXDevice\icGXDeviceGL.h">
+      <Filter>Core\GXDevice</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Core\GXDevice\icGXDeviceGLES.h">
+      <Filter>Core\GXDevice</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Core\IO\icButtonMap.h">
+      <Filter>Core\IO</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Core\IO\icFile.h">
+      <Filter>Core\IO</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Core\IO\icInput.h">
+      <Filter>Core\IO</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Core\Application\icApplication.h">
+      <Filter>Core\Application</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Core\Application\Window\icWindow.h">
+      <Filter>Core\Application\Window</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Core\Application\Window\icWindowOSX.h">
+      <Filter>Core\Application\Window</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Core\Application\Window\icWindowWIN.h">
+      <Filter>Core\Application\Window</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Core\Application\Window\icWindowX11.h">
+      <Filter>Core\Application\Window</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Core\Application\Window\icWinFlags.h">
+      <Filter>Core\Application\Window</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Core\Threading\icMutex.h">
+      <Filter>Core\Threading</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Core\Threading\icThread.h">
+      <Filter>Core\Threading</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Util\icFileName.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Util\icScreenCapture.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Util\icSettingsFile.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Util\icStateMachine.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Util\icTime.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Render\icMaterial.h">
+      <Filter>Render</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Render\icMesh.h">
+      <Filter>Render</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Render\icModel.h">
+      <Filter>Render</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Render\icRenderObject.h">
+      <Filter>Render</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Render\Camera\icCamera.h">
+      <Filter>Render\Camera</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Render\Camera\icChaseCam.h">
+      <Filter>Render\Camera</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Render\Camera\icMaxCam.h">
+      <Filter>Render\Camera</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Render\VertBuffer\icVertBuffer.h">
+      <Filter>Render\VertBuffer</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Render\VertBuffer\icVertBufferDX9.h">
+      <Filter>Render\VertBuffer</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Render\VertBuffer\icVertBufferGL.h">
+      <Filter>Render\VertBuffer</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Render\VertBuffer\icVertBufferGLES.h">
+      <Filter>Render\VertBuffer</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Render\Texture\icTexture.h">
+      <Filter>Render\Texture</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Render\Texture\icTextureDX9.h">
+      <Filter>Render\Texture</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Render\Texture\icTextureGL.h">
+      <Filter>Render\Texture</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Render\Texture\icTextureGLES.h">
+      <Filter>Render\Texture</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Render\IndexBuffer\icIndexBuf.h">
+      <Filter>Render\IndexBuffer</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Render\IndexBuffer\icIndexBufDX9.h">
+      <Filter>Render\IndexBuffer</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Render\IndexBuffer\icIndexBufGL.h">
+      <Filter>Render\IndexBuffer</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Render\IndexBuffer\icIndexBufGLES.h">
+      <Filter>Render\IndexBuffer</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Render\Font\icFont.h">
+      <Filter>Render\Font</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Render\Font\icFontDX9.h">
+      <Filter>Render\Font</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Render\Font\icFontGL.h">
+      <Filter>Render\Font</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Content\icContentLoader.h">
+      <Filter>Content</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Content\icImage.h">
+      <Filter>Content</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Audio\icSound.h">
+      <Filter>Audio</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Audio\icSoundAL.h">
+      <Filter>Audio</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Audio\icSoundHeader.h">
+      <Filter>Audio</Filter>
+    </ClInclude>
+    <ClInclude Include="include\UI\icButton.h">
+      <Filter>UI</Filter>
+    </ClInclude>
+    <ClInclude Include="include\UI\icFrame.h">
+      <Filter>UI</Filter>
+    </ClInclude>
+    <ClInclude Include="include\UI\icSlider.h">
+      <Filter>UI</Filter>
+    </ClInclude>
+    <ClInclude Include="include\UI\icWidget.h">
+      <Filter>UI</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Network\icSocket.h">
+      <Filter>Network</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Core\Events\icEvent.h">
+      <Filter>Core\Events</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Core\Events\icDelegate.h">
+      <Filter>Core\Events</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Core\Events\icMulticastDelegate.h">
+      <Filter>Core\Events</Filter>
+    </ClInclude>
+    <ClInclude Include="include\AI\Pathing\icAStar.h">
+      <Filter>AI\Pathing</Filter>
+    </ClInclude>
+    <ClInclude Include="include\AI\Pathing\icAStarCommon.h">
+      <Filter>AI\Pathing</Filter>
+    </ClInclude>
+    <ClInclude Include="include\AI\Pathing\icThetaStar.h">
+      <Filter>AI\Pathing</Filter>
+    </ClInclude>
+    <ClInclude Include="include\AI\Pathing\icThetaStarCommon.h">
+      <Filter>AI\Pathing</Filter>
+    </ClInclude>
+    <ClInclude Include="include\AI\Pathing\icVisibilityAStar.h">
+      <Filter>AI\Pathing</Filter>
+    </ClInclude>
+    <ClInclude Include="include\AI\Pathing\icPathingSystemI.h">
+      <Filter>AI\Pathing</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Math\icAABBox.h">
+      <Filter>Math</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ObjectModel\icProperty.h">
+      <Filter>ObjectModel</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdparty\lea_malloc\leamalloc.h">
+      <Filter>3rdparty\lea_malloc</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Memory\icMemoryPool.h">
+      <Filter>Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Memory\dlMemoryPool.h">
+      <Filter>Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Memory\tlsfMemoryPool.h">
+      <Filter>Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdparty\TLSF\tlsfbits.h">
+      <Filter>3rdparty\TLSF</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdparty\TLSF\tlsf.h">
+      <Filter>3rdparty\TLSF</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdparty\Lua\lapi.h">
+      <Filter>3rdparty\Lua</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdparty\Lua\lauxlib.h">
+      <Filter>3rdparty\Lua</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdparty\Lua\lcode.h">
+      <Filter>3rdparty\Lua</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdparty\Lua\ldebug.h">
+      <Filter>3rdparty\Lua</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdparty\Lua\ldo.h">
+      <Filter>3rdparty\Lua</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdparty\Lua\lfunc.h">
+      <Filter>3rdparty\Lua</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdparty\Lua\lgc.h">
+      <Filter>3rdparty\Lua</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdparty\Lua\llex.h">
+      <Filter>3rdparty\Lua</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdparty\Lua\llimits.h">
+      <Filter>3rdparty\Lua</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdparty\Lua\lmem.h">
+      <Filter>3rdparty\Lua</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdparty\Lua\lobject.h">
+      <Filter>3rdparty\Lua</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdparty\Lua\lopcodes.h">
+      <Filter>3rdparty\Lua</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdparty\Lua\lparser.h">
+      <Filter>3rdparty\Lua</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdparty\Lua\lstate.h">
+      <Filter>3rdparty\Lua</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdparty\Lua\lstring.h">
+      <Filter>3rdparty\Lua</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdparty\Lua\ltable.h">
+      <Filter>3rdparty\Lua</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdparty\Lua\ltm.h">
+      <Filter>3rdparty\Lua</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdparty\Lua\luaconf.h">
+      <Filter>3rdparty\Lua</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdparty\Lua\lualib.h">
+      <Filter>3rdparty\Lua</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdparty\Lua\lundump.h">
+      <Filter>3rdparty\Lua</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdparty\Lua\lvm.h">
+      <Filter>3rdparty\Lua</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdparty\Lua\lzio.h">
+      <Filter>3rdparty\Lua</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Memory\icSystemMemoryPool.h">
+      <Filter>Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Memory\icMemoryEvent.h">
+      <Filter>Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Core\IO\RapidXml\rapidxml.hpp">
+      <Filter>Core\IO\RapidXML</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Core\IO\RapidXml\rapidxml_iterators.hpp">
+      <Filter>Core\IO\RapidXML</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Core\IO\RapidXml\rapidxml_print.hpp">
+      <Filter>Core\IO\RapidXML</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Core\IO\RapidXml\rapidxml_utils.hpp">
+      <Filter>Core\IO\RapidXML</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ObjectModel\icObject.h">
+      <Filter>ObjectModel</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Math\icColor.h">
+      <Filter>Render</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Scripting\Game.h">
+      <Filter>Scripting</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Scripting\IScriptDomain.h">
+      <Filter>Scripting</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Scripting\LuaScriptDomain.h">
+      <Filter>Scripting</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Scripting\Debugging\IDebugger.h">
+      <Filter>Scripting\Debugging</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Scripting\Debugging\IDebuggerEventArgs.h">
+      <Filter>Scripting\Debugging</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Scripting\Debugging\LuaDebugger.h">
+      <Filter>Scripting\Debugging</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdparty\Lua\lua.h">
+      <Filter>3rdparty\Lua</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Memory\AllocationDebug.h">
+      <Filter>Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Memory\icAbstractMemoryPool.h">
+      <Filter>Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ObjectModel\icEnum.h">
+      <Filter>ObjectModel</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ObjectModel\icField.h">
+      <Filter>ObjectModel</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ObjectModel\icType.h">
+      <Filter>ObjectModel</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Math\ic2DCollision.h">
+      <Filter>Math</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Core\GXDevice\icGXDeviceDX11.h">
+      <Filter>Core\GXDevice</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Core\GXDevice\icGXDeviceGLES2.h">
+      <Filter>Core\GXDevice</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Render\Lighting\icLight.h">
+      <Filter>Render\Lighting</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdparty\Lua\lua.hpp">
+      <Filter>3rdparty\Lua</Filter>
+    </ClInclude>
+    <ClInclude Include="3rdparty\Lua\lctype.h">
+      <Filter>3rdparty\Lua</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\Math\icRand.cpp">
+      <Filter>Math</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Math\Matrix\icMatrix33.cpp">
+      <Filter>Math\Matrix</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Math\Matrix\icMatrix44.cpp">
+      <Filter>Math\Matrix</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Math\Vector\icVector2.cpp">
+      <Filter>Math\Vector</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Math\Vector\icVector2Int.cpp">
+      <Filter>Math\Vector</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Math\Vector\icVector3.cpp">
+      <Filter>Math\Vector</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Math\Vector\icVector4.cpp">
+      <Filter>Math\Vector</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Memory\icMemory.cpp">
+      <Filter>Memory</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Memory\icString.cpp">
+      <Filter>Memory</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Core\icDebug.cpp">
+      <Filter>Core</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Core\GXDevice\icGLext.cpp">
+      <Filter>Core\GXDevice</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Core\GXDevice\icGXDevice.cpp">
+      <Filter>Core\GXDevice</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Core\GXDevice\icGXDeviceDX9.cpp">
+      <Filter>Core\GXDevice</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Core\GXDevice\icGXDeviceGL.cpp">
+      <Filter>Core\GXDevice</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Core\GXDevice\icGXDeviceGLES.cpp">
+      <Filter>Core\GXDevice</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Core\IO\icFileWin.cpp">
+      <Filter>Core\IO</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Core\IO\icInputWIN.cpp">
+      <Filter>Core\IO</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Core\Application\icApplication.cpp">
+      <Filter>Core\Application</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Core\Application\Window\icWindow.cpp">
+      <Filter>Core\Application\Window</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Core\Application\Window\icWindowOSX.cpp">
+      <Filter>Core\Application\Window</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Core\Application\Window\icWindowWIN.cpp">
+      <Filter>Core\Application\Window</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Core\Application\Window\icWindowX11.cpp">
+      <Filter>Core\Application\Window</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Core\Threading\icThread.cpp">
+      <Filter>Core\Threading</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Util\icFileName.cpp">
+      <Filter>Util</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Util\icScreenCapture.cpp">
+      <Filter>Util</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Util\icSettingsFile.cpp">
+      <Filter>Util</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Util\icStateMachine.cpp">
+      <Filter>Util</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Util\icTime.cpp">
+      <Filter>Util</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Render\icMaterial.cpp">
+      <Filter>Render</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Render\icMesh.cpp">
+      <Filter>Render</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Render\icModel.cpp">
+      <Filter>Render</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Render\icRenderObject.cpp">
+      <Filter>Render</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Render\Camera\icCamera.cpp">
+      <Filter>Render\Camera</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Render\Camera\icChaseCam.cpp">
+      <Filter>Render\Camera</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Render\Camera\icMaxCam.cpp">
+      <Filter>Render\Camera</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Render\VertBuffer\icVertBufferDX9.cpp">
+      <Filter>Render\VertBuffer</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Render\VertBuffer\icVertBufferGL.cpp">
+      <Filter>Render\VertBuffer</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Render\VertBuffer\icVertBufferGLES.cpp">
+      <Filter>Render\VertBuffer</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Render\Texture\icTextureDX9.cpp">
+      <Filter>Render\Texture</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Render\Texture\icTextureGL.cpp">
+      <Filter>Render\Texture</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Render\Texture\icTextureGLES.cpp">
+      <Filter>Render\Texture</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Render\IndexBuffer\icIndexBufDX9.cpp">
+      <Filter>Render\IndexBuffer</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Render\IndexBuffer\icIndexBufGL.cpp">
+      <Filter>Render\IndexBuffer</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Render\IndexBuffer\icIndexBufGLES.cpp">
+      <Filter>Render\IndexBuffer</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Render\Font\icFontDX9.cpp">
+      <Filter>Render\Font</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Render\Font\icFontGL.cpp">
+      <Filter>Render\Font</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Content\icContentLoader.cpp">
+      <Filter>Content</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Content\icImage.cpp">
+      <Filter>Content</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Audio\icSoundAL.cpp">
+      <Filter>Audio</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Audio\icSoundDevice.cpp">
+      <Filter>Audio</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Audio\icSoundDeviceAL.cpp">
+      <Filter>Audio</Filter>
+    </ClCompile>
+    <ClCompile Include="src\UI\icButton.cpp">
+      <Filter>UI</Filter>
+    </ClCompile>
+    <ClCompile Include="src\UI\icFrame.cpp">
+      <Filter>UI</Filter>
+    </ClCompile>
+    <ClCompile Include="src\UI\icSlider.cpp">
+      <Filter>UI</Filter>
+    </ClCompile>
+    <ClCompile Include="src\UI\icWidget.cpp">
+      <Filter>UI</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Network\icSocket.cpp">
+      <Filter>Network</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Core\Events\icEvent.cpp">
+      <Filter>Core\Events</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Core\Events\icDelegate.cpp">
+      <Filter>Core\Events</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Core\Events\icMulticastDelegate.cpp">
+      <Filter>Core\Events</Filter>
+    </ClCompile>
+    <ClCompile Include="src\AI\Pathing\icAStar.cpp">
+      <Filter>AI\Pathing</Filter>
+    </ClCompile>
+    <ClCompile Include="src\AI\Pathing\icThetaStar.cpp">
+      <Filter>AI\Pathing</Filter>
+    </ClCompile>
+    <ClCompile Include="src\AI\Pathing\icVisibilityAStar.cpp">
+      <Filter>AI\Pathing</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Content\icPathingLoader.cpp">
+      <Filter>Content</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Content\icTextureLoader.cpp">
+      <Filter>Content</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Content\icModelLoader.cpp">
+      <Filter>Content</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\lea_malloc\leamalloc.c">
+      <Filter>3rdparty\lea_malloc</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\TLSF\tlsf.c">
+      <Filter>3rdparty\TLSF</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\Lua\lapi.c">
+      <Filter>3rdparty\Lua</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\Lua\lauxlib.c">
+      <Filter>3rdparty\Lua</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\Lua\lbaselib.c">
+      <Filter>3rdparty\Lua</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\Lua\lcode.c">
+      <Filter>3rdparty\Lua</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\Lua\ldblib.c">
+      <Filter>3rdparty\Lua</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\Lua\ldebug.c">
+      <Filter>3rdparty\Lua</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\Lua\ldo.c">
+      <Filter>3rdparty\Lua</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\Lua\ldump.c">
+      <Filter>3rdparty\Lua</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\Lua\lfunc.c">
+      <Filter>3rdparty\Lua</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\Lua\lgc.c">
+      <Filter>3rdparty\Lua</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\Lua\linit.c">
+      <Filter>3rdparty\Lua</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\Lua\liolib.c">
+      <Filter>3rdparty\Lua</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\Lua\llex.c">
+      <Filter>3rdparty\Lua</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\Lua\lmathlib.c">
+      <Filter>3rdparty\Lua</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\Lua\lmem.c">
+      <Filter>3rdparty\Lua</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\Lua\loadlib.c">
+      <Filter>3rdparty\Lua</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\Lua\lobject.c">
+      <Filter>3rdparty\Lua</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\Lua\lopcodes.c">
+      <Filter>3rdparty\Lua</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\Lua\loslib.c">
+      <Filter>3rdparty\Lua</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\Lua\lparser.c">
+      <Filter>3rdparty\Lua</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\Lua\lstate.c">
+      <Filter>3rdparty\Lua</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\Lua\lstring.c">
+      <Filter>3rdparty\Lua</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\Lua\lstrlib.c">
+      <Filter>3rdparty\Lua</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\Lua\ltable.c">
+      <Filter>3rdparty\Lua</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\Lua\ltablib.c">
+      <Filter>3rdparty\Lua</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\Lua\ltm.c">
+      <Filter>3rdparty\Lua</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\Lua\lua.c">
+      <Filter>3rdparty\Lua</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\Lua\luac.c">
+      <Filter>3rdparty\Lua</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\Lua\lundump.c">
+      <Filter>3rdparty\Lua</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\Lua\lvm.c">
+      <Filter>3rdparty\Lua</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\Lua\lzio.c">
+      <Filter>3rdparty\Lua</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Math\icColor.cpp">
+      <Filter>Render</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Scripting\Game.cpp">
+      <Filter>Scripting</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Scripting\IScriptDomain.cpp">
+      <Filter>Scripting</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Scripting\LuaScriptDomain.cpp">
+      <Filter>Scripting</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Scripting\Debugging\IDebuggerEventArgs.cpp">
+      <Filter>Scripting\Debugging</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Scripting\Debugging\LuaDebugger.cpp">
+      <Filter>Scripting\Debugging</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Memory\AllocationDebug.cpp">
+      <Filter>Memory</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Memory\icAbstractMemoryPool.cpp">
+      <Filter>Memory</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\Lua\lbitlib.c">
+      <Filter>3rdparty\Lua</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\Lua\lcorolib.c">
+      <Filter>3rdparty\Lua</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\Lua\lctype.c">
+      <Filter>3rdparty\Lua</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ObjectModel\icObject.cpp">
+      <Filter>ObjectModel</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ObjectModel\icType.cpp">
+      <Filter>ObjectModel</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Core\GXDevice\icGXDeviceDX11.cpp">
+      <Filter>Core\GXDevice</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Core\GXDevice\icGXDeviceGLES2.cpp">
+      <Filter>Core\GXDevice</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Core\IO\icFileOSX.cpp">
+      <Filter>Core\IO</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Core\IO\icInputOSX.cpp">
+      <Filter>Core\IO</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="include\Math\Vector\icVector4.inl">
+      <Filter>Math\Vector</Filter>
+    </None>
+    <None Include="include\Math\Vector\icVector2.inl">
+      <Filter>Math\Vector</Filter>
+    </None>
+    <None Include="include\Math\Vector\icVector2Int.inl">
+      <Filter>Math\Vector</Filter>
+    </None>
+    <None Include="include\Math\Vector\icVector3.inl">
+      <Filter>Math\Vector</Filter>
+    </None>
+    <None Include="include\Math\Matrix\icMatrix44.inl">
+      <Filter>Math\Matrix</Filter>
+    </None>
+    <None Include="include\Math\Matrix\icMatrix33.inl">
+      <Filter>Math\Matrix</Filter>
+    </None>
+    <None Include="include\Math\icPlane.inl">
+      <Filter>Math</Filter>
+    </None>
+    <None Include="include\Math\Vector\icQuat.inl">
+      <Filter>Math</Filter>
+    </None>
+    <None Include="include\Math\icColor.inl">
+      <Filter>Render</Filter>
+    </None>
+    <None Include="include\Math\icCommonMath.inl">
+      <Filter>Math</Filter>
+    </None>
+    <None Include="include\Core\icDebug.inl">
+      <Filter>Core</Filter>
+    </None>
+    <None Include="include\Memory\icMemory.inl">
+      <Filter>Memory</Filter>
+    </None>
+    <None Include="include\Core\Threading\icMutex.inl">
+      <Filter>Core\Threading</Filter>
+    </None>
+    <None Include="include\Math\icRand.inl">
+      <Filter>Core</Filter>
+    </None>
+    <None Include="include\Memory\icString.inl">
+      <Filter>Memory</Filter>
+    </None>
+    <None Include="src\Core\IO\RapidXml\license.txt">
+      <Filter>Core\IO\RapidXML</Filter>
+    </None>
+    <None Include="include\Core\IO\RapidXml\manual.html">
+      <Filter>Core\IO\RapidXML</Filter>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <MASM Include="src\Core\Events\icCallFuncWinx64.asm">
+      <Filter>Core\Events</Filter>
+    </MASM>
+  </ItemGroup>
+</Project>

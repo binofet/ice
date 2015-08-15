@@ -1,0 +1,6 @@
+
+class icMemoryEvent
+{
+public:
+
+};

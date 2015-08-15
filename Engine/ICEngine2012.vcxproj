@@ -1,0 +1,683 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug_Test|Win32">
+      <Configuration>Debug_Test</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug_Test|x64">
+      <Configuration>Debug_Test</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release_Test|Win32">
+      <Configuration>Release_Test</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release_Test|x64">
+      <Configuration>Release_Test</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectName>ICEngine</ProjectName>
+    <ProjectGuid>{A2101B56-D25E-4C9E-9CD0-18A0757A6051}</ProjectGuid>
+    <RootNamespace>ICEngine</RootNamespace>
+    <SccProjectName>
+    </SccProjectName>
+    <SccLocalPath>
+    </SccLocalPath>
+    <SccProvider>
+    </SccProvider>
+    <Keyword>Win32Proj</Keyword>
+    <SccAuxPath>
+    </SccAuxPath>
+    <VCTargetsPath Condition="'$(VCTargetsPath11)' != '' and '$(VSVersion)' == '' and $(VisualStudioVersion) == ''">$(VCTargetsPath11)</VCTargetsPath>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <PlatformToolset>v110</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v110</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug_Test|Win32'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v110</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release_Test|Win32'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v110</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <PlatformToolset>v110</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v110</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug_Test|x64'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v110</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release_Test|x64'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v110</PlatformToolset>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+    <Import Project="$(VCTargetsPath)\BuildCustomizations\masm.props" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug_Test|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release_Test|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug_Test|x64'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release_Test|x64'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <_ProjectFileVersion>10.0.40219.1</_ProjectFileVersion>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">lib\$(Platform)\</OutDir>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Debug_Test|Win32'">lib\$(Platform)\</OutDir>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Release_Test|Win32'">lib\$(Platform)\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">tmp\$(Platform)\$(Configuration)\</IntDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Debug_Test|Win32'">tmp\$(Platform)\$(Configuration)\</IntDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Release_Test|Win32'">tmp\$(Platform)\$(Configuration)\</IntDir>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">lib\$(Platform)\</OutDir>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Debug_Test|x64'">lib\$(Platform)\</OutDir>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Release_Test|x64'">lib\$(Platform)\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">tmp\$(Platform)\$(Configuration)\</IntDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Debug_Test|x64'">tmp\$(Platform)\$(Configuration)\</IntDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Release_Test|x64'">tmp\$(Platform)\$(Configuration)\</IntDir>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">lib\$(Platform)\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">tmp\$(Platform)\$(Configuration)\</IntDir>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">lib\$(Platform)\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">tmp\$(Platform)\$(Configuration)\</IntDir>
+    <EnableManagedIncrementalBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</EnableManagedIncrementalBuild>
+    <EnableManagedIncrementalBuild Condition="'$(Configuration)|$(Platform)'=='Debug_Test|Win32'">true</EnableManagedIncrementalBuild>
+    <EnableManagedIncrementalBuild Condition="'$(Configuration)|$(Platform)'=='Release_Test|Win32'">true</EnableManagedIncrementalBuild>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <TargetName>$(ProjectName)D</TargetName>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <TargetName>$(ProjectName)D</TargetName>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug_Test|Win32'">
+    <TargetName>$(ProjectName)D</TargetName>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug_Test|x64'">
+    <TargetName>$(ProjectName)D</TargetName>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+      <AdditionalIncludeDirectories>..\Engine\3rdparty;..\Engine\src;..\Engine\include;..\Common\libs;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <MinimalRebuild>true</MinimalRebuild>
+      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <PrecompiledHeader>
+      </PrecompiledHeader>
+      <WarningLevel>Level4</WarningLevel>
+      <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
+      <ProgramDataBaseFileName>$(OutDir)$(ProjectName)D.pdb</ProgramDataBaseFileName>
+    </ClCompile>
+    <Lib>
+      <AdditionalDependencies>opengl32.lib;glu32.lib;openAL32.lib;wsock32.lib;Dbghelp.lib%(AdditionalDependencies)</AdditionalDependencies>
+      <OutputFile>$(OutDir)$(TargetName)$(TargetExt)</OutputFile>
+      <AdditionalLibraryDirectories>..\Common\libs\openAL\Win32\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+    </Lib>
+    <ProjectReference>
+      <LinkLibraryDependencies>true</LinkLibraryDependencies>
+    </ProjectReference>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug_Test|Win32'">
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+      <AdditionalIncludeDirectories>..\Engine\3rdparty;..\Engine\src;..\Engine\include;..\Common\libs;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <MinimalRebuild>true</MinimalRebuild>
+      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <PrecompiledHeader>
+      </PrecompiledHeader>
+      <WarningLevel>Level4</WarningLevel>
+      <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
+    </ClCompile>
+    <Lib>
+      <AdditionalDependencies>opengl32.lib;glu32.lib;openAL32.lib;wsock32.lib;Dbghelp.lib%(AdditionalDependencies)</AdditionalDependencies>
+      <OutputFile>$(OutDir)$(TargetName)$(TargetExt)</OutputFile>
+      <AdditionalLibraryDirectories>..\Common\libs\openAL\Win32\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+    </Lib>
+    <ProjectReference>
+      <LinkLibraryDependencies>true</LinkLibraryDependencies>
+    </ProjectReference>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release_Test|Win32'">
+    <ClCompile>
+      <Optimization>MaxSpeed</Optimization>
+      <AdditionalIncludeDirectories>..\Engine\3rdparty;..\Engine\src;..\Engine\include;..\Common\libs;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <MinimalRebuild>true</MinimalRebuild>
+      <BasicRuntimeChecks>Default</BasicRuntimeChecks>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <PrecompiledHeader>
+      </PrecompiledHeader>
+      <WarningLevel>Level4</WarningLevel>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+      <WholeProgramOptimization>true</WholeProgramOptimization>
+    </ClCompile>
+    <Lib>
+      <AdditionalDependencies>opengl32.lib;glu32.lib;openAL32.lib;wsock32.lib;Dbghelp.lib%(AdditionalDependencies)</AdditionalDependencies>
+      <OutputFile>$(OutDir)$(TargetName)$(TargetExt)</OutputFile>
+      <AdditionalLibraryDirectories>..\Common\AL\Win32\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+    </Lib>
+    <ProjectReference>
+      <LinkLibraryDependencies>true</LinkLibraryDependencies>
+    </ProjectReference>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Midl>
+      <TargetEnvironment>X64</TargetEnvironment>
+    </Midl>
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+      <AdditionalIncludeDirectories>..\Engine\3rdparty;..\Engine\src;..\Engine\include;..\Common\libs;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <MinimalRebuild>true</MinimalRebuild>
+      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <PrecompiledHeader>
+      </PrecompiledHeader>
+      <WarningLevel>Level4</WarningLevel>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+    </ClCompile>
+    <Lib>
+      <OutputFile>$(OutDir)$(TargetName)$(TargetExt)</OutputFile>
+      <AdditionalLibraryDirectories>..\Common\libs\openAL\Win64\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>opengl32.lib;glu32.lib;openAL32.lib;wsock32.lib;Dbghelp.lib%(AdditionalDependencies)</AdditionalDependencies>
+    </Lib>
+    <PostBuildEvent>
+      <Command>
+      </Command>
+    </PostBuildEvent>
+    <ProjectReference>
+      <LinkLibraryDependencies>true</LinkLibraryDependencies>
+    </ProjectReference>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug_Test|x64'">
+    <Midl>
+      <TargetEnvironment>X64</TargetEnvironment>
+    </Midl>
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+      <AdditionalIncludeDirectories>..\Engine\3rdparty;..\Engine\src;..\Engine\include;..\Common\libs;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <MinimalRebuild>true</MinimalRebuild>
+      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <PrecompiledHeader>
+      </PrecompiledHeader>
+      <WarningLevel>Level4</WarningLevel>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+    </ClCompile>
+    <Lib>
+      <OutputFile>$(OutDir)$(TargetName)$(TargetExt)</OutputFile>
+      <AdditionalLibraryDirectories>..\Common\AL\Win64\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>opengl32.lib;glu32.lib;openAL32.lib;wsock32.lib;Dbghelp.lib%(AdditionalDependencies)</AdditionalDependencies>
+    </Lib>
+    <PostBuildEvent>
+      <Command>
+      </Command>
+    </PostBuildEvent>
+    <ProjectReference>
+      <LinkLibraryDependencies>true</LinkLibraryDependencies>
+    </ProjectReference>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release_Test|x64'">
+    <Midl>
+      <TargetEnvironment>X64</TargetEnvironment>
+    </Midl>
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+      <AdditionalIncludeDirectories>..\Engine\3rdparty;..\Engine\src;..\Engine\include;..\Common\libs;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <MinimalRebuild>true</MinimalRebuild>
+      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <PrecompiledHeader>
+      </PrecompiledHeader>
+      <WarningLevel>Level4</WarningLevel>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+    </ClCompile>
+    <Lib>
+      <OutputFile>$(OutDir)$(TargetName)$(TargetExt)</OutputFile>
+      <AdditionalLibraryDirectories>..\Common\AL\Win64\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>opengl32.lib;glu32.lib;openAL32.lib;wsock32.lib;Dbghelp.lib%(AdditionalDependencies)</AdditionalDependencies>
+    </Lib>
+    <PostBuildEvent>
+      <Command>
+      </Command>
+    </PostBuildEvent>
+    <ProjectReference>
+      <LinkLibraryDependencies>true</LinkLibraryDependencies>
+    </ProjectReference>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>..\Engine\3rdparty;..\Engine\src;..\Engine\include;..\Common\libs;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <PrecompiledHeader>
+      </PrecompiledHeader>
+      <WarningLevel>Level4</WarningLevel>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+    </ClCompile>
+    <Lib>
+      <AdditionalDependencies>opengl32.lib;glu32.lib;openAL32.lib;wsock32.lib;Dbghelp.lib%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>..\Common\libs\openAL\Win32\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+    </Lib>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Midl>
+      <TargetEnvironment>X64</TargetEnvironment>
+    </Midl>
+    <ClCompile>
+      <AdditionalIncludeDirectories>..\Engine\3rdparty;..\Engine\src;..\Engine\include;..\Common\libs;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <PrecompiledHeader>
+      </PrecompiledHeader>
+      <WarningLevel>Level4</WarningLevel>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+    </ClCompile>
+    <Lib>
+      <AdditionalLibraryDirectories>..\Common\libs\openAL\Win64\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>opengl32.lib;glu32.lib;openAL32.lib;wsock32.lib;Dbghelp.lib%(AdditionalDependencies)</AdditionalDependencies>
+    </Lib>
+    <ProjectReference>
+      <LinkLibraryDependencies>true</LinkLibraryDependencies>
+    </ProjectReference>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClInclude Include="3rdparty\Lua\lctype.h" />
+    <ClInclude Include="3rdparty\Lua\lua.hpp" />
+    <ClInclude Include="include\AI\Pathing\icAStar.h" />
+    <ClInclude Include="include\AI\Pathing\icAStarCommon.h" />
+    <ClInclude Include="include\AI\Pathing\icPathingSystemI.h" />
+    <ClInclude Include="include\AI\Pathing\icThetaStar.h">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug_Test|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release_Test|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug_Test|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release_Test|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+    </ClInclude>
+    <ClInclude Include="include\AI\Pathing\icThetaStarCommon.h">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug_Test|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release_Test|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug_Test|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release_Test|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+    </ClInclude>
+    <ClInclude Include="include\AI\Pathing\icVisibilityAStar.h">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug_Test|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release_Test|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug_Test|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release_Test|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+    </ClInclude>
+    <ClInclude Include="include\Core\Events\icDelegate.h" />
+    <ClInclude Include="include\Core\Events\icEvent.h" />
+    <ClInclude Include="include\Core\Events\icMulticastDelegate.h" />
+    <ClInclude Include="include\Core\GXDevice\icGXDeviceDX11.h" />
+    <ClInclude Include="include\Core\GXDevice\icGXDeviceGLES2.h" />
+    <ClInclude Include="include\Core\IO\RapidXml\rapidxml.hpp" />
+    <ClInclude Include="include\Core\IO\RapidXml\rapidxml_iterators.hpp" />
+    <ClInclude Include="include\Core\IO\RapidXml\rapidxml_print.hpp" />
+    <ClInclude Include="include\Core\IO\RapidXml\rapidxml_utils.hpp" />
+    <ClInclude Include="include\Math\ic2DCollision.h" />
+    <ClInclude Include="include\Math\icAABBox.h" />
+    <ClInclude Include="include\Math\icBox.h" />
+    <ClInclude Include="include\Math\icColor.h" />
+    <ClInclude Include="include\Math\icCommonMath.h" />
+    <ClInclude Include="include\Math\icPane.h" />
+    <ClInclude Include="include\Math\icRand.h" />
+    <ClInclude Include="include\Math\icSearch.h" />
+    <ClInclude Include="include\Math\icSort.h" />
+    <ClInclude Include="include\Math\Matrix\icMatrix33.h" />
+    <ClInclude Include="include\Math\Matrix\icMatrix44.h" />
+    <ClInclude Include="include\Math\Vector\icQuat.h" />
+    <ClInclude Include="include\Math\Vector\icVector2.h" />
+    <ClInclude Include="include\Math\Vector\icVector2Int.h" />
+    <ClInclude Include="include\Math\Vector\icVector3.h" />
+    <ClInclude Include="include\Math\Vector\icVector4.h" />
+    <ClInclude Include="include\Memory\AllocationDebug.h" />
+    <ClInclude Include="include\Memory\dlMemoryPool.h" />
+    <ClInclude Include="include\Memory\icAbstractMemoryPool.h" />
+    <ClInclude Include="include\Memory\icMaxHeap.h" />
+    <ClInclude Include="include\Memory\icMemory.h" />
+    <ClInclude Include="include\Memory\icMemoryEvent.h" />
+    <ClInclude Include="include\Memory\icMemoryPool.h" />
+    <ClInclude Include="include\Memory\icMinHeap.h" />
+    <ClInclude Include="include\Memory\icString.h" />
+    <ClInclude Include="include\Memory\icSystemMemoryPool.h" />
+    <ClInclude Include="3rdparty\lea_malloc\leamalloc.h" />
+    <ClInclude Include="include\Core\icDebug.h" />
+    <ClInclude Include="include\Core\icGlobals.h" />
+    <ClInclude Include="include\Core\GXDevice\icGLext.h" />
+    <ClInclude Include="include\Core\GXDevice\icGXDevice.h" />
+    <ClInclude Include="include\Core\GXDevice\icGXDeviceDX9.h" />
+    <ClInclude Include="include\Core\GXDevice\icGXDeviceGL.h" />
+    <ClInclude Include="include\Core\GXDevice\icGXDeviceGLES.h" />
+    <ClInclude Include="include\Core\IO\icButtonMap.h" />
+    <ClInclude Include="include\Core\IO\icFile.h" />
+    <ClInclude Include="include\Core\IO\icInput.h" />
+    <ClInclude Include="include\Core\Application\icApplication.h" />
+    <ClInclude Include="include\Core\Application\Window\icWindow.h" />
+    <ClInclude Include="include\Core\Application\Window\icWindowOSX.h" />
+    <ClInclude Include="include\Core\Application\Window\icWindowWIN.h" />
+    <ClInclude Include="include\Core\Application\Window\icWindowX11.h" />
+    <ClInclude Include="include\Core\Application\Window\icWinFlags.h" />
+    <ClInclude Include="include\Core\Threading\icMutex.h" />
+    <ClInclude Include="include\Core\Threading\icThread.h" />
+    <ClInclude Include="include\Memory\tlsfMemoryPool.h" />
+    <ClInclude Include="3rdparty\TLSF\tlsf.h" />
+    <ClInclude Include="3rdparty\TLSF\tlsfbits.h" />
+    <ClInclude Include="include\ObjectModel\icEnum.h" />
+    <ClInclude Include="include\ObjectModel\icField.h" />
+    <ClInclude Include="include\ObjectModel\icObject.h" />
+    <ClInclude Include="include\ObjectModel\icProperty.h" />
+    <ClInclude Include="include\ObjectModel\icType.h" />
+    <ClInclude Include="include\Render\Lighting\icLight.h" />
+    <ClInclude Include="include\Scripting\Debugging\IDebugger.h" />
+    <ClInclude Include="include\Scripting\Debugging\IDebuggerEventArgs.h" />
+    <ClInclude Include="include\Scripting\Debugging\LuaDebugger.h" />
+    <ClInclude Include="include\Scripting\Game.h" />
+    <ClInclude Include="include\Scripting\IScriptDomain.h" />
+    <ClInclude Include="include\Scripting\LuaScriptDomain.h" />
+    <ClInclude Include="3rdparty\Lua\lapi.h" />
+    <ClInclude Include="3rdparty\Lua\lauxlib.h" />
+    <ClInclude Include="3rdparty\Lua\lcode.h" />
+    <ClInclude Include="3rdparty\Lua\ldebug.h" />
+    <ClInclude Include="3rdparty\Lua\ldo.h" />
+    <ClInclude Include="3rdparty\Lua\lfunc.h" />
+    <ClInclude Include="3rdparty\Lua\lgc.h" />
+    <ClInclude Include="3rdparty\Lua\llex.h" />
+    <ClInclude Include="3rdparty\Lua\llimits.h" />
+    <ClInclude Include="3rdparty\Lua\lmem.h" />
+    <ClInclude Include="3rdparty\Lua\lobject.h" />
+    <ClInclude Include="3rdparty\Lua\lopcodes.h" />
+    <ClInclude Include="3rdparty\Lua\lparser.h" />
+    <ClInclude Include="3rdparty\Lua\lstate.h" />
+    <ClInclude Include="3rdparty\Lua\lstring.h" />
+    <ClInclude Include="3rdparty\Lua\ltable.h" />
+    <ClInclude Include="3rdparty\Lua\ltm.h" />
+    <ClInclude Include="3rdparty\Lua\lua.h" />
+    <ClInclude Include="3rdparty\Lua\luaconf.h" />
+    <ClInclude Include="3rdparty\Lua\lualib.h" />
+    <ClInclude Include="3rdparty\Lua\lundump.h" />
+    <ClInclude Include="3rdparty\Lua\lvm.h" />
+    <ClInclude Include="3rdparty\Lua\lzio.h" />
+    <ClInclude Include="include\Util\icFileName.h" />
+    <ClInclude Include="include\Util\icScreenCapture.h" />
+    <ClInclude Include="include\Util\icSettingsFile.h" />
+    <ClInclude Include="include\Util\icStateMachine.h" />
+    <ClInclude Include="include\Util\icTime.h" />
+    <ClInclude Include="include\Render\icMaterial.h" />
+    <ClInclude Include="include\Render\icMesh.h" />
+    <ClInclude Include="include\Render\icModel.h" />
+    <ClInclude Include="include\Render\icRenderObject.h" />
+    <ClInclude Include="include\Render\Camera\icCamera.h" />
+    <ClInclude Include="include\Render\Camera\icChaseCam.h" />
+    <ClInclude Include="include\Render\Camera\icMaxCam.h" />
+    <ClInclude Include="include\Render\VertBuffer\icVertBuffer.h" />
+    <ClInclude Include="include\Render\VertBuffer\icVertBufferDX9.h" />
+    <ClInclude Include="include\Render\VertBuffer\icVertBufferGL.h" />
+    <ClInclude Include="include\Render\VertBuffer\icVertBufferGLES.h" />
+    <ClInclude Include="include\Render\Texture\icTexture.h" />
+    <ClInclude Include="include\Render\Texture\icTextureDX9.h" />
+    <ClInclude Include="include\Render\Texture\icTextureGL.h" />
+    <ClInclude Include="include\Render\Texture\icTextureGLES.h" />
+    <ClInclude Include="include\Render\IndexBuffer\icIndexBuf.h" />
+    <ClInclude Include="include\Render\IndexBuffer\icIndexBufDX9.h" />
+    <ClInclude Include="include\Render\IndexBuffer\icIndexBufGL.h" />
+    <ClInclude Include="include\Render\IndexBuffer\icIndexBufGLES.h" />
+    <ClInclude Include="include\Render\Font\icFont.h" />
+    <ClInclude Include="include\Render\Font\icFontDX9.h" />
+    <ClInclude Include="include\Render\Font\icFontGL.h" />
+    <ClInclude Include="include\Content\icContentLoader.h" />
+    <ClInclude Include="include\Content\icImage.h" />
+    <ClInclude Include="include\Audio\icSound.h" />
+    <ClInclude Include="include\Audio\icSoundAL.h" />
+    <ClInclude Include="include\Audio\icSoundHeader.h" />
+    <ClInclude Include="include\UI\icButton.h" />
+    <ClInclude Include="include\UI\icFrame.h" />
+    <ClInclude Include="include\UI\icSlider.h" />
+    <ClInclude Include="include\UI\icWidget.h" />
+    <ClInclude Include="include\Network\icSocket.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="3rdparty\Lua\lbitlib.c" />
+    <ClCompile Include="3rdparty\Lua\lcorolib.c" />
+    <ClCompile Include="3rdparty\Lua\lctype.c" />
+    <ClCompile Include="src\AI\Pathing\icAStar.cpp" />
+    <ClCompile Include="src\AI\Pathing\icThetaStar.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug_Test|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release_Test|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug_Test|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release_Test|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="src\AI\Pathing\icVisibilityAStar.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug_Test|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release_Test|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug_Test|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release_Test|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="src\Content\icModelLoader.cpp" />
+    <ClCompile Include="src\Content\icPathingLoader.cpp" />
+    <ClCompile Include="src\Content\icTextureLoader.cpp" />
+    <ClCompile Include="src\Core\Events\icDelegate.cpp" />
+    <ClCompile Include="src\Core\Events\icEvent.cpp" />
+    <ClCompile Include="src\Core\Events\icMulticastDelegate.cpp" />
+    <ClCompile Include="src\Core\GXDevice\icGXDeviceDX11.cpp" />
+    <ClCompile Include="src\Core\GXDevice\icGXDeviceGLES2.cpp" />
+    <ClCompile Include="src\Core\IO\icFileOSX.cpp" />
+    <ClCompile Include="src\Core\IO\icInputOSX.cpp" />
+    <ClCompile Include="src\Math\icColor.cpp" />
+    <ClCompile Include="src\Math\icRand.cpp" />
+    <ClCompile Include="src\Math\Matrix\icMatrix33.cpp" />
+    <ClCompile Include="src\Math\Matrix\icMatrix44.cpp" />
+    <ClCompile Include="src\Math\Vector\icVector2.cpp" />
+    <ClCompile Include="src\Math\Vector\icVector2Int.cpp" />
+    <ClCompile Include="src\Math\Vector\icVector3.cpp" />
+    <ClCompile Include="src\Math\Vector\icVector4.cpp" />
+    <ClCompile Include="src\Memory\AllocationDebug.cpp" />
+    <ClCompile Include="src\Memory\icAbstractMemoryPool.cpp" />
+    <ClCompile Include="src\Memory\icMemory.cpp" />
+    <ClCompile Include="src\Memory\icString.cpp" />
+    <ClCompile Include="src\Core\icDebug.cpp" />
+    <ClCompile Include="src\Core\GXDevice\icGLext.cpp" />
+    <ClCompile Include="src\Core\GXDevice\icGXDevice.cpp" />
+    <ClCompile Include="src\Core\GXDevice\icGXDeviceDX9.cpp" />
+    <ClCompile Include="src\Core\GXDevice\icGXDeviceGL.cpp" />
+    <ClCompile Include="src\Core\GXDevice\icGXDeviceGLES.cpp" />
+    <ClCompile Include="src\Core\IO\icFileWin.cpp" />
+    <ClCompile Include="src\Core\IO\icInputWIN.cpp" />
+    <ClCompile Include="src\Core\Application\icApplication.cpp" />
+    <ClCompile Include="src\Core\Application\Window\icWindow.cpp" />
+    <ClCompile Include="src\Core\Application\Window\icWindowOSX.cpp" />
+    <ClCompile Include="src\Core\Application\Window\icWindowWIN.cpp" />
+    <ClCompile Include="src\Core\Application\Window\icWindowX11.cpp" />
+    <ClCompile Include="src\Core\Threading\icThread.cpp" />
+    <ClCompile Include="3rdparty\lea_malloc\leamalloc.c" />
+    <ClCompile Include="3rdparty\TLSF\tlsf.c" />
+    <ClCompile Include="src\ObjectModel\icObject.cpp" />
+    <ClCompile Include="src\ObjectModel\icType.cpp" />
+    <ClCompile Include="src\Scripting\Debugging\IDebuggerEventArgs.cpp" />
+    <ClCompile Include="src\Scripting\Debugging\LuaDebugger.cpp" />
+    <ClCompile Include="src\Scripting\Game.cpp" />
+    <ClCompile Include="src\Scripting\IScriptDomain.cpp" />
+    <ClCompile Include="src\Scripting\LuaScriptDomain.cpp" />
+    <ClCompile Include="3rdparty\Lua\lapi.c" />
+    <ClCompile Include="3rdparty\Lua\lauxlib.c" />
+    <ClCompile Include="3rdparty\Lua\lbaselib.c" />
+    <ClCompile Include="3rdparty\Lua\lcode.c" />
+    <ClCompile Include="3rdparty\Lua\ldblib.c" />
+    <ClCompile Include="3rdparty\Lua\ldebug.c" />
+    <ClCompile Include="3rdparty\Lua\ldo.c" />
+    <ClCompile Include="3rdparty\Lua\ldump.c" />
+    <ClCompile Include="3rdparty\Lua\lfunc.c" />
+    <ClCompile Include="3rdparty\Lua\lgc.c" />
+    <ClCompile Include="3rdparty\Lua\linit.c" />
+    <ClCompile Include="3rdparty\Lua\liolib.c" />
+    <ClCompile Include="3rdparty\Lua\llex.c" />
+    <ClCompile Include="3rdparty\Lua\lmathlib.c" />
+    <ClCompile Include="3rdparty\Lua\lmem.c" />
+    <ClCompile Include="3rdparty\Lua\loadlib.c" />
+    <ClCompile Include="3rdparty\Lua\lobject.c" />
+    <ClCompile Include="3rdparty\Lua\lopcodes.c" />
+    <ClCompile Include="3rdparty\Lua\loslib.c" />
+    <ClCompile Include="3rdparty\Lua\lparser.c" />
+    <ClCompile Include="3rdparty\Lua\lstate.c" />
+    <ClCompile Include="3rdparty\Lua\lstring.c" />
+    <ClCompile Include="3rdparty\Lua\lstrlib.c" />
+    <ClCompile Include="3rdparty\Lua\ltable.c" />
+    <ClCompile Include="3rdparty\Lua\ltablib.c" />
+    <ClCompile Include="3rdparty\Lua\ltm.c" />
+    <ClCompile Include="3rdparty\Lua\lua.c" />
+    <ClCompile Include="3rdparty\Lua\luac.c" />
+    <ClCompile Include="3rdparty\Lua\lundump.c" />
+    <ClCompile Include="3rdparty\Lua\lvm.c" />
+    <ClCompile Include="3rdparty\Lua\lzio.c" />
+    <ClCompile Include="src\Util\icFileName.cpp" />
+    <ClCompile Include="src\Util\icScreenCapture.cpp" />
+    <ClCompile Include="src\Util\icSettingsFile.cpp" />
+    <ClCompile Include="src\Util\icStateMachine.cpp" />
+    <ClCompile Include="src\Util\icTime.cpp" />
+    <ClCompile Include="src\Render\icMaterial.cpp" />
+    <ClCompile Include="src\Render\icMesh.cpp" />
+    <ClCompile Include="src\Render\icModel.cpp" />
+    <ClCompile Include="src\Render\icRenderObject.cpp" />
+    <ClCompile Include="src\Render\Camera\icCamera.cpp" />
+    <ClCompile Include="src\Render\Camera\icChaseCam.cpp" />
+    <ClCompile Include="src\Render\Camera\icMaxCam.cpp" />
+    <ClCompile Include="src\Render\VertBuffer\icVertBufferDX9.cpp" />
+    <ClCompile Include="src\Render\VertBuffer\icVertBufferGL.cpp" />
+    <ClCompile Include="src\Render\VertBuffer\icVertBufferGLES.cpp" />
+    <ClCompile Include="src\Render\Texture\icTextureDX9.cpp" />
+    <ClCompile Include="src\Render\Texture\icTextureGL.cpp" />
+    <ClCompile Include="src\Render\Texture\icTextureGLES.cpp" />
+    <ClCompile Include="src\Render\IndexBuffer\icIndexBufDX9.cpp" />
+    <ClCompile Include="src\Render\IndexBuffer\icIndexBufGL.cpp" />
+    <ClCompile Include="src\Render\IndexBuffer\icIndexBufGLES.cpp" />
+    <ClCompile Include="src\Render\Font\icFontDX9.cpp" />
+    <ClCompile Include="src\Render\Font\icFontGL.cpp" />
+    <ClCompile Include="src\Content\icContentLoader.cpp" />
+    <ClCompile Include="src\Content\icImage.cpp" />
+    <ClCompile Include="src\Audio\icSoundAL.cpp" />
+    <ClCompile Include="src\Audio\icSoundDevice.cpp" />
+    <ClCompile Include="src\Audio\icSoundDeviceAL.cpp" />
+    <ClCompile Include="src\UI\icButton.cpp" />
+    <ClCompile Include="src\UI\icFrame.cpp" />
+    <ClCompile Include="src\UI\icSlider.cpp" />
+    <ClCompile Include="src\UI\icWidget.cpp" />
+    <ClCompile Include="src\Network\icSocket.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <MASM Include="src\Core\Events\icCallFuncWinx64.asm">
+      <FileType>Document</FileType>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug_Test|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release_Test|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+    </MASM>
+    <None Include="src\Core\IO\RapidXml\license.txt" />
+    <None Include="include\Core\IO\RapidXml\manual.html" />
+    <None Include="include\Math\icColor.inl" />
+    <None Include="include\Math\icCommonMath.inl" />
+    <None Include="include\Math\icPlane.inl" />
+    <None Include="include\Math\icRand.inl" />
+    <None Include="include\Math\Matrix\icMatrix33.inl" />
+    <None Include="include\Math\Matrix\icMatrix44.inl" />
+    <None Include="include\Math\Vector\icQuat.inl" />
+    <None Include="include\Math\Vector\icVector2.inl" />
+    <None Include="include\Math\Vector\icVector2Int.inl" />
+    <None Include="include\Math\Vector\icVector3.inl" />
+    <None Include="include\Math\Vector\icVector4.inl" />
+    <None Include="include\Memory\icMemory.inl" />
+    <None Include="include\Memory\icString.inl" />
+    <None Include="include\Core\icDebug.inl" />
+    <None Include="include\Core\Threading\icMutex.inl" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+    <Import Project="$(VCTargetsPath)\BuildCustomizations\masm.targets" />
+  </ImportGroup>
+</Project>

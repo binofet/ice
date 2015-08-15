@@ -1,0 +1,303 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectName>Airhockey</ProjectName>
+    <ProjectGuid>{2F35688C-DFBE-4DF2-9FE3-2823F5F7AE72}</ProjectGuid>
+    <RootNamespace>Airhockey</RootNamespace>
+    <SccProjectName>
+    </SccProjectName>
+    <SccAuxPath>
+    </SccAuxPath>
+    <SccLocalPath>
+    </SccLocalPath>
+    <SccProvider>
+    </SccProvider>
+    <Keyword>Win32Proj</Keyword>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <PlatformToolset>v110</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <PlatformToolset>v110</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <PlatformToolset>v110</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <PlatformToolset>v110</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <_ProjectFileVersion>11.0.60315.1</_ProjectFileVersion>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <OutDir>$(SolutionDir)\GameFolder\</OutDir>
+    <IntDir>$(Configuration)\</IntDir>
+    <LinkIncremental>true</LinkIncremental>
+    <TargetName>$(ProjectName)D</TargetName>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <OutDir>$(SolutionDir)\GameFolder\</OutDir>
+    <IntDir>$(Platform)\$(Configuration)\</IntDir>
+    <LinkIncremental>true</LinkIncremental>
+    <TargetName>$(ProjectName)Dx64</TargetName>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <OutDir>$(SolutionDir)\GameFolder\</OutDir>
+    <IntDir>$(Configuration)\</IntDir>
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <OutDir>$(SolutionDir)\GameFolder\</OutDir>
+    <IntDir>$(Platform)\$(Configuration)\</IntDir>
+    <LinkIncremental>false</LinkIncremental>
+    <TargetName>$(ProjectName)x64</TargetName>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+      <AdditionalIncludeDirectories>..\..\Common\libs;..\..\Engine\include;..\..\Engine\3rdparty;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <MinimalRebuild>true</MinimalRebuild>
+      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <PrecompiledHeader />
+      <WarningLevel>Level4</WarningLevel>
+      <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
+    </ClCompile>
+    <Link>
+      <AdditionalDependencies>ICEngineD.lib;winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <OutputFile>$(OutDir)$(TargetName)$(TargetExt)</OutputFile>
+      <AdditionalLibraryDirectories>..\..\Engine\lib\$(Platform);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <SubSystem>Windows</SubSystem>
+      <RandomizedBaseAddress>false</RandomizedBaseAddress>
+      <DataExecutionPrevention />
+      <TargetMachine>MachineX86</TargetMachine>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Midl>
+      <TargetEnvironment>X64</TargetEnvironment>
+    </Midl>
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+      <AdditionalIncludeDirectories>..\..\Common\libs;..\..\Engine\include;..\..\Engine\3rdparty;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <MinimalRebuild>true</MinimalRebuild>
+      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <PrecompiledHeader />
+      <WarningLevel>Level4</WarningLevel>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+    </ClCompile>
+    <Link>
+      <AdditionalDependencies>ICEngineD.lib;winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <OutputFile>$(OutDir)$(TargetName)$(TargetExt)</OutputFile>
+      <AdditionalLibraryDirectories>..\..\Engine\lib\$(Platform);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <SubSystem>Windows</SubSystem>
+      <RandomizedBaseAddress>false</RandomizedBaseAddress>
+      <DataExecutionPrevention />
+      <TargetMachine>MachineX64</TargetMachine>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>..\..\Common\libs;..\..\Engine\include;..\..\Engine\3rdparty;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <PrecompiledHeader />
+      <WarningLevel>Level4</WarningLevel>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+    </ClCompile>
+    <Link>
+      <AdditionalDependencies>ICEngine.lib;winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>..\..\Engine\lib\$(Platform);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <SubSystem>Windows</SubSystem>
+      <OptimizeReferences>true</OptimizeReferences>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <RandomizedBaseAddress>true</RandomizedBaseAddress>
+      <DataExecutionPrevention />
+      <TargetMachine>MachineX86</TargetMachine>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Midl>
+      <TargetEnvironment>X64</TargetEnvironment>
+    </Midl>
+    <ClCompile>
+      <AdditionalIncludeDirectories>..\..\Common\libs;..\..\Engine\include;..\..\Engine\3rdparty;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <PrecompiledHeader />
+      <WarningLevel>Level4</WarningLevel>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+    </ClCompile>
+    <Link>
+      <AdditionalDependencies>ICEngine.lib;winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>..\..\Engine\lib\$(Platform);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <SubSystem>Windows</SubSystem>
+      <OptimizeReferences>true</OptimizeReferences>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <RandomizedBaseAddress>true</RandomizedBaseAddress>
+      <DataExecutionPrevention />
+      <TargetMachine>MachineX64</TargetMachine>
+      <OutputFile>$(OutDir)$(TargetName)$(TargetExt)</OutputFile>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="Box2D\Collision\b2BroadPhase.cpp" />
+    <ClCompile Include="Box2D\Collision\b2CollideCircle.cpp" />
+    <ClCompile Include="Box2D\Collision\b2CollidePoly.cpp" />
+    <ClCompile Include="Box2D\Collision\b2Collision.cpp" />
+    <ClCompile Include="Box2D\Collision\b2Distance.cpp" />
+    <ClCompile Include="Box2D\Collision\b2PairManager.cpp" />
+    <ClCompile Include="Box2D\Collision\b2TimeOfImpact.cpp" />
+    <ClCompile Include="Box2D\Collision\Shapes\b2CircleShape.cpp" />
+    <ClCompile Include="Box2D\Collision\Shapes\b2PolygonShape.cpp" />
+    <ClCompile Include="Box2D\Collision\Shapes\b2Shape.cpp" />
+    <ClCompile Include="Box2D\Common\b2BlockAllocator.cpp" />
+    <ClCompile Include="Box2D\Common\b2Math.cpp" />
+    <ClCompile Include="Box2D\Common\b2Settings.cpp" />
+    <ClCompile Include="Box2D\Common\b2StackAllocator.cpp" />
+    <ClCompile Include="Box2D\Dynamics\b2Body.cpp" />
+    <ClCompile Include="Box2D\Dynamics\b2ContactManager.cpp" />
+    <ClCompile Include="Box2D\Dynamics\b2Island.cpp" />
+    <ClCompile Include="Box2D\Dynamics\b2World.cpp" />
+    <ClCompile Include="Box2D\Dynamics\b2WorldCallbacks.cpp" />
+    <ClCompile Include="Box2D\Dynamics\Contacts\b2CircleContact.cpp" />
+    <ClCompile Include="Box2D\Dynamics\Contacts\b2Contact.cpp" />
+    <ClCompile Include="Box2D\Dynamics\Contacts\b2ContactSolver.cpp" />
+    <ClCompile Include="Box2D\Dynamics\Contacts\b2PolyAndCircleContact.cpp" />
+    <ClCompile Include="Box2D\Dynamics\Contacts\b2PolyContact.cpp" />
+    <ClCompile Include="Box2D\Dynamics\Joints\b2DistanceJoint.cpp" />
+    <ClCompile Include="Box2D\Dynamics\Joints\b2GearJoint.cpp" />
+    <ClCompile Include="Box2D\Dynamics\Joints\b2Joint.cpp" />
+    <ClCompile Include="Box2D\Dynamics\Joints\b2MouseJoint.cpp" />
+    <ClCompile Include="Box2D\Dynamics\Joints\b2PrismaticJoint.cpp" />
+    <ClCompile Include="Box2D\Dynamics\Joints\b2PulleyJoint.cpp" />
+    <ClCompile Include="Box2D\Dynamics\Joints\b2RevoluteJoint.cpp" />
+    <ClCompile Include="Source\AiInput.cpp" />
+    <ClCompile Include="Source\airhockey.cpp" />
+    <ClCompile Include="Source\gamestate.cpp" />
+    <ClCompile Include="Source\main.cpp" />
+    <ClCompile Include="Source\main_menu.cpp" />
+    <ClCompile Include="Source\NetworkInput.cpp" />
+    <ClCompile Include="Source\net_menu.cpp" />
+    <ClCompile Include="Source\paddle.cpp" />
+    <ClCompile Include="Source\pause_menu.cpp" />
+    <ClCompile Include="Source\PlayerInput.cpp" />
+    <ClCompile Include="Source\puck.cpp" />
+    <ClCompile Include="Source\settings_menu.cpp" />
+    <ClCompile Include="Source\spinstate.cpp" />
+    <ClCompile Include="Source\table.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Box2D\Box2D.h" />
+    <ClInclude Include="Box2D\Collision\b2BroadPhase.h" />
+    <ClInclude Include="Box2D\Collision\b2Collision.h" />
+    <ClInclude Include="Box2D\Collision\b2PairManager.h" />
+    <ClInclude Include="Box2D\Collision\Shapes\b2CircleShape.h" />
+    <ClInclude Include="Box2D\Collision\Shapes\b2PolygonShape.h" />
+    <ClInclude Include="Box2D\Collision\Shapes\b2Shape.h" />
+    <ClInclude Include="Box2D\Common\b2BlockAllocator.h" />
+    <ClInclude Include="Box2D\Common\b2Math.h" />
+    <ClInclude Include="Box2D\Common\b2Settings.h" />
+    <ClInclude Include="Box2D\Common\b2StackAllocator.h" />
+    <ClInclude Include="Box2D\Common\Fixed.h" />
+    <ClInclude Include="Box2D\Common\jtypes.h" />
+    <ClInclude Include="Box2D\Dynamics\b2Body.h" />
+    <ClInclude Include="Box2D\Dynamics\b2ContactManager.h" />
+    <ClInclude Include="Box2D\Dynamics\b2Island.h" />
+    <ClInclude Include="Box2D\Dynamics\b2World.h" />
+    <ClInclude Include="Box2D\Dynamics\b2WorldCallbacks.h" />
+    <ClInclude Include="Box2D\Dynamics\Contacts\b2CircleContact.h" />
+    <ClInclude Include="Box2D\Dynamics\Contacts\b2Contact.h" />
+    <ClInclude Include="Box2D\Dynamics\Contacts\b2ContactSolver.h" />
+    <ClInclude Include="Box2D\Dynamics\Contacts\b2NullContact.h" />
+    <ClInclude Include="Box2D\Dynamics\Contacts\b2PolyAndCircleContact.h" />
+    <ClInclude Include="Box2D\Dynamics\Contacts\b2PolyContact.h" />
+    <ClInclude Include="Box2D\Dynamics\Joints\b2DistanceJoint.h" />
+    <ClInclude Include="Box2D\Dynamics\Joints\b2GearJoint.h" />
+    <ClInclude Include="Box2D\Dynamics\Joints\b2Joint.h" />
+    <ClInclude Include="Box2D\Dynamics\Joints\b2MouseJoint.h" />
+    <ClInclude Include="Box2D\Dynamics\Joints\b2PrismaticJoint.h" />
+    <ClInclude Include="Box2D\Dynamics\Joints\b2PulleyJoint.h" />
+    <ClInclude Include="Box2D\Dynamics\Joints\b2RevoluteJoint.h" />
+    <ClInclude Include="resource.h" />
+    <ClInclude Include="Source\AiInput.h" />
+    <ClInclude Include="Source\airhockey.h" />
+    <ClInclude Include="Source\airhockey_settings.h" />
+    <ClInclude Include="Source\gamestate.h" />
+    <ClInclude Include="Source\InputHandler.h" />
+    <ClInclude Include="Source\main_menu.h" />
+    <ClInclude Include="Source\NetworkInput.h" />
+    <ClInclude Include="Source\net_menu.h" />
+    <ClInclude Include="Source\paddle.h" />
+    <ClInclude Include="Source\pause_menu.h" />
+    <ClInclude Include="Source\PlayerInput.h" />
+    <ClInclude Include="Source\puck.h" />
+    <ClInclude Include="Source\settings_menu.h" />
+    <ClInclude Include="Source\spinstate.h" />
+    <ClInclude Include="Source\table.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="icon1.ico" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="settings.ini" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="Airhockey.rc" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>
