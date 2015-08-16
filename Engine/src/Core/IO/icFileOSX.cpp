@@ -9,8 +9,9 @@
 **/
 icFile::icFile(void)
 {
-    m_ptrUser = NULL;
-    m_pVoidCallback = NULL;
+    m_fp = nullptr;
+    m_ptrUser = nullptr;
+    m_pVoidCallback = nullptr;
 
     m_u64FilePos = 0;
 
@@ -34,8 +35,42 @@ icFile::~icFile(void)
 ICRESULT icFile::Open(const char *szFile, uchar u8Mode)
 {
     Close();
+    
+    /*
+    C string containing a file access mode. It can be:
+    "r"	read: Open file for input operations. The file must exist.
+    "w"	         write: Create an empty file for output operations. If a file
+                        with the same name already exists, its contents are
+                        discarded and the file is treated as a new empty file.
+    "a"	        append: Open file for output at the end of a file. Output
+                        operations always write data at the end of the file,
+                        expanding it. Repositioning operations (fseek, fsetpos,
+                        rewind) are ignored. The file is created if it does not exist.
+    "r+"   read/update: Open a file for update (both for input and output). The file must exist.
+    "w+"  write/update: Create an empty file and open it for update (both for input and output).
+                        If a file with the same name already exists its contents are discarded and the file is treated as a new empty file.
+    "a+" append/update: Open a file for update (both for input and output) with all output operations writing data at the end of the file. Repositioning operations (fseek, fsetpos, rewind) affects the next input operations, but output operations move the position back to the end of file. The file is created if it does not exist.
+     */
+    
+    char* mode;
+    switch (u8Mode) {
+        case ICFMREAD_EXISTING:
+            mode = "r";
+            break;
+            
+        case ICFMREAD_CREATE:
+            mode = "w+";
+            break;
+            
+        default:
+            assert(0);
+            break;
+    }
 
-    return IC_FAIL_GEN;
+    m_fp = fopen(szFile, mode);
+    if (m_fp == nullptr)
+        return IC_FAIL_GEN;
+    return IC_OK;
 }// END FUNCTION Open(const char* szFile, u
 
 
@@ -53,13 +88,14 @@ ICRESULT icFile::Close(void)
     m_pVoidCallback = NULL;
     m_u64FilePos = 0;
 
-    //if (m_pFile)
+    if (m_fp)
     {
         // WAIT FOR ANY PENDING ASYNCHRONOUS CALLS
         while (m_bStreaming)
             ;
 
-        return IC_FAIL_GEN;
+        fclose(m_fp);
+        return IC_OK;
     }
 
     m_bStreaming = false;
@@ -79,8 +115,12 @@ ICRESULT icFile::Close(void)
 **/
 ICRESULT icFile::Read(void* pDest, size_t size, size_t* sizeread)
 {
-
-    return IC_WARN_GEN;
+    size_t read = fread(pDest, 1, size, m_fp);
+    if (sizeread != nullptr)
+        *sizeread = read;
+    if (read == size)
+        return IC_OK;
+    return IC_FAIL_GEN;
 }// END FUNCTION Read(void* pDest, size_t size, size_t* sizeread)
 
 
@@ -175,6 +215,11 @@ ICRESULT icFile::GetPos(uint64* pos)
 **/
 ICRESULT icFile::SetPos(const uint64 pos)
 {
+    if (m_fp) {
+        int result = fseek(m_fp, static_cast<long int>(pos), SEEK_SET);
+        if (result == 0)
+            return IC_OK;
+    }
     return IC_FAIL_GEN;
 }// END FUNCTION SetPos(const uint64 pos)
 

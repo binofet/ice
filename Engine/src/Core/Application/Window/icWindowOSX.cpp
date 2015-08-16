@@ -8,7 +8,7 @@ OSStatus WindowProc(EventHandlerCallRef  nextHandler,
 					EventRef             theEvent,
 					void*                userData)
 {
-	OSStatus error;
+	OSStatus error(0);
 	
 	if (userData)
 	{

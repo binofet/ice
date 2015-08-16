@@ -238,6 +238,10 @@ ICRESULT icGXDeviceGL::CreateDevice()
     if(openGLFormat == NULL)
         return false;
     
+    // HACK
+    m_bHardwareBuffers = true;
+
+    
     // Create the context
     m_aglContext = aglCreateContext(openGLFormat, NULL);
     if(m_aglContext == NULL)
@@ -249,6 +253,23 @@ ICRESULT icGXDeviceGL::CreateDevice()
     // Point to window and make current
     aglSetWindowRef(m_aglContext, ((icWindowOSX*)m_pMainWindow)->GetRef());
     aglSetCurrentContext(m_aglContext);
+    
+    
+    GLfloat fNoLight[] = { 0.0f, 0.0f, 0.0f, 0.0f };
+    GLfloat fLowLight[] = { 0.25f, 0.25f, 0.25f, 1.0f };
+    GLfloat fBrightLight[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+    
+    glLightModelfv(GL_LIGHT_MODEL_AMBIENT, fNoLight);
+    glLightfv(GL_LIGHT0, GL_AMBIENT, fLowLight);
+    glLightfv(GL_LIGHT0, GL_DIFFUSE, fBrightLight);
+    glLightfv(GL_LIGHT0, GL_SPECULAR, fBrightLight);
+    glEnable(GL_LIGHTING);
+    glEnable(GL_LIGHT0);
+    
+    glEnable(GL_COLOR_MATERIAL);
+    glColorMaterial(GL_FRONT, GL_AMBIENT_AND_DIFFUSE);
+    glMaterialfv(GL_FRONT, GL_SPECULAR, fBrightLight);
+    glMateriali(GL_FRONT, GL_SHININESS, 128);
     
     return IC_OK;
 #elif (defined(LINUX))

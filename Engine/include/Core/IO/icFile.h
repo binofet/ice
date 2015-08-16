@@ -78,6 +78,8 @@ private:
                                  LPOVERLAPPED lpOverlapped);
 
     HANDLE          m_pFile;           //! File Handle
+#else
+    FILE*           m_fp;
 #endif
 
     uint64          m_u64FilePos;      //! Current File Position

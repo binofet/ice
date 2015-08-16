@@ -13,8 +13,10 @@ template<>
 ICRESULT icContentLoader::Load<icTexture>(const char* szFileName,
                                           icTexture** ppObj)
 {
+    icString fileName(szFileName);
+    fileName.Replace('\\', '/');
     // TODO: reference counted objects!
-    return m_pDevice->CreateTexFromFile(ppObj, szFileName);
+    return m_pDevice->CreateTexFromFile(ppObj, fileName.ToChar());
     //return IC_OK;
 }// END FUNCTION Load<icTexture>(const char* szFileName, icTexture** ppObj)
 

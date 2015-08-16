@@ -23,13 +23,9 @@ public:
 
 private:
 	static tlsfMemoryPool* _tlsfPool;
-#ifdef __APPLE__
-    static tlsfMemoryPool* _stringPool;
-	static tlsfMemoryPool* _scriptPool;
-#else
+
 	static dlMemoryPool* _stringPool;
 	static dlMemoryPool* _scriptPool;
-#endif
 };
 
 

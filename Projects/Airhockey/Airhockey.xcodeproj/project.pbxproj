@@ -52,6 +52,11 @@
 		F80B96E71B8013A3000F9D70 /* b2PrismaticJoint.cpp in Sources */ = {isa = PBXBuildFile; fileRef = F80B96C51B8013A3000F9D70 /* b2PrismaticJoint.cpp */; };
 		F80B96E81B8013A3000F9D70 /* b2PulleyJoint.cpp in Sources */ = {isa = PBXBuildFile; fileRef = F80B96C71B8013A3000F9D70 /* b2PulleyJoint.cpp */; };
 		F80B96E91B8013A3000F9D70 /* b2RevoluteJoint.cpp in Sources */ = {isa = PBXBuildFile; fileRef = F80B96C91B8013A3000F9D70 /* b2RevoluteJoint.cpp */; };
+		F80B96FA1B801AD5000F9D70 /* libICEngine.a in Frameworks */ = {isa = PBXBuildFile; fileRef = F80B96F91B801AD5000F9D70 /* libICEngine.a */; };
+		F80B96FC1B801AEB000F9D70 /* Carbon.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F80B96FB1B801AEB000F9D70 /* Carbon.framework */; };
+		F80B96FE1B801AF6000F9D70 /* AGL.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F80B96FD1B801AF6000F9D70 /* AGL.framework */; };
+		F80B97001B801B0F000F9D70 /* OpenAL.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F80B96FF1B801B0F000F9D70 /* OpenAL.framework */; };
+		F80B97021B801B22000F9D70 /* OpenGL.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F80B97011B801B22000F9D70 /* OpenGL.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -159,6 +164,11 @@
 		F80B96C81B8013A3000F9D70 /* b2PulleyJoint.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = b2PulleyJoint.h; sourceTree = "<group>"; };
 		F80B96C91B8013A3000F9D70 /* b2RevoluteJoint.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = b2RevoluteJoint.cpp; sourceTree = "<group>"; };
 		F80B96CA1B8013A3000F9D70 /* b2RevoluteJoint.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = b2RevoluteJoint.h; sourceTree = "<group>"; };
+		F80B96F91B801AD5000F9D70 /* libICEngine.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libICEngine.a; path = ../../Engine/lib/Debug/libICEngine.a; sourceTree = "<group>"; };
+		F80B96FB1B801AEB000F9D70 /* Carbon.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Carbon.framework; path = System/Library/Frameworks/Carbon.framework; sourceTree = SDKROOT; };
+		F80B96FD1B801AF6000F9D70 /* AGL.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AGL.framework; path = System/Library/Frameworks/AGL.framework; sourceTree = SDKROOT; };
+		F80B96FF1B801B0F000F9D70 /* OpenAL.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = OpenAL.framework; path = System/Library/Frameworks/OpenAL.framework; sourceTree = SDKROOT; };
+		F80B97011B801B22000F9D70 /* OpenGL.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = OpenGL.framework; path = System/Library/Frameworks/OpenGL.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -166,6 +176,11 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F80B97021B801B22000F9D70 /* OpenGL.framework in Frameworks */,
+				F80B97001B801B0F000F9D70 /* OpenAL.framework in Frameworks */,
+				F80B96FE1B801AF6000F9D70 /* AGL.framework in Frameworks */,
+				F80B96FC1B801AEB000F9D70 /* Carbon.framework in Frameworks */,
+				F80B96FA1B801AD5000F9D70 /* libICEngine.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -175,6 +190,11 @@
 		F80B96121B8011EC000F9D70 = {
 			isa = PBXGroup;
 			children = (
+				F80B97011B801B22000F9D70 /* OpenGL.framework */,
+				F80B96FF1B801B0F000F9D70 /* OpenAL.framework */,
+				F80B96FD1B801AF6000F9D70 /* AGL.framework */,
+				F80B96FB1B801AEB000F9D70 /* Carbon.framework */,
+				F80B96F91B801AD5000F9D70 /* libICEngine.a */,
 				F80B961D1B8011EC000F9D70 /* Airhockey */,
 				F80B961C1B8011EC000F9D70 /* Products */,
 			);
@@ -541,13 +561,19 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ARCHS = "$(ARCHS_STANDARD_32_BIT)";
+				CONFIGURATION_BUILD_DIR = GameFolder;
 				HEADER_SEARCH_PATHS = (
 					"$(inherited)",
 					/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include,
 					../../Engine/3rdparty,
 					../../Engine/include,
 				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					/Users/jmlarsen/Documents/Development/ice/Engine/lib/Debug,
+				);
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SYMROOT = GameFolder;
 				VALID_ARCHS = i386;
 			};
 			name = Debug;
@@ -561,6 +587,10 @@
 					/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include,
 					../../Engine/3rdparty,
 					../../Engine/include,
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					/Users/jmlarsen/Documents/Development/ice/Engine/lib/Debug,
 				);
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				VALID_ARCHS = i386;

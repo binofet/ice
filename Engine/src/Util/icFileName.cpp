@@ -64,6 +64,7 @@ ICRESULT icFileName::ParseFileName( const char* szFileName, uint length )
 			np++;
 			pMem += 4;
 		}
+#endif
 		uint lSlash = length-1;
 		// Get the Path and filename
 		while (!m_Path && lSlash > 1)
@@ -106,15 +107,6 @@ ICRESULT icFileName::ParseFileName( const char* szFileName, uint length )
 	}
 
 	return IC_OK;
-
-#else
-#if (defined(LINUX) || defined(OSX))
-        }
-        return IC_NOT_IMPL;
-#endif
-        }
-        return IC_NOT_IMPL;
-#endif
 }
 
 

@@ -86,5 +86,18 @@ icReal icInput::GetAxis(uchar axis)
     return m_Axis[axis];
 }// END FUNCTION GetAxis(uchar axis)
 
+void icInput::HideCurs(void)
+{
+    m_bHideCursor = true;
+
+}// END FUNCTION HideCursor(void)
+
+
+void icInput::ShowCurs(void)
+{
+    m_bHideCursor = false;
+
+}// END FUNCTION ShowCursor(void)
+
 #endif // #ifdef __APPLE__
 

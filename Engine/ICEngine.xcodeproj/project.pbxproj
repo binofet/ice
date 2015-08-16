@@ -8,8 +8,6 @@
 
 /* Begin PBXBuildFile section */
 		F80B96081B7FF6A6000F9D70 /* icApplication.m in Sources */ = {isa = PBXBuildFile; fileRef = F80B96071B7FF6A6000F9D70 /* icApplication.m */; };
-		F80B960C1B800682000F9D70 /* Carbon.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F80B960B1B800682000F9D70 /* Carbon.framework */; };
-		F80B96101B8007A7000F9D70 /* OpenGL.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F80B960F1B8007A7000F9D70 /* OpenGL.framework */; };
 		F8C19C651B7D107D00B615ED /* leamalloc.c in Sources */ = {isa = PBXBuildFile; fileRef = F8C19B191B7D107C00B615ED /* leamalloc.c */; };
 		F8C19C661B7D107D00B615ED /* leamalloc.h in Headers */ = {isa = PBXBuildFile; fileRef = F8C19B1A1B7D107C00B615ED /* leamalloc.h */; };
 		F8C19C671B7D107D00B615ED /* lapi.c in Sources */ = {isa = PBXBuildFile; fileRef = F8C19B1C1B7D107C00B615ED /* lapi.c */; };
@@ -197,7 +195,6 @@
 		F8C19D1D1B7D107D00B615ED /* icApplication.cpp in Sources */ = {isa = PBXBuildFile; fileRef = F8C19C081B7D107C00B615ED /* icApplication.cpp */; };
 		F8C19D1E1B7D107D00B615ED /* icWindow.cpp in Sources */ = {isa = PBXBuildFile; fileRef = F8C19C0A1B7D107C00B615ED /* icWindow.cpp */; };
 		F8C19D1F1B7D107D00B615ED /* icWindowOSX.cpp in Sources */ = {isa = PBXBuildFile; fileRef = F8C19C0B1B7D107C00B615ED /* icWindowOSX.cpp */; };
-		F8C19D201B7D107D00B615ED /* icWindowOSX.mm in Sources */ = {isa = PBXBuildFile; fileRef = F8C19C0C1B7D107C00B615ED /* icWindowOSX.mm */; };
 		F8C19D211B7D107D00B615ED /* icWindowWIN.cpp in Sources */ = {isa = PBXBuildFile; fileRef = F8C19C0D1B7D107C00B615ED /* icWindowWIN.cpp */; };
 		F8C19D221B7D107D00B615ED /* icWindowX11.cpp in Sources */ = {isa = PBXBuildFile; fileRef = F8C19C0E1B7D107C00B615ED /* icWindowX11.cpp */; };
 		F8C19D241B7D107D00B615ED /* icDelegate.cpp in Sources */ = {isa = PBXBuildFile; fileRef = F8C19C111B7D107C00B615ED /* icDelegate.cpp */; };
@@ -267,9 +264,6 @@
 
 /* Begin PBXFileReference section */
 		F80B96071B7FF6A6000F9D70 /* icApplication.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = icApplication.m; sourceTree = "<group>"; };
-		F80B96091B80062A000F9D70 /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = System/Library/Frameworks/Cocoa.framework; sourceTree = SDKROOT; };
-		F80B960B1B800682000F9D70 /* Carbon.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Carbon.framework; path = System/Library/Frameworks/Carbon.framework; sourceTree = SDKROOT; };
-		F80B960F1B8007A7000F9D70 /* OpenGL.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = OpenGL.framework; path = System/Library/Frameworks/OpenGL.framework; sourceTree = SDKROOT; };
 		F8C19B101B7D0FF900B615ED /* libICEngine.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libICEngine.a; sourceTree = BUILT_PRODUCTS_DIR; };
 		F8C19B191B7D107C00B615ED /* leamalloc.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = leamalloc.c; sourceTree = "<group>"; };
 		F8C19B1A1B7D107C00B615ED /* leamalloc.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = leamalloc.h; sourceTree = "<group>"; };
@@ -474,7 +468,6 @@
 		F8C19C081B7D107C00B615ED /* icApplication.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = icApplication.cpp; sourceTree = "<group>"; };
 		F8C19C0A1B7D107C00B615ED /* icWindow.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = icWindow.cpp; sourceTree = "<group>"; };
 		F8C19C0B1B7D107C00B615ED /* icWindowOSX.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = icWindowOSX.cpp; sourceTree = "<group>"; };
-		F8C19C0C1B7D107C00B615ED /* icWindowOSX.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = icWindowOSX.mm; sourceTree = "<group>"; };
 		F8C19C0D1B7D107C00B615ED /* icWindowWIN.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = icWindowWIN.cpp; sourceTree = "<group>"; };
 		F8C19C0E1B7D107C00B615ED /* icWindowX11.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = icWindowX11.cpp; sourceTree = "<group>"; };
 		F8C19C111B7D107C00B615ED /* icDelegate.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = icDelegate.cpp; sourceTree = "<group>"; };
@@ -548,8 +541,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				F80B96101B8007A7000F9D70 /* OpenGL.framework in Frameworks */,
-				F80B960C1B800682000F9D70 /* Carbon.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -559,9 +550,6 @@
 		F8C19B071B7D0FF900B615ED = {
 			isa = PBXGroup;
 			children = (
-				F80B960F1B8007A7000F9D70 /* OpenGL.framework */,
-				F80B960B1B800682000F9D70 /* Carbon.framework */,
-				F80B96091B80062A000F9D70 /* Cocoa.framework */,
 				F8C19B171B7D107C00B615ED /* 3rdparty */,
 				F8C19B5B1B7D107C00B615ED /* include */,
 				F8C19BF61B7D107C00B615ED /* src */,
@@ -1123,7 +1111,6 @@
 			children = (
 				F8C19C0A1B7D107C00B615ED /* icWindow.cpp */,
 				F8C19C0B1B7D107C00B615ED /* icWindowOSX.cpp */,
-				F8C19C0C1B7D107C00B615ED /* icWindowOSX.mm */,
 				F8C19C0D1B7D107C00B615ED /* icWindowWIN.cpp */,
 				F8C19C0E1B7D107C00B615ED /* icWindowX11.cpp */,
 			);
@@ -1655,7 +1642,6 @@
 				F8C19D211B7D107D00B615ED /* icWindowWIN.cpp in Sources */,
 				F8C19D291B7D107D00B615ED /* icGXDeviceDX11.cpp in Sources */,
 				F8C19C691B7D107D00B615ED /* lauxlib.c in Sources */,
-				F8C19D201B7D107D00B615ED /* icWindowOSX.mm in Sources */,
 				F8C19C821B7D107D00B615ED /* lmem.c in Sources */,
 				F8C19D1F1B7D107D00B615ED /* icWindowOSX.cpp in Sources */,
 				F8C19D361B7D107D00B615ED /* icMatrix33.cpp in Sources */,
@@ -1766,6 +1752,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx10.10;
 				SUPPORTED_PLATFORMS = macosx;
+				SYMROOT = lib/;
 			};
 			name = Debug;
 		};
@@ -1777,6 +1764,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx10.10;
 				SUPPORTED_PLATFORMS = macosx;
+				SYMROOT = lib/;
 			};
 			name = Release;
 		};

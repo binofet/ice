@@ -161,7 +161,7 @@ icSoundI* icSoundDeviceI::GetFreeSound(void)
 **/
 ICRESULT icSoundDeviceI::FreeSound(icSoundI* pSound)
 {
-    size_t i = icMinHeapFind(m_Playing,m_NumPlaying,pSound);
+    int i = icMinHeapFind(m_Playing,m_NumPlaying,pSound);
     if (i >= 0)
     {
         icMinHeapDecreaseKey(m_Playing,i,(icSoundI*)0);

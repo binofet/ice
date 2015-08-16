@@ -18,8 +18,10 @@ const int icString::FindFirst( const icString& sPattern ) const
     {
         uint sPos=0;
         bool matches = true;
-        while ( matches && sPos<length )
-            matches = (m_Mem[myPos+sPos++] == sPattern[sPos]);
+        while ( matches && sPos<length ) {
+            matches = (m_Mem[myPos+sPos] == sPattern[sPos]);
+            sPos++;
+        }
 
         if (sPos == length)
             found = myPos;
@@ -52,8 +54,10 @@ const int icString::FindFirst( const char* szPattern ) const
         {
             uint sPos=0;
             bool matches = true;
-            while ( matches && sPos<length )
-                matches = (m_Mem[myPos+sPos++] == szPattern[sPos]);
+            while ( matches && sPos<length ) {
+                matches = (m_Mem[myPos+sPos] == szPattern[sPos]);
+                sPos++;
+            }
 
             if (sPos == length)
                 found = myPos;
@@ -144,8 +148,10 @@ const bool icString::Insert( const char val, uint index )
         return false;
 #endif
     uint cur = m_uCurPos;
-    while ( cur >= index )
-        m_Mem[cur+1] = m_Mem[cur--];
+    while ( cur >= index ) {
+        m_Mem[cur+1] = m_Mem[cur];
+        cur--;
+    }
 
     m_uCurPos++;
     m_Mem[index] = val;
@@ -184,8 +190,10 @@ const bool icString::Insert( const char* val, uint index )
         return false;
 #endif
     uint cur = m_uCurPos;
-    while ( cur+length >= index )
-        m_Mem[cur+length] = m_Mem[cur--];
+    while ( cur+length >= index ) {
+        m_Mem[cur+length] = m_Mem[cur];
+        cur--;
+    }
 
     uint i=0;
     cur = index;
@@ -225,8 +233,10 @@ const bool icString::Insert( const icString& val, uint index)
         return false;
 #endif
     uint cur = m_uCurPos;
-    while ( cur+length >= index )
-        m_Mem[cur+length] = m_Mem[cur--];
+    while ( cur+length >= index ) {
+        m_Mem[cur+length] = m_Mem[cur];
+        cur--;
+    }
 
     uint i=0;
     cur = index;
@@ -265,8 +275,10 @@ const icString& icString::Replace( const char* szPattern,
         while (pPos > - 1)
         {
             uint cur = m_uCurPos;
-            while ( cur+repLength-patLength >= (uint)pPos )
-                m_Mem[cur+repLength-patLength] = m_Mem[cur--];
+            while ( cur+repLength-patLength >= (uint)pPos ) {
+                m_Mem[cur+repLength-patLength] = m_Mem[cur];
+                cur--;
+            }
 
             uint i=0;
             cur = pPos;
@@ -300,8 +312,10 @@ const icString& icString::Replace( const icString& sPattern,
         while (pPos > - 1)
         {
             uint cur = m_uCurPos;
-            while ( cur+repLength-patLength >= (uint)pPos )
-                m_Mem[cur+repLength-patLength] = m_Mem[cur--];
+            while ( cur+repLength-patLength >= (uint)pPos ) {
+                m_Mem[cur+repLength-patLength] = m_Mem[cur];
+                cur--;
+            }
 
             uint i=0;
             cur = pPos;
@@ -351,7 +365,7 @@ icString icString::Remove( int index, int length )
 {
     icString ret(*this);
 
-    if ((uint)index < 0 || length < 0 || (uint)length > ret.Length())
+    if (index < 0 || length < 0 || (uint)length > ret.Length())
         return ret;
 
     ret.m_uCurPos = index;

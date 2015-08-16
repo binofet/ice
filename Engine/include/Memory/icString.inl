@@ -69,8 +69,10 @@ FORCE_INLINE icString::icString( const char* szInitial )
         
         //! copy data into buffer
         m_uCurPos = 0;
-        while (m_uCurPos < length)
-            m_Mem[m_uCurPos] = szInitial[m_uCurPos++];
+        while (m_uCurPos < length) {
+            m_Mem[m_uCurPos] = szInitial[m_uCurPos];
+            m_uCurPos++;
+        }
 
         m_Mem[m_uCurPos] = '\0';
     }
@@ -113,8 +115,10 @@ FORCE_INLINE icString::icString( const icString& refCopy )
 
         // copy string into this one
         m_uCurPos=0;
-        while (m_uCurPos < length)
-            m_Mem[m_uCurPos] = refCopy.m_Mem[m_uCurPos++];
+        while (m_uCurPos < length) {
+            m_Mem[m_uCurPos] = refCopy.m_Mem[m_uCurPos];
+            m_uCurPos++;
+        }
 
         m_Mem[m_uCurPos] = '\0';
     }
@@ -154,8 +158,10 @@ FORCE_INLINE const int icString::Compare( const icString& val ) const
     int comp=0;
     uint i=0;
     // TODO, what is the behavior if one of these strings is empty?
-    while (!comp && i<m_uCurPos && i<val.Length())
-        comp = m_Mem[i] - val.m_Mem[(int)i++];
+    while (!comp && i<m_uCurPos && i<val.Length()) {
+        comp = m_Mem[i] - val.m_Mem[(int)i];
+        i++;
+    }
     return comp;
 }// END FUNCTION Compare( cost icString& val ) const
 
@@ -438,8 +444,10 @@ FORCE_INLINE const icString& icString::operator=( const icString& Rhs )
 #endif
 
     m_uCurPos=0;
-    while (m_uCurPos < length)
-        m_Mem[m_uCurPos] = Rhs.m_Mem[m_uCurPos++];
+    while (m_uCurPos < length) {
+        m_Mem[m_uCurPos] = Rhs.m_Mem[m_uCurPos];
+        m_uCurPos++;
+    }
 
     m_Mem[m_uCurPos] = '\0';
 
@@ -474,8 +482,10 @@ FORCE_INLINE const icString& icString::operator=( const char* Rhs )
 #endif
 
         m_uCurPos=0;
-        while (m_uCurPos < length)
-            m_Mem[m_uCurPos] = Rhs[m_uCurPos++];
+        while (m_uCurPos < length) {
+            m_Mem[m_uCurPos] = Rhs[m_uCurPos];
+            m_uCurPos++;
+        }
 
         m_Mem[m_uCurPos] = '\0';
     }
@@ -495,8 +505,10 @@ FORCE_INLINE const bool icString::operator==( const icString& Rhs ) const
     {
         comp=0;
         uint i=0;
-        while (!comp && i < m_uCurPos)
-            comp = m_Mem[i] - Rhs.m_Mem[(int)i++];
+        while (!comp && i < m_uCurPos) {
+            comp = m_Mem[i] - Rhs.m_Mem[(int)i];
+            i++;
+        }
 
     }
     return (comp == 0);
@@ -515,8 +527,10 @@ FORCE_INLINE const bool icString::operator!=( const icString& Rhs ) const
     {
         comp=0;
         uint i=0;
-        while (!comp && i<m_uCurPos && i<Rhs.Length())
-            comp = m_Mem[i] - Rhs.m_Mem[(int)i++];
+        while (!comp && i<m_uCurPos && i<Rhs.Length()) {
+            comp = m_Mem[i] - Rhs.m_Mem[(int)i];
+            i++;
+        }
     }
     return (comp != 0);
 }// END FUNCTION operator!=( const icString& Rhs ) const
