@@ -10,6 +10,8 @@
 
 #ifdef __APPLE__
 #include <OpenGL/glu.h>
+#include <netdb.h>
+
 #else
 #include <gl/GLU.h>
 #endif

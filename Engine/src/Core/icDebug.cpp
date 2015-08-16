@@ -47,7 +47,7 @@ const char* icGetStr( long res )
     switch( res )
     {
     case IC_OK: resStr=icResStr[ICDB_STR_OK]; break;
-    case IC_FAIL_GEN: resStr=icResStr[ICDB_FAIL_GEN]; break;
+    //case IC_FAIL_GEN: resStr=icResStr[ICDB_FAIL_GEN]; break;
     default: resStr = unknownVal;
     }
     return resStr;
