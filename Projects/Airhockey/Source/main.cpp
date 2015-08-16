@@ -27,6 +27,11 @@ int _stdcall wWinMain(HINSTANCE hIntance, HINSTANCE hPrevInstance,
 {
 	g_hInstance = hIntance;
 #else
+    
+#ifdef __APPLE__
+#include <Carbon/Carbon.h>
+#endif
+    
 int main(int argc, char* args[])
 {
 #endif

@@ -2,7 +2,6 @@
 #ifdef __APPLE__
 
 
-#include "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.10.sdk/System/Library/Frameworks/Carbon.framework/Versions/A/Frameworks/HIToolbox.framework/Headers/MacWindows.h"
 #include "Core/Application/Window/icWindowOSX.h"
 
 OSStatus WindowProc(EventHandlerCallRef  nextHandler,

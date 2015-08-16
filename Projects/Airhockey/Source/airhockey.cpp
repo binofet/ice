@@ -165,8 +165,8 @@ ICRESULT Airhockey::Init(int argc, char* args[])
 #endif
 
     icWindowDef window = {winFlags,
-                          m_Settings.iScreen_x,
-                          m_Settings.iScreen_y,
+                          static_cast<short>(m_Settings.iScreen_x),
+                          static_cast<short>(m_Settings.iScreen_y),
                           0,0,
                           "Airhockey",
                           m_Settings.bFullscreen};
