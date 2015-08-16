@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		F80B96081B7FF6A6000F9D70 /* icApplication.m in Sources */ = {isa = PBXBuildFile; fileRef = F80B96071B7FF6A6000F9D70 /* icApplication.m */; };
+		F80B960C1B800682000F9D70 /* Carbon.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F80B960B1B800682000F9D70 /* Carbon.framework */; };
+		F80B96101B8007A7000F9D70 /* OpenGL.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F80B960F1B8007A7000F9D70 /* OpenGL.framework */; };
 		F8C19C651B7D107D00B615ED /* leamalloc.c in Sources */ = {isa = PBXBuildFile; fileRef = F8C19B191B7D107C00B615ED /* leamalloc.c */; };
 		F8C19C661B7D107D00B615ED /* leamalloc.h in Headers */ = {isa = PBXBuildFile; fileRef = F8C19B1A1B7D107C00B615ED /* leamalloc.h */; };
 		F8C19C671B7D107D00B615ED /* lapi.c in Sources */ = {isa = PBXBuildFile; fileRef = F8C19B1C1B7D107C00B615ED /* lapi.c */; };
@@ -263,6 +266,10 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		F80B96071B7FF6A6000F9D70 /* icApplication.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = icApplication.m; sourceTree = "<group>"; };
+		F80B96091B80062A000F9D70 /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = System/Library/Frameworks/Cocoa.framework; sourceTree = SDKROOT; };
+		F80B960B1B800682000F9D70 /* Carbon.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Carbon.framework; path = System/Library/Frameworks/Carbon.framework; sourceTree = SDKROOT; };
+		F80B960F1B8007A7000F9D70 /* OpenGL.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = OpenGL.framework; path = System/Library/Frameworks/OpenGL.framework; sourceTree = SDKROOT; };
 		F8C19B101B7D0FF900B615ED /* libICEngine.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libICEngine.a; sourceTree = BUILT_PRODUCTS_DIR; };
 		F8C19B191B7D107C00B615ED /* leamalloc.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = leamalloc.c; sourceTree = "<group>"; };
 		F8C19B1A1B7D107C00B615ED /* leamalloc.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = leamalloc.h; sourceTree = "<group>"; };
@@ -541,6 +548,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F80B96101B8007A7000F9D70 /* OpenGL.framework in Frameworks */,
+				F80B960C1B800682000F9D70 /* Carbon.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -550,6 +559,9 @@
 		F8C19B071B7D0FF900B615ED = {
 			isa = PBXGroup;
 			children = (
+				F80B960F1B8007A7000F9D70 /* OpenGL.framework */,
+				F80B960B1B800682000F9D70 /* Carbon.framework */,
+				F80B96091B80062A000F9D70 /* Cocoa.framework */,
 				F8C19B171B7D107C00B615ED /* 3rdparty */,
 				F8C19B5B1B7D107C00B615ED /* include */,
 				F8C19BF61B7D107C00B615ED /* src */,
@@ -1100,6 +1112,7 @@
 			isa = PBXGroup;
 			children = (
 				F8C19C081B7D107C00B615ED /* icApplication.cpp */,
+				F80B96071B7FF6A6000F9D70 /* icApplication.m */,
 				F8C19C091B7D107C00B615ED /* Window */,
 			);
 			path = Application;
@@ -1602,6 +1615,7 @@
 				F8C19D161B7D107D00B615ED /* icSoundDevice.cpp in Sources */,
 				F8C19C901B7D107D00B615ED /* lstrlib.c in Sources */,
 				F8C19D381B7D107D00B615ED /* icVector2.cpp in Sources */,
+				F80B96081B7FF6A6000F9D70 /* icApplication.m in Sources */,
 				F8C19D581B7D107D00B615ED /* IScriptDomain.cpp in Sources */,
 				F8C19D451B7D107D00B615ED /* icMaxCam.cpp in Sources */,
 				F8C19D351B7D107D00B615ED /* icRand.cpp in Sources */,
@@ -1660,9 +1674,10 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = "$(ARCHS_STANDARD_32_BIT)";
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++0x";
 				CLANG_CXX_LIBRARY = "libc++";
-				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_ARC = NO;
 				CLANG_WARN_BOOL_CONVERSION = YES;
 				CLANG_WARN_CONSTANT_CONVERSION = YES;
 				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
@@ -1694,10 +1709,11 @@
 					$SRCROOT/src,
 					$SRCROOT/3rdparty,
 				);
-				MACOSX_DEPLOYMENT_TARGET = 10.9;
+				MACOSX_DEPLOYMENT_TARGET = 10.7;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = macosx;
 				USER_HEADER_SEARCH_PATHS = "";
+				VALID_ARCHS = i386;
 			};
 			name = Debug;
 		};
@@ -1705,9 +1721,10 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = "$(ARCHS_STANDARD_32_BIT)";
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++0x";
 				CLANG_CXX_LIBRARY = "libc++";
-				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_ARC = NO;
 				CLANG_WARN_BOOL_CONVERSION = YES;
 				CLANG_WARN_CONSTANT_CONVERSION = YES;
 				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
@@ -1734,9 +1751,10 @@
 					$SRCROOT/src,
 					$SRCROOT/3rdparty,
 				);
-				MACOSX_DEPLOYMENT_TARGET = 10.9;
+				MACOSX_DEPLOYMENT_TARGET = 10.7;
 				SDKROOT = macosx;
 				USER_HEADER_SEARCH_PATHS = "";
+				VALID_ARCHS = i386;
 			};
 			name = Release;
 		};
