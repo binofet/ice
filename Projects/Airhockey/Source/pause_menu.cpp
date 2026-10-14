@@ -282,4 +282,5 @@ void PauseMenu::OnPush(void)
 
 void PauseMenu::OnPop(void)
 {
+    if(gApp.GetStateMachine().PeekState()==&gApp.m_GameState)icInput::Instance()->HideCurs();
 }

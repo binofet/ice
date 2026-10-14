@@ -107,7 +107,8 @@ ICRESULT Table::InitPhysics(b2World* pWorld)
     m_pWall1 = pWorld->CreateBody(&body_def);
     if (!m_pWall1) return IC_FAIL_GEN;
     // set restitution
-    poly_shape_def.restitution = 0.30f;
+    poly_shape_def.restitution = 0.94f;
+    poly_shape_def.friction = 0.0f;
 	// The extents are the half-widths of the box.
 	poly_shape_def.SetAsBox(0.175f, 0.2f);
 	// Add the ground shape to the ground body.
@@ -160,7 +161,8 @@ ICRESULT Table::InitPhysics(b2World* pWorld)
     m_pWall6 = pWorld->CreateBody(&body_def);
     if (!m_pWall6) return IC_FAIL_GEN;
     // set restitution
-    poly_shape_def.restitution = 0.30f;
+    poly_shape_def.restitution = 0.94f;
+    poly_shape_def.friction = 0.0f;
 	// The extents are the half-widths of the box.
 	poly_shape_def.SetAsBox(0.175f, 0.2f);
 	// Add the ground shape to the ground body.
@@ -174,7 +176,8 @@ ICRESULT Table::InitPhysics(b2World* pWorld)
     m_pWall7 = pWorld->CreateBody(&body_def);
     if (!m_pWall7) return IC_FAIL_GEN;
     // set restitution
-    poly_shape_def.restitution = 0.30f;
+    poly_shape_def.restitution = 0.94f;
+    poly_shape_def.friction = 0.0f;
 	// The extents are the half-widths of the box.
 	poly_shape_def.SetAsBox(0.75f, 0.2f);
 	// Add the ground shape to the ground body.
@@ -188,7 +191,8 @@ ICRESULT Table::InitPhysics(b2World* pWorld)
     m_pWall8 = pWorld->CreateBody(&body_def);
     if (!m_pWall8) return IC_FAIL_GEN;
     // set restitution
-    poly_shape_def.restitution = 0.30f;
+    poly_shape_def.restitution = 0.94f;
+    poly_shape_def.friction = 0.0f;
 	// The extents are the half-widths of the box.
 	poly_shape_def.SetAsBox(0.75f, 0.2f);
 	// Add the ground shape to the ground body.

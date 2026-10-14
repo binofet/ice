@@ -3,10 +3,9 @@
 // SYSTEM INCLUDES
 #ifdef WIN32
 #include <windows.h>
-#include <gl/gl.h>
+#include <GL/gl.h>
 #elif defined(__APPLE__)
 #include <OpenGL/gl.h>
-#include <Agl/agl.h>
 #else
 #include <GL/gl.h>
 #include <GL/glu.h>

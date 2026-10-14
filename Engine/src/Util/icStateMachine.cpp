@@ -120,6 +120,7 @@ icState* icStateMachine::PopState()
             m_ptrCurrent = m_Stack[m_u8StackIndex-1];
         else
             m_ptrCurrent = NULL;
+        current->OnPop();
     }
     return current;
 }// END FUNCTION PopState(bool bWaitForFinish)

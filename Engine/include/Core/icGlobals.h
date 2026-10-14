@@ -3,6 +3,9 @@
 
 
 #include "Core/icDebug.h"
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 
 #ifdef WIN32
 #include <windows.h>
@@ -34,7 +37,7 @@ extern "C" {
 #endif
 
 // Graphix devices
-#ifdef WIN32
+#if defined(WIN32) && !defined(ICE_OPENGL_ONLY)
 #define ICDX11
 #define ICDX9
 #define D3DX_LATEST 43
@@ -58,7 +61,7 @@ extern "C" {
 
 
 // ICRESULTS
-typedef long ICRESULT;
+typedef int32_t ICRESULT;
 
 #define ICEFAIL(x)        ( x < IC_OK )
 #define ICEOK(x)        ( x >= IC_OK )
@@ -80,35 +83,35 @@ typedef long ICRESULT;
 #define IC_WARN_ALREADY_LOCKED_TEX       (0x0000800A)
 
 // FAILURE RETURN VALUES
-#define IC_FAIL_GEN                      (0x80000001)
-#define IC_FAIL_OUT_OF_MEM               (0x80000002)
-#define IC_FAIL_NPE                      (0x80000003)
-#define IC_FAIL_CREATE_WIND              (0x80000004)
-#define IC_FAIL_CREATE_DEVICE            (0x80000005)
-#define IC_FAIL_NO_DEVICE                (0x80000006)
-#define IC_FAIL_CREATE_VB                (0x80000007)
-#define IC_FAIL_LOCK_VB                  (0x80000008)
-#define IC_FAIL_UNLOCK_VB                (0x80000009)
-#define IC_FAIL_CREATE_IB                (0x8000000A)
-#define IC_FAIL_LOCK_IB                  (0x8000000B)
-#define IC_FAIL_UNLOCK_IB                (0x8000000C)
-#define IC_FAIL_CREATE_TEX               (0x8000000D)
-#define IC_FAIL_LOCK_TEX                 (0x8000000E)
-#define IC_FAIL_UNLOCK_TEX               (0x8000000F)
-#define IC_FAIL_NO_VB                    (0x80000010)
-#define IC_FAIL_NO_IB                    (0x80000011)
-#define IC_FAIL_NO_TEX                   (0x80000012)
-#define IC_FAIL_NOT_LOCKABLE_TEX         (0x80000013)
+#define IC_FAIL_GEN                      ((ICRESULT)0x80000001u)
+#define IC_FAIL_OUT_OF_MEM               ((ICRESULT)0x80000002u)
+#define IC_FAIL_NPE                      ((ICRESULT)0x80000003u)
+#define IC_FAIL_CREATE_WIND              ((ICRESULT)0x80000004u)
+#define IC_FAIL_CREATE_DEVICE            ((ICRESULT)0x80000005u)
+#define IC_FAIL_NO_DEVICE                ((ICRESULT)0x80000006u)
+#define IC_FAIL_CREATE_VB                ((ICRESULT)0x80000007u)
+#define IC_FAIL_LOCK_VB                  ((ICRESULT)0x80000008u)
+#define IC_FAIL_UNLOCK_VB                ((ICRESULT)0x80000009u)
+#define IC_FAIL_CREATE_IB                ((ICRESULT)0x8000000Au)
+#define IC_FAIL_LOCK_IB                  ((ICRESULT)0x8000000Bu)
+#define IC_FAIL_UNLOCK_IB                ((ICRESULT)0x8000000Cu)
+#define IC_FAIL_CREATE_TEX               ((ICRESULT)0x8000000Du)
+#define IC_FAIL_LOCK_TEX                 ((ICRESULT)0x8000000Eu)
+#define IC_FAIL_UNLOCK_TEX               ((ICRESULT)0x8000000Fu)
+#define IC_FAIL_NO_VB                    ((ICRESULT)0x80000010u)
+#define IC_FAIL_NO_IB                    ((ICRESULT)0x80000011u)
+#define IC_FAIL_NO_TEX                   ((ICRESULT)0x80000012u)
+#define IC_FAIL_NOT_LOCKABLE_TEX         ((ICRESULT)0x80000013u)
 
-#define IC_FAIL_FILE_NOT_SUPPORTED       (0x80000014)
+#define IC_FAIL_FILE_NOT_SUPPORTED       ((ICRESULT)0x80000014u)
 
 
-#define IC_FAIL_NO_SCRIPT_CONTEXT        (0x80000020)
-#define IC_FAIL_NO_SCRIPT_LOADED         (0x80000021)
-#define IC_FAIL_SCRIPT_LOAD_ERROR        (0x80000022)
-#define IC_FAIL_SCRIPT_RUNTIME_ERROR     (0x80000023)
+#define IC_FAIL_NO_SCRIPT_CONTEXT        ((ICRESULT)0x80000020u)
+#define IC_FAIL_NO_SCRIPT_LOADED         ((ICRESULT)0x80000021u)
+#define IC_FAIL_SCRIPT_LOAD_ERROR        ((ICRESULT)0x80000022u)
+#define IC_FAIL_SCRIPT_RUNTIME_ERROR     ((ICRESULT)0x80000023u)
 
-#define IC_NOT_IMPL               (0xFFFFFFFF)
+#define IC_NOT_IMPL               ((ICRESULT)0xFFFFFFFFu)
 
 // COMMON TYPEDEFS
 typedef unsigned char u8;

@@ -1,3 +1,5 @@
+#include <cstring>
+#include <cstddef>
 
 #include "Core/GXDevice/icGLext.h"
 

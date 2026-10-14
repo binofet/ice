@@ -1,10 +1,11 @@
 
 #include "puck.h"
+#include "gameplay.h"
 
 #include "Math/icRand.h"
 #include "Content/icContentLoader.h"
 
-#include "Airhockey.h"
+#include "airhockey.h"
 
 #include "../Box2D/Box2D.h"
 
@@ -67,28 +68,13 @@ ICRESULT Puck::Update(const float fDeltaTime)
     if (gApp.m_GameState.GameMode == GAME_MODE_CLIENT)
         return IC_OK;
 
-    b2Vec2 pos = m_pPhys->GetPosition();
-    b2Vec2 vel = m_pPhys->GetLinearVelocity();
-    
-    if (vel.LengthSquared() < 1.0f)
-    {
-        m_fTimer += fDeltaTime;
-
-        if (m_fTimer > 3.0f)
-        {
-            m_fTimer = 0.0f;
-            b2Vec2 offset1(0.0f,0.7f);
-            b2Vec2 offset2(0.0f,-0.7f);
-            float dist1 = b2Distance(pos, offset1);
-            float dist2 = b2Distance(pos, offset2);
-
-            if (dist1 > 0.60f && dist2 > 0.60f)
-            {
-                Reset();
-            }
-        }
-    }
-    // TODO: identify puck idle (within 1.0f or less time!)
+    b2Vec2 vel=m_pPhys->GetLinearVelocity();
+    m_pPhys->SetLinearVelocity(gameplay::limit(m_railRecovery.update(m_pPhys->GetPosition(),vel,fDeltaTime),gameplay::puckLimit));
+    // A quiet puck gets a gentle serve rather than trapping the rally forever.
+    if(vel.LengthSquared()<0.0025f){
+        m_fTimer+=fDeltaTime;
+        if(m_fTimer>2.5f)Reset();
+    }else m_fTimer=0;
     return IC_OK;
 }// END FUNCTION Update(const float fDeltaTime)
 
@@ -118,7 +104,9 @@ void Puck::Reset(void)
         m_pPhys->SetXForm(pos,0.0f);
         m_pPhys->SetAngularVelocity(0.0f);
         float x = icRandF(-0.50f,0.5f);
-        float y = icRandF(-0.50f,0.5f);
+        float y = icRandF(0.0f,1.0f)<0.5f?-0.7f:0.7f;
+        m_fTimer=0;
+        m_railRecovery.reset();
         m_pPhys->SetLinearVelocity(b2Vec2(x,y));
     }
 }// END FUNCTION Reset(void)
@@ -139,15 +127,16 @@ ICRESULT Puck::InitPhysics(b2World* pWorld)
     b2CircleDef circle_shape_def;
 
     // create the puck physics
-    body_def.linearDamping = 0.200001f;
+    body_def.linearDamping = 0.025f;
+    body_def.isBullet = true;
 	body_def.position.Set(0.0f, 0.0f);
 	m_pPhys = pWorld->CreateBody(&body_def);
     if (!m_pPhys) return IC_FAIL_GEN;
     circle_shape_def.radius = 0.0525f;
 	// Set the box density to be non-zero, so it will be dynamic.
 	circle_shape_def.density = 0.1f;
-	circle_shape_def.friction = 0.1f;
-    circle_shape_def.restitution = 0.55f;
+	circle_shape_def.friction = 0.0f;
+    circle_shape_def.restitution = 0.94f;
 	// Add the shape to the body.
 	m_pPhys->CreateShape(&circle_shape_def);
 	// tell the dynamic body to compute it's mass properties base on its shape.

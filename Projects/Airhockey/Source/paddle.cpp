@@ -72,7 +72,7 @@ ICRESULT Paddle::Update(const float fDeltaTime)
 
     // input handler controls the paddle
     if (m_pHandler)
-        m_pHandler->Process(pInput);
+        m_pHandler->Process(pInput, fDeltaTime);
 
     return IC_OK;
 }// END FUNCTION Update(const float fDeltaTime)
@@ -101,7 +101,10 @@ ICRESULT Paddle::Render(void)
 **/
 void Paddle::Reset(void)
 {
-    
+    if (!m_pPhys[0]) return;
+    m_pPhys[0]->SetXForm(b2Vec2(0,player==PLAYER_ONE?-0.43f:0.55f),0);
+    m_pPhys[0]->SetLinearVelocity(b2Vec2(0,0));
+    m_pPhys[0]->SetAngularVelocity(0);
 }// END FUNCTION Reset(void)
 
 

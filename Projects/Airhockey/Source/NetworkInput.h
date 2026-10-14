@@ -14,7 +14,7 @@ class NetworkInput : public InputHandler
 public:
     NetworkInput(int player, b2Body* puck, b2Body* paddle);
 
-    virtual ICRESULT Process(icInput* pInput);
+    virtual ICRESULT Process(icInput* pInput, float dt);
 
 private:
 

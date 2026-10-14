@@ -8,10 +8,9 @@
 // SYSTEM INCLUDES
 #ifdef WIN32
 #include <windows.h>
-#include <gl/gl.h>
+#include <GL/gl.h>
 #elif defined(__APPLE__)
 #include <OpenGL/gl.h>
-#include <Agl/agl.h>
 #else
 #include <GL/gl.h>
 #include <GL/glu.h>
@@ -43,6 +42,9 @@ public:
 private:
 
     GLint   m_Base;
+    GLuint m_Texture;
+    float m_Advance[96];
+    int m_Size;
 };
 
 #endif //__IC_FONT_GL_H__

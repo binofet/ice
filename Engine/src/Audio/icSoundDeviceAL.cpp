@@ -34,46 +34,31 @@ icSoundDeviceAL::~icSoundDeviceAL(void)
 **/
 ICRESULT icSoundDeviceAL::Cleanup(void)
 {
-    if (m_bInitialized)
-    {
-        icSoundI* temp = icMinHeapDequeue(m_Playing, m_NumPlaying--);
-        while (temp)
-        {
-            temp->Stop();
-            icMinHeapInsert(m_Sounds,m_NumFreeSounds++,temp);
+    if (m_Context) {
+        alcMakeContextCurrent(m_Context);
+        for (auto& sound : m_ownedSounds) {
+            if (!sound) continue;
+            sound->Stop();
+            alDeleteSources(1, &sound->m_ALsource);
+            sound->m_ALsource = 0;
+            sound->m_bInitialized = false;
+            delete sound;
+            sound = nullptr;
         }
-
-        ALuint temp_buff[ICSND_MAX_SOURCE];
-        ALuint temp_source[ICSND_MAX_PLAYING];
-
-        for (int i=0; i<ICSND_MAX_SOURCE; ++i)
-        {
-            temp_buff[i] = m_SrcBufs[i].buffID;
-            m_SrcBufs[i].buffID = 0;
+        for (int i = 0; i < ICSND_MAX_SOURCE; ++i) {
+            if (m_SrcBufs[i].buffID) alDeleteBuffers(1, &m_SrcBufs[i].buffID);
+            free(m_SrcBufs[i].data);
         }
-
-        for (int i=0; i<ICSND_MAX_PLAYING; ++i)
-        {
-            temp_source[i] = ((icSoundAL*)m_Sounds[i])->m_ALsource;
-            ((icSoundAL*)m_Sounds[i])->m_ALsource = 0;
-            ((icSoundAL*)m_Sounds[i])->m_bInitialized = false;
-
-            delete ((icSoundAL*)m_Sounds[i]);
-        }
-
-        //Free buffers and source objects
-        alDeleteBuffers(ICSND_MAX_SOURCE, temp_buff);
-        alDeleteSources(ICSND_MAX_PLAYING, temp_source);
-
-        //Disable context
         alcMakeContextCurrent(NULL);
-
-        //Release context
         alcDestroyContext(m_Context);
-
-        //Close device
-        alcCloseDevice(m_Device);
+        m_Context = NULL;
     }
+    if (m_Device) { alcCloseDevice(m_Device); m_Device = NULL; }
+    memset(m_SrcBufs, 0, sizeof(m_SrcBufs));
+    memset(m_Sounds, 0, sizeof(m_Sounds));
+    memset(m_Playing, 0, sizeof(m_Playing));
+    m_NumSrc = m_NumFreeSounds = m_NumPlaying = 0;
+    m_bInitialized = false;
     return IC_OK;
 }// END FUNCTION Cleanup(void)
 
@@ -154,6 +139,7 @@ ICRESULT icSoundDeviceAL::Initialize(void)
     for (int i=0; i<ICSND_MAX_PLAYING; ++i)
     {
         m_Sounds[i] = new icSoundAL();
+        m_ownedSounds[i] = (icSoundAL*)m_Sounds[i];
         m_NumFreeSounds++;
         icSoundAL* temp = (icSoundAL*)m_Sounds[i];
         temp->m_ALsource = temp_sounds[i];
@@ -166,6 +152,7 @@ ICRESULT icSoundDeviceAL::Initialize(void)
     //alDopplerFactor(ALfloat factor);
     //alDopplerVelocity(ALfloat velocity);
 
+    m_bInitialized = true;
     return IC_OK;
 }// END FUNCTION Initialize(void)
 

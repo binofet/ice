@@ -1,4 +1,4 @@
-#ifdef WIN32
+#if defined(WIN32) && defined(ICDX9)
 #ifndef __IC_FONT_DX9_H__
 #define __IC_FONT_DX9_H__
 

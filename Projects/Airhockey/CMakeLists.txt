@@ -1,7 +1,5 @@
-cmake_minimum_required(VERSION 3.2)
 project(Airhockey)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 
 set(SOURCE_FILES
     Box2D/Collision/Shapes/b2CircleShape.cpp
@@ -98,4 +96,18 @@ set(SOURCE_FILES
 
 include_directories( ../../Engine/src ../../Engine/include ../../Engine/3rdparty )
 
-add_executable(Airhockey ${SOURCE_FILES})
+add_executable(Airhockey MACOSX_BUNDLE ${SOURCE_FILES})
+
+target_link_libraries(Airhockey PRIVATE ICEngine)
+target_include_directories(Airhockey PRIVATE .)
+set_target_properties(Airhockey PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+add_custom_command(TARGET Airhockey POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/GameFolder/Resource" "$<TARGET_FILE_DIR:Airhockey>/Resource")
+add_custom_command(TARGET Airhockey POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/GameFolder/settings.ini" "$<TARGET_FILE_DIR:Airhockey>/settings.ini")
+
+set_target_properties(Airhockey PROPERTIES MACOSX_BUNDLE_GUI_IDENTIFIER "com.infinitecombustion.airhockey" MACOSX_BUNDLE_BUNDLE_NAME "Airhockey" MACOSX_BUNDLE_BUNDLE_VERSION "0.1.0" MACOSX_BUNDLE_SHORT_VERSION_STRING "0.1.0")
+if(WIN32)
+    set_target_properties(Airhockey PROPERTIES WIN32_EXECUTABLE TRUE)
+    if(MSVC)
+        target_link_options(Airhockey PRIVATE /ENTRY:mainCRTStartup)
+    endif()
+endif()

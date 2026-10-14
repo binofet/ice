@@ -11,7 +11,7 @@
 #include "Memory/icMinHeap.h"
 
 #ifdef WIN32
-#include "Dbghelp.h"
+#include <dbghelp.h>
 #endif
 
 namespace Ice { namespace Core { namespace Debug {
@@ -112,7 +112,8 @@ _allocCount);
 			for (int j = 0; j < trace->_size && j < 256; ++j)
 			{
 				DWORD displacement = 0;
-				IMAGEHLP_LINE line = {};
+				IMAGEHLP_LINE64 line = {};
+                    line.SizeOfStruct=sizeof(line);
 				void* stackPointer = trace->_stackTrace[j];
 				if (SymFromAddr(process, (DWORD64)stackPointer, 0, symbol))
 				{
@@ -146,14 +147,14 @@ _allocCount);
 						}
 					}
 
-					if (SymGetLineFromAddr(process, (DWORD)stackPointer, &displacement, &line))
+					if (SymGetLineFromAddr64(process, (DWORD64)(uintptr_t)stackPointer, &displacement, &line))
 					{
 						sprintf(
 							temp,
 							"\t%s!%s\t0x%p %s:%i\n",
 							moduleInfo.ModuleName,
 							symbol->Name,
-							(int)symbol->Address,
+							(void*)(uintptr_t)symbol->Address,
 							line.FileName,
 							line.LineNumber);
 					}

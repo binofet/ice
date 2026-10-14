@@ -244,7 +244,7 @@ ICRESULT MainMenu::Update(const float fDeltaTime, bool* bFinished)
     else if (pInput->IsPressed(ICKEY_ESCAPE) || m_btnExit->WasPressed())
     {
         // HACK
-        exit(0);
+        gApp.Quit();
     }
 
     return res;

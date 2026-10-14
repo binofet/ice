@@ -5,6 +5,10 @@
 #include "Util/icTime.h"
 
 #include "icButtonMap.h"
+// Xlib defines AnyKey as a macro; preserve ICE's existing method name.
+#ifdef AnyKey
+#undef AnyKey
+#endif
 
 class icWindow;
 
@@ -52,6 +56,8 @@ public:
 
     bool AnyKey(void) {return (m_LastPressed!=0);};
 #ifdef WIN32
+    void FocusChanged(bool focused);
+    void GetRawInput(LPARAM handle);
     void GetInput(WPARAM wParam, LPARAM lParam, bool bUp);
     void GetScrollWheel(short zDelta);
     void UpdateMousePos(int x, int y, bool fullscreen=false);
@@ -60,7 +66,17 @@ public:
 #endif
 
 
-	void SetDown(uchar key, bool isDown) { m_Keys[0][key] = isDown; };
+	void SetDown(uchar key, bool isDown) { m_Keys[0][key] = isDown; if(isDown)m_LastPressed=key+1; };
+    void UpdateMousePosition(double x, double y, int height);
+    void AddMouseDelta(double x,double y,int height);
+    void ResetMouseTracking();
+    // Focus loss cancels held controls; it must not synthesize a UI click/release.
+    void CancelHeldInput() {
+        memset(m_Keys,0,sizeof(m_Keys));
+        m_LastPressed=0;
+        ResetMouseTracking();
+    }
+    void AddScroll(icReal value) { m_Axis[ICAXIS_MOUSE_Z] += value; }
 	void SetPressed(uchar key, bool isDown) { m_Keys[0][key] = !isDown; m_Keys[1][key] = isDown; };
 
 

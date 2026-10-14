@@ -1,43 +1,35 @@
+#ifndef IC_WINDOW_OSX_H
+#define IC_WINDOW_OSX_H
 #ifdef __APPLE__
-#ifndef __IC_WINDOW_OSX_H__
-#define __IC_WINDOW_OSX_H__
-
-#include <Carbon/Carbon.h>
-#include <AGL/agl.h>
-#include <sched.h>
-#include <pthread.h>
-#include <sys/sysctl.h>
-
 #include "Core/Application/Window/icWindow.h"
-
-class icWindowOSX : public icWindow
-{
+struct icOSXWindowState;
+// AppKit lives in the Objective-C++ implementation; public ICE headers stay C++.
+class icWindowOSX : public icWindow {
 public:
-	icWindowOSX( const icWindowDef& winDef );
-	virtual ~icWindowOSX( void );
-	
-	virtual ICRESULT Cleanup( void );
-	
-	/////////////////////////////////////////////////////
-	// OPERATIONS
-	virtual ICRESULT Show();
-	virtual ICRESULT Hide();
-	virtual ICRESULT UpdateParams( const icWindowDef& winDef );
-	
-    virtual ICRESULT GetWindowPos(icVector2Int* pV2Pos);
-    
-	FORCE_INLINE WindowRef GetRef(void) { return m_pWindow; };
-
-
-    OSStatus WinProc(EventHandlerCallRef nextHandler,
-                     EventRef			 theEvent);
-	
+    icWindowOSX(const icWindowDef& def,icWindow* parent=nullptr);
+    ~icWindowOSX() override;
+    ICRESULT Cleanup() override;
+    ICRESULT Show() override;
+    ICRESULT Hide() override;
+    ICRESULT UpdateParams(const icWindowDef& def) override;
+    ICRESULT GetWindowPos(icVector2Int* position) override;
+    void GetClientSize(int* width,int* height) const override;
+    void GetFramebufferSize(int* width,int* height) const override;
+    // Borrowed NSWindow/NSView pointers. No ownership transfer.
+    void* GetRef() const;
+    void* GetView() const;
+    void* CreateGLContext(void* sharedContext=nullptr);
+    void DestroyGLContext();
+    void MakeCurrent();
+    void SwapBuffers();
+    // Return true to consume a borrowed NSEvent before AppKit handles it.
+    virtual bool HandleNativeEvent(void* event){return false;}
+    static void PumpEvents();
+    static void SetCursorCaptured(bool captured);
+    static void WarpCursor(short x,short y);
+    static void FocusChanged();
 private:
-	void Create();
-	
-	WindowRef			m_pWindow;
-	EventHandlerUPP		m_handlerUPP;
+    icOSXWindowState* m_native=nullptr;
 };
-
-#endif //__IC_WINDOW_OSX_H__
-#endif //__APPLE__
+#endif
+#endif

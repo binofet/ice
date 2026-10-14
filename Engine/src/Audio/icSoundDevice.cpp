@@ -144,7 +144,7 @@ ICRESULT icSoundDeviceI::FindSource(const char* szFile, icSoundBuffer& buffer)
 **/
 icSoundI* icSoundDeviceI::GetFreeSound(void)
 {
-    if (m_NumPlaying < ICSND_MAX_PLAYING-1)
+    if (m_NumFreeSounds > 0 && m_NumPlaying < ICSND_MAX_PLAYING)
     {
         icSoundI* sound = icMinHeapDequeue(m_Sounds,m_NumFreeSounds--);
         icMinHeapInsert(m_Playing,m_NumPlaying++,sound);

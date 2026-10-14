@@ -1,3 +1,5 @@
+#include <thread>
+#include <chrono>
 
 #include "Core/Threading/icThread.h"
 #include "Core/Threading/icMutex.h"
@@ -116,7 +118,7 @@ void icThread::Sleep(uint millisec)
 #ifdef WIN32
 	::Sleep(millisec);
 #elif (defined __APPLE__)
-    pthread_yield_np();
+    std::this_thread::sleep_for(std::chrono::milliseconds(millisec));
 #else
 	timespec tv;
 	tv.tv_sec = millisec/1000;
@@ -193,7 +195,7 @@ icThread* icThread::GetCurrent(void)
 {
 #ifdef WIN32
 	DWORD threadID = GetCurrentThreadId();
-#elif (defined __APPLE__)
+#elif defined(IC_HAS_POSIX)
     pthread_t threadID = pthread_self();
 #endif
 	icThread* thread = 0;

@@ -25,8 +25,10 @@ public:
     virtual ICRESULT UpdateParams(const icWindowDef& winDef);
 
     virtual ICRESULT GetWindowPos(icVector2Int* pV2Pos);
+    void GetClientSize(int* width,int* height) const override;
 
     //! TODO: move this down a level and make platform independant
+    static void PumpEvents();
     virtual LRESULT WindowProc(UINT message, WPARAM wParam, LPARAM lParam);
 
 	inline void SetHWND(HWND hwnd) { m_hwnd = hwnd; };
@@ -44,6 +46,7 @@ private:
 
     /////////////////////////////////////////////////////////////////////////
     // PRIVATE MEMBERS
+    bool m_owned=true;
     HWND        m_hwnd;        //! Handle to the window
 };
 

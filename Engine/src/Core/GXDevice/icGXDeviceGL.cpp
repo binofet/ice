@@ -13,14 +13,16 @@
 #include "Render/Font/icFontGL.h"
 
 #ifdef WIN32
-#include "gl/glu.h"
+#include "GL/glu.h"
 #include "Core/Application/Window/icWindowWIN.h"
 #elif defined(__APPLE__) || defined(__APPLE_CC__)
-#include <Carbon/Carbon.h>
 #include <OpenGL/glu.h>
 #include "Core/Application/Window/icWindowOSX.h"
+using icPlatformGLWindow=icWindowOSX;
 #elif (defined(X11))
 #include <GL/glu.h>
+#include "Core/Application/Window/icWindowX11.h"
+using icPlatformGLWindow=icWindowX11;
 #endif
 
 
@@ -30,8 +32,13 @@ icGXDeviceGL::icGXDeviceGL( void )
 {
 #ifdef WIN32
     m_hDC = NULL;
+    m_hRC = NULL;
 #endif
 
+    m_viewMatrix.Identity();
+#if defined(__APPLE__) || defined(X11)
+    m_nativeContext = NULL;
+#endif
     m_bHardwareBuffers = false;
     m_colClear = icColor::BBLUE;
 }// END FUNCTION icGXDeviceGL( void )
@@ -67,18 +74,14 @@ ICRESULT icGXDeviceGL::Cleanup( void )
         if (!wglDeleteContext(m_hRC))
             res = IC_FAIL_GEN;
     }
+    if(m_hDC&&m_pMainWindow)ReleaseDC(static_cast<icWindowWIN*>(m_pMainWindow)->GetHWND(),m_hDC);
     m_hDC = NULL;
     m_hRC = NULL;
 
-#elif defined(__APPLE__) || defined(__APPLE_CC__)
+#elif defined(__APPLE__) || defined(X11)
 
-    // Unbind to context
-    aglSetCurrentContext(NULL);
-    
-    // Remove drawable
-    aglSetWindowRef(m_aglContext, NULL);
-    aglDestroyContext(m_aglContext);
-
+    if(m_nativeContext&&m_pMainWindow)static_cast<icPlatformGLWindow*>(m_pMainWindow)->DestroyGLContext();
+    m_nativeContext = nullptr;
 #elif (defined(X11))
 #endif
 
@@ -140,10 +143,10 @@ ICRESULT icGXDeviceGL::CreateDevice()
     nPixelFormat = ChoosePixelFormat( m_hDC, &pfd );
 
     // set the pixel format
-    SetPixelFormat(m_hDC, nPixelFormat, &pfd);
+    if(!m_hDC||!nPixelFormat||!SetPixelFormat(m_hDC,nPixelFormat,&pfd))return IC_FAIL_CREATE_DEVICE;
 
     m_hRC = wglCreateContext(m_hDC);
-    wglMakeCurrent(m_hDC, m_hRC);
+    if(!m_hRC||!wglMakeCurrent(m_hDC,m_hRC))return IC_FAIL_CREATE_DEVICE;
 
     icWindowDef windef;
     m_pMainWindow->GetParams(&windef);
@@ -169,6 +172,7 @@ ICRESULT icGXDeviceGL::CreateDevice()
 
     m_bHardwareBuffers = 
         IsExtensionSupported("GL_ARB_vertex_buffer_object", m_psGLExt);
+    if(!m_bHardwareBuffers){icWarning("Airhockey requires OpenGL vertex buffer objects; install the GPU OpenGL driver.");return IC_FAIL_CREATE_DEVICE;}
     if (m_bHardwareBuffers)
     {
         icVertBuffGL::m_bHardware = true;
@@ -223,38 +227,23 @@ ICRESULT icGXDeviceGL::CreateDevice()
 
     // todo, what if this fails?
     return IC_OK;
-#elif (defined(__APPLE__))
-    // TODO: expose this
-    static GLint glAttributes[] = {      
-        AGL_DOUBLEBUFFER, GL_TRUE,  // Double buffered
-        AGL_RGBA,         GL_TRUE,  // Four component color
-        AGL_DEPTH_SIZE,   16,       // 16-bit (at least) depth buffer
-    AGL_NONE };                 // Terminator
-    
-    // Initialize OpenGL, set to one and only window
-    // Choose pixelformat based on attribute list
-    AGLPixelFormat openGLFormat = 
-        aglChoosePixelFormat(NULL, 0, glAttributes);
-    if(openGLFormat == NULL)
-        return false;
-    
-    // HACK
+#elif defined(__APPLE__) || defined(X11)
+    auto window = static_cast<icPlatformGLWindow*>(m_pMainWindow);
+    if (!window) return IC_FAIL_CREATE_DEVICE;
+    m_nativeContext = window->CreateGLContext();
+    if(!m_nativeContext)return IC_FAIL_CREATE_DEVICE;
+    window->MakeCurrent();
     m_bHardwareBuffers = true;
-
-    
-    // Create the context
-    m_aglContext = aglCreateContext(openGLFormat, NULL);
-    if(m_aglContext == NULL)
-        return IC_FAIL_CREATE_DEVICE;
-    
-    // No longer needed
-    aglDestroyPixelFormat(openGLFormat);    
-    
-    // Point to window and make current
-    aglSetWindowRef(m_aglContext, ((icWindowOSX*)m_pMainWindow)->GetRef());
-    aglSetCurrentContext(m_aglContext);
-    
-    
+    icVertBuffGL::m_bHardware = true;
+    icIndexBufGL::m_bHardware = true;
+    int width,height;window->GetFramebufferSize(&width,&height);
+    ChangeSize(width,height);
+    m_psGLVendor=(const char*)glGetString(GL_VENDOR);
+    m_psGLRender=(const char*)glGetString(GL_RENDERER);
+    m_psGLLIB=(const char*)glGetString(GL_VERSION);
+    m_psGLExt=(const char*)glGetString(GL_EXTENSIONS);
+    m_psGLShaderVer=(const char*)glGetString(GL_SHADING_LANGUAGE_VERSION);
+    icPrintf("OpenGL %s / %s",m_psGLLIB,m_psGLRender);
     GLfloat fNoLight[] = { 0.0f, 0.0f, 0.0f, 0.0f };
     GLfloat fLowLight[] = { 0.25f, 0.25f, 0.25f, 1.0f };
     GLfloat fBrightLight[] = { 1.0f, 1.0f, 1.0f, 1.0f };
@@ -309,10 +298,15 @@ void icGXDeviceGL::FrameBegin( void )
 {
 #if (defined(_MSC_VER) || defined(__CYGWIN__) || defined(__MINGW32__))
     HWND hwnd = ((icWindowWIN*)m_pMainWindow)->GetHWND();
+    wglMakeCurrent(m_hDC,m_hRC);
+    int width,height;m_pMainWindow->GetFramebufferSize(&width,&height);
+    if(width>0&&height>0&&(width!=m_iWidth||height!=m_iHeight))ChangeSize(width,height);
     InvalidateRect(hwnd,NULL,FALSE);
-#elif defined(__APPLE__)
-    icWindowOSX* pWind = (icWindowOSX*)m_pMainWindow;
-    //InvalWindowRgn(pWind->GetRef(),  NULL); // force redrow
+#elif defined(__APPLE__) || defined(X11)
+    auto window = static_cast<icPlatformGLWindow*>(m_pMainWindow);
+    window->MakeCurrent();
+    int width,height;window->GetFramebufferSize(&width,&height);
+    if(width>0&&height>0&&(width!=m_iWidth||height!=m_iHeight))ChangeSize(width,height);
 #endif
     glClearColor(m_colClear.R(), m_colClear.G(),
                  m_colClear.B(), m_colClear.A());
@@ -346,7 +340,7 @@ void icGXDeviceGL::FrameBegin( void )
     glEnable(GL_COLOR_MATERIAL);
     glColorMaterial(GL_FRONT, GL_AMBIENT_AND_DIFFUSE);
     glMaterialfv(GL_FRONT, GL_SPECULAR, fBrightLight);
-    glMateriali(GL_FRONT, GL_SHININESS, 129);
+    glMateriali(GL_FRONT, GL_SHININESS, 128);
 }// END FUNCTION FrameBegin( void )
 
 
@@ -367,9 +361,9 @@ void icGXDeviceGL::FrameEnd( bool bSwap )
     else
         glFinish();
 
-#elif defined(__APPLE__)
+#elif defined(__APPLE__) || defined(X11)
     if (bSwap)
-        aglSwapBuffers (m_aglContext);
+        static_cast<icPlatformGLWindow*>(m_pMainWindow)->SwapBuffers();
     else
         glFlush();
     
@@ -388,13 +382,12 @@ ICRESULT icGXDeviceGL::DrawVertBuf(class icVertBuffer* pVB, uint offset, uint co
 #ifdef WIN32
     if (m_hDC)
 #else
-    if (m_aglContext)
+    if (m_nativeContext)
 #endif
     {
-        count = (count) ? count : pVB->GetVertDef()->uiNumVerts-offset;
-
         if (!pVB)
-            return IC_OK;
+            return IC_FAIL_GEN;
+        count = (count) ? count : pVB->GetVertDef()->uiNumVerts-offset;
 
         if (pVB->IsLocked())
             return IC_WARN_ALREADY_LOCKED_VB;
@@ -448,7 +441,7 @@ ICRESULT icGXDeviceGL::DrawVertBuf(class icVertBuffer* pVB, uint offset, uint co
         }
         else
         {
-            *(int*)0=0;
+            return IC_NOT_IMPL; // No intentional crash for an unsupported CPU-buffer path.
             void* vb = glVB->GetLocked();
             glVertexPointer(3,GL_FLOAT,0,vb);
         }
@@ -466,6 +459,7 @@ ICRESULT icGXDeviceGL::DrawVertBuf(class icVertBuffer* pVB, uint offset, uint co
         if (vd->vertType != IC_VERT_2DCOL && vd->vertType == IC_VERT_2DCOL_DIF &&
             vd->vertType != IC_VERT_COL)
             glDisableClientState(GL_TEXTURE_COORD_ARRAY);
+        return IC_OK;
     }
     return IC_FAIL_NO_DEVICE;
 }// END FUNCTION DrawVertBuf(icVertBuffer*, icMaterial*)
@@ -483,7 +477,7 @@ ICRESULT icGXDeviceGL::DrawIndexedVertBuf(class icVertBuffer* pVB,
 #ifdef WIN32
     if (m_hDC)
 #else
-    if (m_aglContext)
+    if (m_nativeContext)
 #endif
     {
         icVertBuffGL* glVB = (icVertBuffGL*)pVB;
@@ -603,7 +597,7 @@ ICRESULT icGXDeviceGL::CreateVB(class icVertBuffer** ppVB,
 #ifdef WIN32
     if (m_hDC)
 #else
-    if (m_aglContext)
+    if (m_nativeContext)
 #endif
     {
         icVertBuffGL* vb = new icVertBuffGL();
@@ -659,7 +653,7 @@ ICRESULT icGXDeviceGL::CreateIB(class icIndexBuf** ppIB,
 #ifdef WIN32
     if (m_hDC)
 #else
-    if (m_aglContext)
+    if (m_nativeContext)
 #endif
     {
         icIndexBufGL* ib = new icIndexBufGL();
@@ -718,7 +712,7 @@ ICRESULT icGXDeviceGL::CreateTex(class icTexture** ppTex,
 #ifdef WIN32
     if (m_hDC)
 #else
-    if (m_aglContext)
+    if (m_nativeContext)
 #endif
     {
         icTextureGL* tex = new icTextureGL();
@@ -753,7 +747,7 @@ ICRESULT icGXDeviceGL::CreateTexFromFile(class icTexture** ppTex,
 #ifdef WIN32
     if (m_hDC)
 #else
-    if (m_aglContext)
+    if (m_nativeContext)
 #endif
     {
         icTextureGL* tex = new icTextureGL();
@@ -793,7 +787,7 @@ ICRESULT icGXDeviceGL::CreateTexFromFile(class icTexture** ppTex,
             // Load texture, set filter and wrap modes
             glTexImage2D(GL_TEXTURE_2D, 0, info.comp,
                          info.width, info.height, 0,
-                         info.comp, GL_UNSIGNED_BYTE, bits);
+                         info.format, GL_UNSIGNED_BYTE, bits);
             gluBuild2DMipmaps(GL_TEXTURE_2D, info.comp,
                               info.width, info.height,
                              info.format, GL_UNSIGNED_BYTE, bits);
@@ -840,6 +834,7 @@ ICRESULT icGXDeviceGL::CreateTexFromFile(class icTexture** ppTex,
 **/
 ICRESULT icGXDeviceGL::ReleaseTex(class icTexture* pTex)
 {
+    if (!pTex) return IC_OK;
     GLuint& glname = ((icTextureGL*)pTex)->GetName();
     if (glname != 0xFFFFFFFF)
         glDeleteTextures(1, &glname);
@@ -875,7 +870,7 @@ ICRESULT icGXDeviceGL::EnableDepthTest(bool bDepth)
 #ifdef WIN32
     if (m_hDC)
 #else
-    if (m_aglContext)
+    if (m_nativeContext)
 #endif
     {
         m_bDepthTest = bDepth;
@@ -1030,16 +1025,14 @@ ICRESULT icGXDeviceGL::SetViewMatrix(const icMatrix44& view)
 {
     glMatrixMode(GL_MODELVIEW);
 
-    icMatrix44 temp = view.Inverse();
+    m_viewMatrix = view.Inverse();
 
-    // set view matrix
-    glPopMatrix();
+    // Load explicitly: callers need not manage the OpenGL matrix stack.
 #ifdef IC_MATH_USE_DOUBLE
-    glLoadMatrixd(temp);
+    glLoadMatrixd(m_viewMatrix);
 #else
-    glLoadMatrixf(temp);
+    glLoadMatrixf(m_viewMatrix);
 #endif
-    glPushMatrix();
 
     return IC_OK;
 }// END FUNCTION SetViewMatrix(const icMatrix44& view)
@@ -1054,11 +1047,12 @@ ICRESULT icGXDeviceGL::SetViewMatrix(const icMatrix44& view)
 ICRESULT icGXDeviceGL::SetWorldTransform(const icMatrix44& world)
 {
     glMatrixMode(GL_MODELVIEW);
-    glPopMatrix();
-    glPushMatrix();
+
 #ifdef IC_MATH_USE_DOUBLE
+    glLoadMatrixd(m_viewMatrix);
     glMultMatrixd(world);
 #else
+    glLoadMatrixf(m_viewMatrix);
     glMultMatrixf(world);
 #endif
 
@@ -1077,7 +1071,7 @@ ICRESULT icGXDeviceGL::SetTexture(uint index, icTexture* pTex)
 #ifdef WIN32
     if (m_hDC)
 #else
-    if (m_aglContext)
+    if (m_nativeContext)
 #endif
     {
         if (pTex)

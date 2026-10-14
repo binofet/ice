@@ -1,6 +1,7 @@
 //////////////////////////////////////////////////////////////////////////////
 // LOCAL INCLUDES
 #include "gamestate.h"
+#include "gameplay.h"
 #include "PlayerInput.h"
 #include "NetworkInput.h"
 #include "AiInput.h"
@@ -77,6 +78,8 @@ GameState::GameState(void)
     m_pGround = NULL;
 
     m_World = NULL;
+    GameMode = GAME_MODE_SINGLE;
+    m_pFont = nullptr;
 
     m_wgtWin = NULL;
     m_texPlyr1 = NULL;
@@ -307,7 +310,7 @@ ICRESULT GameState::InitPhysics(void)
     aabb.lowerBound.Set(-10.0f,-10.0f);
     aabb.upperBound.Set(10.0f,10.0f);
 
-    b2Vec2 grav(0.001f,0.001f);
+    b2Vec2 grav(0.0f,0.0f);
     m_World = new b2World(aabb,grav,false);
 
 	return m_World ? IC_OK : IC_FAIL_GEN;
@@ -363,118 +366,34 @@ ICRESULT GameState::UpdateUVs(const float fDeltaTime)
 **/
 void GameState::UpdateScore()
 {
-    if (GameMode == GAME_MODE_CLIENT)
-    {
-        int s = m_score[PLAYER_ONE];
-        m_wgtScore[PLAYER_ONE]->SetUVs(tl[s],tr[s],bl[s],br[s]);
-
-        s = m_score[PLAYER_TWO];
-        m_wgtScore[PLAYER_TWO]->SetUVs(tl[s],tr[s],bl[s],br[s]);
+    if (GameMode == GAME_MODE_CLIENT) {
+        for(int player=0;player<2;++player){
+            int score=std::max(0,std::min(9,m_score[player]));
+            m_wgtScore[player]->SetUVs(tl[score],tr[score],bl[score],br[score]);
+        }
         return;
     }
-
-    gApp.SendPacket.score[PLAYER_ONE] = m_score[PLAYER_TWO];
-    gApp.SendPacket.score[PLAYER_TWO] = m_score[PLAYER_ONE];
-
-    b2Body* body = m_Puck.GetPhys();
-    if (body)
-    {
-        b2Vec2 pos = body->GetPosition();
-
-        if (pos.y >= 0.87f)
-        {
-            
-            m_scoreSnd->Play();
-
-            m_score[PLAYER_ONE]++;
-            switch(m_score[PLAYER_ONE])
-            {
-            case 0:
-                m_wgtScore[PLAYER_ONE]->SetUVs(tl[0],tr[0],bl[0],br[0]);
-                break;
-            case 1:
-                m_wgtScore[PLAYER_ONE]->SetUVs(tl[1],tr[1],bl[1],br[1]);
-                break;
-            case 2:
-                m_wgtScore[PLAYER_ONE]->SetUVs(tl[2],tr[2],bl[2],br[2]);
-                break;
-            case 3:
-                m_wgtScore[PLAYER_ONE]->SetUVs(tl[3],tr[3],bl[3],br[3]);
-                break;
-            case 4:
-                m_wgtScore[PLAYER_ONE]->SetUVs(tl[4],tr[4],bl[4],br[4]);
-                break;
-            case 5:
-                m_wgtScore[PLAYER_ONE]->SetUVs(tl[5],tr[5],bl[5],br[5]);
-                break;
-            case 6:
-                m_wgtScore[PLAYER_ONE]->SetUVs(tl[6],tr[6],bl[6],br[6]);
-                break;
-            case 7:
-                m_wgtScore[PLAYER_ONE]->SetUVs(tl[7],tr[7],bl[7],br[7]);
-                break;
-            case 8:
-                m_wgtScore[PLAYER_ONE]->SetUVs(tl[8],tr[8],bl[8],br[8]);
-                break;
-            case 9:
-                m_wgtScore[PLAYER_ONE]->SetUVs(tl[9],tr[9],bl[9],br[9]);
-                break;
-            case WINING_SCORE:
-                m_wgtScore[PLAYER_ONE]->SetUVs(tl[0],tr[0],bl[0],br[0]);
-                m_wgtScore[PLAYER_TWO]->SetUVs(tl[0],tr[0],bl[0],br[0]);
-                m_wgtWin->SetTextures(m_texPlyr1);
-                m_fWinTimer = WIN_STALL_TIMER;
-            default:break;
-            }
-            m_Puck.Reset();
-        }
-        else if (pos.y <= -0.74f)
-        {
-            m_score[PLAYER_TWO]++;
-            switch(m_score[PLAYER_TWO])
-            {
-            case 0:
-                m_wgtScore[PLAYER_TWO]->SetUVs(tl[0],tr[0],bl[0],br[0]);
-                break;
-            case 1:
-                m_wgtScore[PLAYER_TWO]->SetUVs(tl[1],tr[1],bl[1],br[1]);
-                break;
-            case 2:
-                m_wgtScore[PLAYER_TWO]->SetUVs(tl[2],tr[2],bl[2],br[2]);
-                break;
-            case 3:
-                m_wgtScore[PLAYER_TWO]->SetUVs(tl[3],tr[3],bl[3],br[3]);
-                break;
-            case 4:
-                m_wgtScore[PLAYER_TWO]->SetUVs(tl[4],tr[4],bl[4],br[4]);
-                break;
-            case 5:
-                m_wgtScore[PLAYER_TWO]->SetUVs(tl[5],tr[5],bl[5],br[5]);
-                break;
-            case 6:
-                m_wgtScore[PLAYER_TWO]->SetUVs(tl[6],tr[6],bl[6],br[6]);
-                break;
-            case 7:
-                m_wgtScore[PLAYER_TWO]->SetUVs(tl[7],tr[7],bl[7],br[7]);
-                break;
-            case 8:
-                m_wgtScore[PLAYER_TWO]->SetUVs(tl[8],tr[8],bl[8],br[8]);
-                break;
-            case 9:
-                m_wgtScore[PLAYER_TWO]->SetUVs(tl[9],tr[9],bl[9],br[9]);
-                break;
-            case WINING_SCORE:
-                m_wgtScore[PLAYER_ONE]->SetUVs(tl[0],tr[0],bl[0],br[0]);
-                m_wgtScore[PLAYER_TWO]->SetUVs(tl[0],tr[0],bl[0],br[0]);
-                m_wgtWin->SetTextures(m_texPlyr2);
-                m_fWinTimer = WIN_STALL_TIMER;
-            default:break;
-            }
-            m_Puck.Reset();
-            m_scoreSnd->Play();
-        }
+    if(m_score[0]>=WINING_SCORE||m_score[1]>=WINING_SCORE)return;
+    b2Vec2 pos=m_Puck.GetPhys()->GetPosition();
+    int scorer=pos.y>=0.87f?PLAYER_ONE:pos.y<=-0.74f?PLAYER_TWO:-1;
+    if(scorer<0)return;
+    if(m_scoreSnd&&gApp.GetSettings().bSfx)m_scoreSnd->Play();
+    ++m_score[scorer];
+    if(m_score[scorer]>=WINING_SCORE){
+        m_wgtWin->SetTextures(scorer==PLAYER_ONE?m_texPlyr1:m_texPlyr2);
+        m_fWinTimer=WIN_STALL_TIMER;
+        m_Puck.GetPhys()->SetLinearVelocity(b2Vec2(0,0));
+    }else{
+        int score=m_score[scorer];
+        m_wgtScore[scorer]->SetUVs(tl[score],tr[score],bl[score],br[score]);
+        m_Puck.Reset();m_Paddles[0].Reset();m_Paddles[1].Reset();
+        m_serveTimer=0.8f;
+        // Rebase player targets after a goal instead of snapping to the old shot.
+        for(auto& paddle:m_Paddles) if(auto handler=paddle.GetInputHandler())handler->ResetTarget();
     }
-}// END FUNCTION UpdateScore()
+    gApp.SendPacket.score[PLAYER_ONE]=m_score[PLAYER_TWO];
+    gApp.SendPacket.score[PLAYER_TWO]=m_score[PLAYER_ONE];
+}
 
 
 /*! Updates the current game that is in session
@@ -497,25 +416,31 @@ ICRESULT GameState::Update(const float fDeltaTime, bool *bFinished)
     // update the physics
     if (m_score[PLAYER_ONE] < WINING_SCORE && m_score[PLAYER_TWO] < WINING_SCORE)
     {
-        const float fixedStep = 1.0f/60.0f;
-        static float accum = 0.0f;
+        auto input=icInput::Instance();
+        for(auto& paddle:m_Paddles) if(auto handler=paddle.GetInputHandler())handler->PrepareFrame(input);
+        const float fixedStep = gameplay::step;
+        float& accum = m_Accumulator;
+        accum += std::min(fDeltaTime,0.1f);
         if (accum >= fixedStep)
         {
             int numsteps = accum/fixedStep;
             for (int i=0; i<numsteps; ++i)
             {
-                // update the game objects
+                if(m_serveTimer>0){m_serveTimer=std::max(0.0f,m_serveTimer-fixedStep);continue;}
+                if(m_score[0]>=WINING_SCORE||m_score[1]>=WINING_SCORE)break;
+                // Input targets are sampled once per render frame, then simulated at 120 Hz.
                 res |= m_Paddles[0].Update(fixedStep);
                 res |= m_Paddles[1].Update(fixedStep);
                 res |= m_Puck.Update(fixedStep);
 
-                m_World->Step(fixedStep, 1);
+                m_World->Step(fixedStep, 8);
+                UpdateScore();
+                ++m_PhysicsSteps;
             }
 
             accum -= numsteps*fixedStep;
         }
-        else
-            accum += fDeltaTime;
+
 
         res |= UpdateUVs(fDeltaTime);
 
@@ -533,9 +458,11 @@ ICRESULT GameState::Update(const float fDeltaTime, bool *bFinished)
         m_fWinTimer -= fDeltaTime;
         if (m_fWinTimer <= 0.0f)
         {
-            m_Puck.Reset();
-            m_score[PLAYER_ONE] = 0;
-            m_score[PLAYER_TWO] = 0;
+            m_Puck.Reset();m_Paddles[0].Reset();m_Paddles[1].Reset();
+            m_serveTimer=0.8f;
+            m_score[PLAYER_ONE] = 0;m_score[PLAYER_TWO] = 0;
+            for(int player=0;player<2;++player)m_wgtScore[player]->SetUVs(tl[0],tr[0],bl[0],br[0]);
+            for(auto& paddle:m_Paddles)if(auto handler=paddle.GetInputHandler())handler->ResetTarget();
         }
     }
     UpdateScore();
@@ -614,6 +541,10 @@ ICRESULT GameState::Render(void)
     m_wgtScore[PLAYER_ONE]->SetPos(icVector2(sx*0.85f,sy*0.20f));
     m_wgtScore[PLAYER_TWO]->SetPos(icVector2(sx*0.57f,sy*0.84f));
 
+    if(m_pFont){
+        m_pFont->Print(icVector2Int(24,(int)sy-40),icColor::WHITE,GameMode==GAME_MODE_SINGLE?"Mouse: your paddle   |   Opponent: CPU   |   Esc: pause":"Mouse: player 1   |   Arrow keys: player 2   |   Esc: pause");
+        if(m_serveTimer>0)m_pFont->Print(icVector2Int((int)(sx*0.43f),(int)(sy*0.50f)),icColor::WHITE,"GET READY");
+    }
     if (m_score[PLAYER_ONE] >= WINING_SCORE|| m_score[PLAYER_TWO] >= WINING_SCORE)
     {
         pDev->SetProjection(pDev->GetOrtho());
@@ -633,6 +564,10 @@ ICRESULT GameState::Render(void)
 **/
 void GameState::OnPush(void)
 {
+    m_Accumulator = 0;
+    m_PhysicsSteps = 0;
+    m_serveTimer=0.8f;
+    m_fWinTimer=0;
     // reset physics
     m_Puck.Reset();
     m_Paddles[0].Reset();

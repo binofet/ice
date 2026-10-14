@@ -1,282 +1,78 @@
 #ifdef WIN32
-
 #include "Core/Application/Window/icWindowWIN.h"
 #include "Core/IO/icInput.h"
-
 #include <windowsx.h>
-
-
-extern HINSTANCE g_hInstance;
-extern HWND g_hwnd;
-
-LRESULT CALLBACK WinProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
-{
-    icInput* pInput = icInput::Instance();
-
-    if (message != WM_MOUSEWHEEL)
-        pInput->GetScrollWheel(0);
-
-    switch (message)
-    {
-    case WM_SYSKEYDOWN:
-        {
-            SHORT lalt = GetKeyState(VK_LMENU);
-            SHORT ralt = GetKeyState(VK_RMENU);
-            if (lalt & 0xF0)
-                pInput->GetInput(VK_LMENU, lParam, false);
-            else if (ralt & 0xF0)
-                pInput->GetInput(VK_RMENU, lParam, false);
-        }break;
-    case WM_SYSKEYUP:
-        {
-            //SHORT lalt = GetKeyState(VK_LMENU);
-            //SHORT ralt = GetKeyState(VK_RMENU);
-            //if (lalt & 0x01)
-                pInput->GetInput(VK_LMENU, lParam, true);
-            //else if (ralt & 0x01)
-                pInput->GetInput(VK_RMENU, lParam, true);
-        }break;
-    case WM_KEYDOWN:
-        {
-            pInput->GetInput(wParam, lParam, false);
-        }break;
-    case WM_KEYUP:
-        {
-            pInput->GetInput(wParam, lParam, true);
-        }break;
-    case WM_LBUTTONDOWN:
-        {
-            pInput->GetInput(VK_LBUTTON, lParam, false);
-        }break;
-    case WM_LBUTTONUP:
-        {
-            pInput->GetInput(VK_LBUTTON, lParam, true);
-        }break;
-    case WM_RBUTTONDOWN:
-        {
-            pInput->GetInput(VK_RBUTTON, lParam, false);
-        }break;
-    case WM_RBUTTONUP:
-        {
-            pInput->GetInput(VK_RBUTTON, lParam, true);
-        }break;
-    case WM_MBUTTONDOWN:
-        {
-            pInput->GetInput(VK_MBUTTON, lParam, false);
-        }break;
-    case WM_MBUTTONUP:
-        {
-            pInput->GetInput(VK_MBUTTON, lParam, true);
-        }break;
-    case WM_XBUTTONDOWN:
-        {
-            if ((WORD)wParam == MK_XBUTTON1)
-                pInput->GetInput(VK_XBUTTON1, lParam, false);
-            else
-                pInput->GetInput(VK_XBUTTON2, lParam, false);
-        }break;
-    case WM_XBUTTONUP:
-        {
-            if ((WORD)wParam == MK_XBUTTON1)
-                pInput->GetInput(VK_XBUTTON1, lParam, true);
-            else
-                pInput->GetInput(VK_XBUTTON2, lParam, true);
-        }break;
-    case WM_MOUSEWHEEL:
-        {
-            short zDelta = GET_WHEEL_DELTA_WPARAM(wParam);
-            pInput->GetScrollWheel(zDelta);
-        }break;
-    case WM_MOUSEMOVE:
-        {
-            pInput->UpdateMousePos(GET_X_LPARAM(lParam),GET_Y_LPARAM(lParam));
-        }break;
+#include <vector>
+#include <algorithm>
+static std::vector<icWindowWIN*> nativeWindows;
+HINSTANCE g_hInstance=GetModuleHandleA(nullptr);
+HWND g_hwnd=nullptr;
+bool HACK_FULLSCREEN=false;
+static LRESULT CALLBACK Dispatch(HWND handle,UINT message,WPARAM wparam,LPARAM lparam){
+    auto window=reinterpret_cast<icWindowWIN*>(GetWindowLongPtrA(handle,GWLP_USERDATA));
+    if(message==WM_NCCREATE){
+        window=static_cast<icWindowWIN*>(reinterpret_cast<CREATESTRUCTA*>(lparam)->lpCreateParams);
+        window->SetHWND(handle);SetWindowLongPtrA(handle,GWLP_USERDATA,reinterpret_cast<LONG_PTR>(window));
     }
-
-    icWindowWIN* pWin = (icWindowWIN*)GetWindowLongPtr(hWnd, GWLP_USERDATA);
-
-    if (NULL == pWin)
-    {
-        return DefWindowProc(hWnd, message, wParam, lParam);
-    }
-
-    return pWin->WindowProc(message, wParam, lParam);
-}// END FUNCTION WinProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
-
-
-icWindowWIN::icWindowWIN(const icWindowDef& winDef, icWindow* parent, HWND hwnd)
-	: icWindow(winDef, parent)
-{
-	m_hwnd = hwnd;
+    return window?window->WindowProc(message,wparam,lparam):DefWindowProcA(handle,message,wparam,lparam);
 }
-
-icWindowWIN::icWindowWIN(const icWindowDef& winDef, icWindow* parent)
-    : icWindow(winDef, parent)
-{
-    m_hwnd = NULL;
-    Create();
+icWindowWIN::icWindowWIN(const icWindowDef& def,icWindow* parent):icWindow(def,parent),m_hwnd(nullptr){Create();if(m_hwnd)nativeWindows.push_back(this);}
+icWindowWIN::icWindowWIN(const icWindowDef& def,icWindow* parent,HWND handle):icWindow(def,parent),m_hwnd(handle),m_owned(false){if(m_hwnd)nativeWindows.push_back(this);}
+ICRESULT icWindowWIN::Cleanup(){
+    nativeWindows.erase(std::remove(nativeWindows.begin(),nativeWindows.end(),this),nativeWindows.end());
+    if(m_hwnd){if(g_hwnd==m_hwnd){g_hwnd=nullptr;icInput::Instance()->FocusChanged(false);}SetWindowLongPtrA(m_hwnd,GWLP_USERDATA,0);if(m_owned)DestroyWindow(m_hwnd);m_hwnd=nullptr;}return IC_OK;
 }
-
-ICRESULT icWindowWIN::Cleanup(void)
-{
-    return IC_FAIL_GEN;
+void icWindowWIN::Create(){
+    if(m_WindowInfo.i16Width<=0||m_WindowInfo.i16Height<=0)return;
+    WNDCLASSEXA type={};type.cbSize=sizeof(type);type.style=CS_OWNDC|CS_HREDRAW|CS_VREDRAW;type.lpfnWndProc=Dispatch;
+    type.hInstance=g_hInstance;type.hCursor=LoadCursor(nullptr,IDC_ARROW);type.lpszClassName="ICE.NativeWindow";
+    if(!RegisterClassExA(&type)&&GetLastError()!=ERROR_CLASS_ALREADY_EXISTS)return;
+    DWORD style=m_WindowInfo.ui32WinFlags?m_WindowInfo.ui32WinFlags:WS_OVERLAPPEDWINDOW;
+    if(m_WindowInfo.bFullScreen)style=WS_POPUP;
+    RECT rect={0,0,m_WindowInfo.i16Width,m_WindowInfo.i16Height};AdjustWindowRectEx(&rect,style,FALSE,0);
+    HWND owner=m_Parent?static_cast<icWindowWIN*>(m_Parent)->GetHWND():nullptr;
+    m_hwnd=CreateWindowExA(0,type.lpszClassName,m_WindowInfo.pWindowName,style,m_WindowInfo.i16PosX,m_WindowInfo.i16PosY,
+        rect.right-rect.left,rect.bottom-rect.top,owner,nullptr,g_hInstance,this);
+    if(m_hwnd)UpdateParams(m_WindowInfo);
 }
-
-void icWindowWIN::Create(void)
-{
-    if (!m_Parent)
-    {
-    WNDCLASS wc;
-    memset(&wc, 0, sizeof(WNDCLASS));
-
-    wc.style = CS_VREDRAW|CS_HREDRAW|CS_OWNDC;
-    wc.lpfnWndProc = (WNDPROC)WinProc;
-    wc.hInstance = g_hInstance;
-    wc.lpszClassName = m_WindowInfo.pWindowName; // should this be app name?
-    wc.hCursor = LoadCursor(NULL, IDC_ARROW);
-    wc.hIcon = LoadIcon(g_hInstance,MAKEINTRESOURCE(101));
-
-    if (!RegisterClass(&wc))
-        return;
-    }
-
-    int posx = m_WindowInfo.i16PosX;
-    int posy = m_WindowInfo.i16PosY;
-    int flags = m_WindowInfo.ui32WinFlags;
-    int width = m_WindowInfo.i16Width;
-    int height = m_WindowInfo.i16Height;
-
-    if (m_WindowInfo.bFullScreen)
-    {
-        posx = 0;
-        posy = 0;
-        flags &= ~WS_MAXIMIZE &
-                 ~WS_MINIMIZE &
-                 ~WS_OVERLAPPEDWINDOW; // remove minimize/maximize style
-
-        flags |= WS_POPUP;
-
-        width = GetSystemMetrics(SM_CXSCREEN);
-        height = GetSystemMetrics(SM_CYSCREEN);
-    }
-
-    HWND parent = (m_Parent) ? ((icWindowWIN*)m_Parent)->GetHWND() : 0;
-
-    icWindowDef parent_def = {0};
-    if (m_Parent)
-    {
-        m_Parent->GetParams(&parent_def);
-        //m_Parent->m_Child = this;
-    }
-
-    const char* className = (m_Parent) ? parent_def.pWindowName : m_WindowInfo.pWindowName;
-
-
-    // Create the window
-    HWND window = CreateWindow( className,
-                                m_WindowInfo.pWindowName,
-                                flags,
-                                posx, posy,
-                                width, height,
-                                parent,                     // Parent
-                                0,                          // Menu
-                                g_hInstance, 0);
-
-    if (window)
-    {
-        m_hwnd = window;
-
-        if (!m_Parent)
-            g_hwnd = window;
-
-        SetWindowLongPtr(m_hwnd, GWLP_USERDATA, (long)this);
-        //return IC_OK;
-    }
-    //return IC_FAIL_CREATE_WIND;
+ICRESULT icWindowWIN::Show(){if(!m_hwnd)return IC_FAIL_CREATE_WIND;ShowWindow(m_hwnd,SW_SHOW);UpdateWindow(m_hwnd);return IC_OK;}
+ICRESULT icWindowWIN::Hide(){if(!m_hwnd)return IC_FAIL_CREATE_WIND;ShowWindow(m_hwnd,SW_HIDE);return IC_OK;}
+ICRESULT icWindowWIN::UpdateParams(const icWindowDef& def){
+    if(!m_hwnd||def.i16Width<=0||def.i16Height<=0)return IC_FAIL_GEN;
+    DWORD style=def.bFullScreen?WS_POPUP:(def.ui32WinFlags?def.ui32WinFlags:WS_OVERLAPPEDWINDOW);
+    SetWindowLongPtrA(m_hwnd,GWL_STYLE,style);SetWindowTextA(m_hwnd,def.pWindowName?def.pWindowName:"ICE");
+    RECT rect={0,0,def.i16Width,def.i16Height};AdjustWindowRectEx(&rect,style,FALSE,0);
+    int x=def.i16PosX,y=def.i16PosY,width=rect.right-rect.left,height=rect.bottom-rect.top;
+    if(def.bFullScreen){MONITORINFO monitor={};monitor.cbSize=sizeof(monitor);GetMonitorInfo(MonitorFromWindow(m_hwnd,MONITOR_DEFAULTTONEAREST),&monitor);x=monitor.rcMonitor.left;y=monitor.rcMonitor.top;width=monitor.rcMonitor.right-x;height=monitor.rcMonitor.bottom-y;}
+    if(!SetWindowPos(m_hwnd,nullptr,x,y,width,height,SWP_NOZORDER|SWP_NOACTIVATE|SWP_FRAMECHANGED))return IC_FAIL_GEN;
+    m_WindowInfo=def;return IC_OK;
 }
-
-ICRESULT icWindowWIN::Show(void)
-{
-    if (!ShowWindow(m_hwnd, SW_SHOW))
-    {
-        UpdateWindow(m_hwnd);
-        return IC_OK;
+ICRESULT icWindowWIN::GetWindowPos(icVector2Int* position){if(!m_hwnd||!position)return IC_FAIL_NPE;RECT rect;if(!GetWindowRect(m_hwnd,&rect))return IC_FAIL_GEN;position->Set(rect.left,rect.top);return IC_OK;}
+void icWindowWIN::GetClientSize(int* width,int* height)const{RECT rect={};if(m_hwnd)GetClientRect(m_hwnd,&rect);if(width)*width=rect.right;if(height)*height=rect.bottom;}
+LRESULT icWindowWIN::WindowProc(UINT message,WPARAM wparam,LPARAM lparam){
+    auto input=icInput::Instance();
+    switch(message){
+    case WM_CLOSE:RequestClose();return 0;
+    case WM_NCDESTROY:{HWND handle=m_hwnd;m_hwnd=nullptr;if(g_hwnd==handle)g_hwnd=nullptr;RequestClose();return DefWindowProcA(handle,message,wparam,lparam);}
+    case WM_DESTROY:RequestClose();return 0; // Closing a preview must not post an application-wide quit.
+    case WM_SETFOCUS:icPlatformEvents::Post(icPlatformEventType::FocusGained,GetID());g_hwnd=m_hwnd;input->FocusChanged(true);return 0;
+    case WM_KILLFOCUS:icPlatformEvents::Post(icPlatformEventType::FocusLost,GetID());if(g_hwnd==m_hwnd)g_hwnd=nullptr;input->FocusChanged(false);return 0;
+    case WM_KEYDOWN:case WM_SYSKEYDOWN:input->GetInput(wparam,lparam,false);break;
+    case WM_KEYUP:case WM_SYSKEYUP:input->GetInput(wparam,lparam,true);break;
+    case WM_LBUTTONDOWN:input->SetDown(ICMOUSE_L,true);break;case WM_LBUTTONUP:input->SetDown(ICMOUSE_L,false);break;
+    case WM_RBUTTONDOWN:input->SetDown(ICMOUSE_R,true);break;case WM_RBUTTONUP:input->SetDown(ICMOUSE_R,false);break;
+    case WM_MBUTTONDOWN:input->SetDown(ICMOUSE_M,true);break;case WM_MBUTTONUP:input->SetDown(ICMOUSE_M,false);break;
+    case WM_MOUSEWHEEL:input->GetScrollWheel(GET_WHEEL_DELTA_WPARAM(wparam));return 0;
+    case WM_MOUSEMOVE:input->UpdateMousePos(GET_X_LPARAM(lparam),GET_Y_LPARAM(lparam));return 0;
+    case WM_INPUT:input->GetRawInput(lparam);break;
     }
-
-    return IC_FAIL_GEN;
+    return DefWindowProcA(m_hwnd,message,wparam,lparam);
 }
-
-ICRESULT icWindowWIN::Hide(void)
-{
-    if (ShowWindow(m_hwnd, SW_HIDE))
-        return IC_OK;
-
-    return IC_FAIL_GEN;
-}
-
-ICRESULT icWindowWIN::UpdateParams(const icWindowDef& winDef)
-{
-    if (m_hwnd)
-    {
-        //SetWindowPos(m_hwnd, 0, - - - -);
-        if (UpdateWindow(m_hwnd))
-            return IC_OK;
+void icWindowWIN::PumpEvents(){
+    MSG event;
+    while(PeekMessage(&event,nullptr,0,0,PM_REMOVE)){
+        if(event.message==WM_QUIT){icPlatformEvents::Post(icPlatformEventType::ApplicationQuitRequested);for(auto window:nativeWindows)window->RequestClose();continue;}
+        TranslateMessage(&event);DispatchMessage(&event);
     }
-	m_WindowInfo = winDef;
-    return IC_FAIL_GEN;
 }
-
-ICRESULT icWindowWIN::GetWindowPos(icVector2Int* pV2Pos)
-{
-    if (m_hwnd && pV2Pos)
-    {
-        RECT rect;
-        if (GetWindowRect(m_hwnd, &rect))
-        {
-            pV2Pos->Set(rect.left, rect.top);
-            return IC_OK;
-        }
-    }
-
-    return IC_FAIL_GEN;
-}
-
-LRESULT icWindowWIN::WindowProc(UINT message, WPARAM wParam, LPARAM lParam)
-{
-    switch( message )
-    {
-        //case WM_SHOWWINDOW: break;
-        //case WM_PAINT: break;
-
-        case WM_DESTROY:
-            PostQuitMessage( 0 );
-            break;
-
-        //case WM_WINDOWPOSCHANGING: break;
-
-        //case WM_ACTIVATEAPP: break;
-
-        //case WM_CHILDACTIVATE:
-        //    {
-        //        int a = 0;
-        //    }break;
-
-        //case WM_NCACTIVATE:
-        //    {
-        //        int a=0;
-        //    }break;
-
-        //case WM_ACTIVATE: break;
-
-        //case WM_SETFOCUS: break;
-
-        //case WM_SIZE:
-        //    if (pApp)
-        //        ((icGXDeviceGL*)pApp->m_pEngine)->ChangeSize(lParam&0xFFFF,(lParam>>16)&0xFFFF);
-        default:
-            return DefWindowProc(m_hwnd, message, wParam, lParam);
-    }
-
-    return DefWindowProc(m_hwnd, message, wParam, lParam);
-}
-#endif //WIN32
+#endif

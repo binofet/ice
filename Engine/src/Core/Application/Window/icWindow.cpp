@@ -15,11 +15,14 @@
 icWindow* icWindow::GetWindow(const icWindowDef& winDef, icWindow* parent)
 {
 #ifdef __APPLE__
-    return (icWindow*)new icWindowOSX(winDef);
+    auto window=new icWindowOSX(winDef,parent);
+    if(!window->GetRef()){delete window;return nullptr;}return window;
 #elif defined(WIN32)
-    return (icWindow*)new icWindowWIN(winDef, parent);
+    auto window=new icWindowWIN(winDef,parent);
+    if(!window->GetHWND()){delete window;return nullptr;}return window;
 #elif defined(X11)
-    return (icWindow*)new icWindowX11(winDef);
+    auto window=new icWindowX11(winDef,parent);
+    if(!window->GetRef()){delete window;return nullptr;}return window;
 #else
 #error This platform isn't supported yet
 #endif
@@ -34,7 +37,24 @@ icWindow* icWindow::GetWindow(const icWindowDef& winDef, icWindow* parent)
 **/
 icWindow::icWindow(const icWindowDef& ref, icWindow* parent)
 {
+    m_id = icPlatformEvents::AllocateWindowID();
+    icPlatformEvents::Post(icPlatformEventType::WindowRegistered, m_id);
     m_WindowInfo = ref;
     m_Parent = parent;
     m_Child = NULL;
+    m_bActive = false;
 }// END FUNCTION icWindow(const icWindow& ref)
+
+void icWindow::PumpEvents() {
+#ifdef __APPLE__
+    icWindowOSX::PumpEvents();
+#elif defined(WIN32)
+    icWindowWIN::PumpEvents();
+#elif defined(X11)
+    icWindowX11::PumpEvents();
+#endif
+}
+
+icWindow::~icWindow() {
+    icPlatformEvents::Post(icPlatformEventType::WindowRetired, m_id);
+}

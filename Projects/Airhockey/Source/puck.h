@@ -4,6 +4,7 @@
 //////////////////////////////////////////////////////////////////////////////
 // ICE INCLUDES
 #include "Audio/icSound.h"
+#include "gameplay.h"
 #include "Render/icModel.h"
 
 #include "Math/Vector/icVector2.h"
@@ -38,6 +39,7 @@ private:
 
     icMatrix44          m_Trans;    //! puck transformation matrix
 
+    gameplay::RailRecovery m_railRecovery;
     float               m_fTimer;
 
     icContentLoader*    m_pContent;

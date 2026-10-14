@@ -51,6 +51,7 @@ struct _airpacket
 class Airhockey : public icApplication
 {
 public:
+    icWindow* GetMainWindow() const {return m_pMainWin;}
     //////////////////////////////////////////////////////////////////////////
     // LIFECYCLE
     Airhockey(void);
@@ -64,6 +65,8 @@ public:
     // OPERATIONS
     ICRESULT Update(void);
     ICRESULT Render(void);
+    ICRESULT RenderFrame(bool present);
+    void PresentFrame();
     ICRESULT Quit(void);
 
     const AirSettings& GetSettings(void) const;

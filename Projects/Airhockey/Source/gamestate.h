@@ -62,6 +62,7 @@ public:
     void SetPlayer2Score(int s) {m_score[PLAYER_TWO]=s;};
 
 private:
+    friend struct GameplaySmokeChecks;
     //////////////////////////////////////////////////////////////////////////
     // PRIVATE METHODS
     ICRESULT CreateGround(void);
@@ -106,6 +107,11 @@ private:
 
     // physics
     b2World*            m_World;
+    float m_serveTimer = 0;
+    float m_Accumulator = 0;
+    unsigned m_PhysicsSteps = 0;
+public:
+    unsigned PhysicsSteps() const { return m_PhysicsSteps; }
 };
 
 

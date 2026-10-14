@@ -3,8 +3,13 @@
 
 #include "Audio/icSound.h"
 
-#include "openAL/al.h"
-#include "openAL/alc.h"
+#ifdef __APPLE__
+#include <OpenAL/al.h>
+#include <OpenAL/alc.h>
+#else
+#include <AL/al.h>
+#include <AL/alc.h>
+#endif
 
 /*! Implements the sound interface under openAL
 **/
@@ -95,6 +100,7 @@ public:
     virtual ICRESULT ReleaseStream(icSoundStreamI* pStream);
 
 private:
+    icSoundAL*      m_ownedSounds[ICSND_MAX_PLAYING] = {};
     bool            m_bInitialized;
 
     ALCcontext*     m_Context;

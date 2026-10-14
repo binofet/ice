@@ -1,9 +1,15 @@
+#ifndef WIN32
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#endif
 
 #include "airhockey.h"
 
 #include "Core/GXDevice/icGXDeviceGL.h"
 #include "Core/GXDevice/icGXDeviceDX9.h"
-#ifndef __APPLE__ // input is not good on OSX yet
+// Cross-platform input
+#if 1
 #include "Core/IO/icInput.h"
 #endif
 
@@ -12,8 +18,10 @@
 #include <OpenGL/glu.h>
 #include <netdb.h>
 
+#elif defined(WIN32)
+#include <GL/glu.h>
 #else
-#include <gl/GLU.h>
+#include <GL/glu.h>
 #endif
 
 
@@ -22,6 +30,10 @@
 Airhockey::Airhockey(void)
 {
     m_pMainWin = NULL;
+    m_Content = NULL;
+    m_pFont = NULL;
+    m_IntroClip = NULL;
+    m_BackGroundMusic = NULL;
 
     m_iGameMode = GAME_MODE_SINGLE;
 
@@ -45,12 +57,12 @@ Airhockey::~Airhockey(void)
 **/
 ICRESULT Airhockey::Cleanup(void)
 {
-    if (m_pMainWin)
-        SAFEDEL(m_pMainWin);
-
-    if (m_pGxDevice)
-        SAFEDEL(m_pGxDevice);
-
+    if (!m_pMainWin && !m_pGxDevice && !m_Content) return IC_OK;
+    m_SoundDevice.Cleanup();
+    if (m_pFont) { m_pGxDevice->ReleaseFont(m_pFont); m_pFont = nullptr; }
+    if (m_Content) { delete m_Content; m_Content = nullptr; }
+    if (m_pGxDevice) SAFEDEL(m_pGxDevice);
+    if (m_pMainWin) SAFEDEL(m_pMainWin);
 
     // write to settings.ini
     //if (m_InitialSettings != m_Settings)
@@ -130,22 +142,15 @@ ICRESULT Airhockey::Init(int argc, char* args[])
     // Initialize Airhockey Settings
     ProcessSettings();
 
-    char temp[256];
-    int l = gethostname(temp,256);
-    hostent *phe = gethostbyname(temp);
-    if (phe == 0)
-	{
-#ifdef DEBUG_INSTALL
-		MessageBoxA(0,"Failed to get host name", "Error", 0);
-#endif
-        return IC_FAIL_GEN;
-	}
-
-    if (phe->h_addr_list[0] != 0)
-    {
-        in_addr addr;
-        memcpy(&addr, phe->h_addr_list[0], sizeof(struct in_addr));
-        strcpy(temp,inet_ntoa(addr));
+    // Local play must not depend on DNS resolving the machine's hostname.
+    char temp[256] = "127.0.0.1";
+    char hostname[256];
+    if (gethostname(hostname,sizeof(hostname)) == 0) {
+        hostent* host = gethostbyname(hostname);
+        if (host && host->h_addr_list[0]) {
+            in_addr addr;memcpy(&addr,host->h_addr_list[0],sizeof(addr));
+            snprintf(temp,sizeof(temp),"%s",inet_ntoa(addr));
+        }
     }
 
     Socket.setHomeAddress(AIRPORT,temp);
@@ -156,10 +161,7 @@ ICRESULT Airhockey::Init(int argc, char* args[])
     uint winFlags = WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN | WS_CLIPSIBLINGS;
     //uint winFlags = WS_POPUP | WS_CLIPCHILDREN | WS_CLIPSIBLINGS;
 #elif defined __APPLE__
-    uint winFlags = kWindowCloseBoxAttribute |
-                    kWindowCollapseBoxAttribute |
-                    kWindowStandardHandlerAttribute ;
-    //uint winFlags = kWindowNoTitleBarAttribute;
+    uint winFlags = 0;
 #else
         uint winFlags = 0;
 #endif
@@ -186,7 +188,8 @@ ICRESULT Airhockey::Init(int argc, char* args[])
 	}
 
     // initialize the graphics device
-    m_pGxDevice->Init(m_pMainWin);
+    res = m_pGxDevice->Init(m_pMainWin);
+    if (ICEFAIL(res)) return res;
 
     m_pGxDevice->EnableFog(m_Settings.bFog, m_Settings.fogParams);
 
@@ -241,12 +244,12 @@ ICRESULT Airhockey::Init(int argc, char* args[])
 	}
 
     // push the main menu (TODO, goes to gamestate right now)
-    m_GameState.Init(m_Content);
-    m_SpinState.Init(m_Content);
-    m_MainMenu.Init(m_Content);
-    m_SettingsMenu.Init(m_Content);
-    m_NetMenu.Init(m_Content);
-    m_PauseMenu.Init(m_Content);
+    if (ICEFAIL(res = m_GameState.Init(m_Content))) return res;
+    if (ICEFAIL(res = m_SpinState.Init(m_Content))) return res;
+    if (ICEFAIL(res = m_MainMenu.Init(m_Content))) return res;
+    if (ICEFAIL(res = m_SettingsMenu.Init(m_Content))) return res;
+    if (ICEFAIL(res = m_NetMenu.Init(m_Content))) return res;
+    if (ICEFAIL(res = m_PauseMenu.Init(m_Content))) return res;
     m_StateMachine.PushState(&m_SpinState);
     m_StateMachine.PushState(&m_MainMenu);
 
@@ -291,7 +294,7 @@ ICRESULT Airhockey::Update(void)
     }
 
     // current input
-#ifndef __APPLE__
+#if 1
     icInput* pInput = icInput::Instance();
 #endif
 
@@ -302,7 +305,7 @@ ICRESULT Airhockey::Update(void)
     // update the game
     res |= m_StateMachine.Update(elapsed);
 
-#ifndef __APPLE__
+#if 1
     pInput->Update();
 #endif
 
@@ -330,7 +333,9 @@ ICRESULT Airhockey::Update(void)
  *
  *  @param          ICRESULT        Success/failure of render
 **/
-ICRESULT Airhockey::Render(void)
+ICRESULT Airhockey::Render(void) { return RenderFrame(true); }
+void Airhockey::PresentFrame() { m_pGxDevice->FrameEnd(true); }
+ICRESULT Airhockey::RenderFrame(bool present)
 {
     ICRESULT res = IC_OK;
     m_pGxDevice->FrameBegin();
@@ -382,8 +387,8 @@ ICRESULT Airhockey::Render(void)
     //m_font.Printf(10,50,icColor::WHITE,"Delta Y: %lf", dy);
     //m_pGxDevice->EnableDepthTest(true);
 
-    m_pGxDevice->FrameEnd(true);
-    return IC_OK;
+    if(present)PresentFrame();
+    return res;
 }// END FUNCTION Render(void)
 
 
@@ -393,6 +398,7 @@ ICRESULT Airhockey::Render(void)
 **/
 ICRESULT Airhockey::Quit(void)
 {
+    if(m_pMainWin)m_pMainWin->RequestClose();
     // should probably do some clean-up and what have you here.
     // still not sure about the existance of this function. . . 
     // we'll see. (was thinking it could be called anywere, like exit(0)
@@ -449,7 +455,7 @@ void Airhockey::ProcessSettings(void)
         m_Settings.fogParams.density = (float)atof(val.ToChar());
 
         val = m_SettingsFile.GetValue("Engine.Fog.Color", "(240,156,46,255)");
-        sscanf(val.ToChar(),"(%u,%u,%u,%u)",&m_Settings.fogParams.col.r,
+        sscanf(val.ToChar(),"(%hhu,%hhu,%hhu,%hhu)",&m_Settings.fogParams.col.r,
                                             &m_Settings.fogParams.col.g,
                                             &m_Settings.fogParams.col.b,
                                             &m_Settings.fogParams.col.a);

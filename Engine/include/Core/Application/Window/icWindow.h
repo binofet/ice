@@ -2,6 +2,7 @@
 #define __IC_WINDOW_H__
 
 #include "Core/icGlobals.h"
+#include "Core/Application/icPlatformEvents.h"
 #include "Math/Vector/icVector2Int.h"
 
 /*! Helper for window creation
@@ -26,7 +27,7 @@ class icWindow
 public:
     //////////////////////////////////////////////////////////////////////////
     // LIFECYCLE
-    virtual ~icWindow(void) { Cleanup(); };
+    virtual ~icWindow(void);
     
     virtual ICRESULT Cleanup(void) { return IC_FAIL_GEN; };
     
@@ -41,6 +42,19 @@ public:
 
     virtual ICRESULT GetWindowPos(icVector2Int* pV2Pos)=0;
     
+    // Event pumping is application-wide; close state and sizes belong to each window.
+    static void PumpEvents();
+    bool ShouldClose() const { return m_closeRequested; }
+    icWindowID GetID() const { return m_id; }
+    virtual void RequestClose() {
+        if (!m_closeRequested) icPlatformEvents::Post(icPlatformEventType::CloseRequested, m_id);
+        m_closeRequested = true;
+    }
+    virtual void GetClientSize(int* width,int* height) const {
+        if(width)*width=m_WindowInfo.i16Width;if(height)*height=m_WindowInfo.i16Height;
+    }
+    virtual void GetFramebufferSize(int* width,int* height) const { GetClientSize(width,height); }
+
     //////////////////////////////////////////////////////////////////////////
     // ACCESS
     ICRESULT GetParams(icWindowDef* const pWinDef);
@@ -56,6 +70,8 @@ protected:
     icWindow*       m_Parent;
     icWindow*       m_Child;
     bool            m_bActive;
+    bool m_closeRequested = false;
+    icWindowID m_id;
     
 private:
     //////////////////////////////////////////////////////////////////////////

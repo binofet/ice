@@ -18,6 +18,7 @@
 
 #include "b2BroadPhase.h"
 #include <algorithm>
+#include <cstring> // Explicit declaration for portable memmove.
 
 // Notes:
 // - we use bound arrays instead of linked lists for cache coherence.

@@ -10,7 +10,7 @@ namespace Ice { namespace Core { namespace Debug {
 	typedef DWORD ThreadID;
 #elif defined(POSIX)
     typedef unsigned int ThreadID;
-#elif defined(__APPLE__)
+#elif !defined(WIN32)
 #include <pthread.h>
 	typedef pthread_t ThreadID;
 #endif
@@ -75,7 +75,7 @@ namespace Ice { namespace Core { namespace Debug {
 			_address = address;
 			_pool = pool;
 			_stackTrace = trace;
-#ifdef __APPLE__
+#ifndef WIN32
             _threadID = pthread_self();
 #elif (defined (WIN32))
 			_threadID = GetCurrentThreadId();
@@ -102,7 +102,7 @@ namespace Ice { namespace Core { namespace Debug {
 			_address = address;
 			_pool = pool;
 			_stackTrace = trace;
-#ifdef __APPLE__
+#ifndef WIN32
             _threadID = pthread_self();
 #else
 			_threadID = GetCurrentThreadId();

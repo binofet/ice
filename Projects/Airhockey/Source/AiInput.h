@@ -12,9 +12,12 @@ class AiInput : public InputHandler
 public:
     AiInput(int player, b2Body* puck, b2Body* paddle);
 
-    virtual ICRESULT Process(icInput* pInput);
+    void ResetTarget() override;
+    virtual ICRESULT Process(icInput* pInput, float dt);
 
 private:
+    float m_reaction = 0;
+    icVector2 m_target;
 
 };
 

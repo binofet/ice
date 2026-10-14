@@ -23,7 +23,10 @@ public:
         m_Paddle = paddle;
     };
 
-    virtual ICRESULT Process(icInput* pInput)=0;
+    virtual ~InputHandler() {}
+    virtual void ResetTarget() {}
+    virtual void PrepareFrame(icInput*) {}
+    virtual ICRESULT Process(icInput* pInput, float dt)=0;
 
 protected:
     int     m_i32Player;

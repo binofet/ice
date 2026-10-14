@@ -94,6 +94,8 @@ public:
     // ACCESS
 #ifdef WIN32
     FORCE_INLINE HDC GetDeviceContext(void) {return m_hDC;};
+    // Borrowed HGLRC for native integration such as context resource sharing.
+    FORCE_INLINE HGLRC GetRenderContext(void) {return m_hRC;};
 #endif
 
 protected:
@@ -108,8 +110,9 @@ private:
     HDC                m_hDC;
     HGLRC              m_hRC;
 #elif defined(__APPLE__)
-    AGLContext         m_aglContext;
-#elif defined(LINUX)
+    void*              m_nativeContext;
+#elif defined(X11)
+    void*              m_nativeContext;
 #endif
 
 
@@ -120,6 +123,7 @@ private:
     const char*         m_psGLRender;
     const char*         m_psGLShaderVer;
 
+    icMatrix44          m_viewMatrix;
     bool                m_bHardwareBuffers;
 };
 #endif // ICGL

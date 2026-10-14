@@ -14,10 +14,12 @@ class PlayerInput : public InputHandler
 public:
     PlayerInput(int player, b2Body* puck, b2Body* paddle);
 
-    virtual ICRESULT Process(icInput* pInput);
+    void PrepareFrame(icInput* input) override;
+    void ResetTarget() override;
+    virtual ICRESULT Process(icInput* pInput, float dt);
 
 private:
-    icVector2       m_v2LastMousePos;
+    icVector2       m_target;
 
     icTimer         m_time;
 };

@@ -35,9 +35,9 @@ void _GetFileParams(uchar u8Mode, DWORD* pAccess, DWORD* pCreateD,
  *  @param      dwBytesMoved    The number of bytes transferred
  *  @param      lpOverlapped    The overlapped structure for async op
 **/
-VOID CALLBACK icFile::AsyncCB(__in  DWORD dwErrorCode,
-                              __in  DWORD dwBytesMoved,
-                              __in  LPOVERLAPPED lpOverlapped)
+VOID CALLBACK icFile::AsyncCB(DWORD dwErrorCode,
+                              DWORD dwBytesMoved,
+                              LPOVERLAPPED lpOverlapped)
 {
     if (lpOverlapped)
     {

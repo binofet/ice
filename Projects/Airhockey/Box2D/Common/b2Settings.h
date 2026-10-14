@@ -18,6 +18,7 @@
 
 #ifndef B2_SETTINGS_H
 #define B2_SETTINGS_H
+#include <cstring> // Explicit C memory declarations across compilers.
 
 #include <assert.h>
 #include <math.h>

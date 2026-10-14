@@ -4,7 +4,7 @@
 #include "Core/IO/icInput.h"
 
 
-#include "Airhockey.h"
+#include "airhockey.h"
 
 #include "../Box2D/Box2D.h"
 
@@ -15,7 +15,7 @@ NetworkInput::NetworkInput(int player, b2Body* puck, b2Body* paddle)
 {
 }
 
-ICRESULT NetworkInput::Process(icInput* pInput)
+ICRESULT NetworkInput::Process(icInput* pInput, float dt)
 {
     ICRESULT res = IC_OK;
 
