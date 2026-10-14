@@ -1,4 +1,5 @@
 #include "Core/IO/icFile.h"
+#include "AI/Pathing/icAStar.h"
 #include "Core/Application/icPlatformEvents.h"
 #include "Core/IO/icInput.h"
 #include "Util/icSettingsFile.h"
@@ -47,6 +48,18 @@ int main() {
     CHECK(!ICEFAIL(settings.WriteFile(path)));
     icSettingsFile restored;CHECK(!ICEFAIL(restored.ReadFile(path)));
     CHECK(std::strcmp(restored.GetValue("Engine.Graphics.ScreenX").ToChar(),"800")==0);unlink(path);
+    icAStar grid; CHECK(!ICEFAIL(grid.Create(8,4,0xff)));
+    icVector3 point; uint index; ICPATHNODE node;
+    CHECK(grid.TryGetWorldPosition(19,point)&&point.x==3&&point.y==2);
+    CHECK(grid.TryGetNodeIndex(point,&index)&&index==19);
+    CHECK(grid.TryGetNode(point,&node)&&node==grid.GetNode(3,2));
+    CHECK(!grid.TryGetNodeIndex(icVector3(-1,0,0),&index));
+    CHECK(!grid.TryGetNodeIndex(icVector3(8,0,0),&index));
+    CHECK(!grid.TryGetWorldPosition(32,point));
+    CHECK(!ICEFAIL(grid.Save(path))); CHECK(!ICEFAIL(grid.Load(path)));
+    FILE* pathFile=fopen(path,"rb");CHECK(pathFile);fseek(pathFile,0,SEEK_END);CHECK(ftell(pathFile)==40);fclose(pathFile);
+    pathFile=fopen(path,"wb");CHECK(pathFile);fputs("bad",pathFile);fclose(pathFile);
+    CHECK(ICEFAIL(grid.Load(path)));unlink(path);
     icTimer timer;std::this_thread::sleep_for(std::chrono::milliseconds(20));
     auto elapsed=timer.Elapsed();CHECK(elapsed>=0.01&&elapsed<1);
     auto input=icInput::Instance();input->SetDown(ICKEY_A,true);CHECK(input->IsDown(ICKEY_A));

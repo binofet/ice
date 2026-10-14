@@ -2,7 +2,7 @@
 #include "skeeball.h"
 
 #include "Core/GXDevice/icGXDeviceGL.h"
-#ifndef __APPLE__ // input is not good on OSX yet
+#if 1
 #include "Core/IO/icInput.h"
 #endif
 
@@ -10,7 +10,7 @@
 #ifdef __APPLE__
 #include <OpenGL/glu.h>
 #else
-#include <gl/GLU.h>
+#include <GL/glu.h>
 #endif
 
 #ifdef WIN32
@@ -20,7 +20,11 @@
 
 #define USE_BEEPS_AND_DELAYS			// undefine to test library works without them
 
+#ifdef WIN32
+extern bool HACK_FULLSCREEN;
+#else
 bool HACK_FULLSCREEN=false;
+#endif
 
 
 
@@ -82,6 +86,7 @@ void on_state_change (wiimote &remote, state_change_flags changed)
 SkeeBall::SkeeBall(void)
 {
     m_pMainWin = NULL;
+    m_Content=nullptr;m_BackGroundMusic=nullptr;m_pthread=nullptr;
 
     m_lastX = 0;
     m_lastY = 0;
@@ -117,11 +122,11 @@ SkeeBall::~SkeeBall(void)
 **/
 ICRESULT SkeeBall::Cleanup(void)
 {
-    if (m_pMainWin)
-        SAFEDEL(m_pMainWin);
-
-    if (m_pGxDevice)
-        SAFEDEL(m_pGxDevice);
+    if(!m_pMainWin&&!m_pGxDevice)return IC_OK;
+    m_SoundDevice.Cleanup();
+    if(m_Content){delete m_Content;m_Content=nullptr;}
+    if(m_pGxDevice)SAFEDEL(m_pGxDevice);
+    if(m_pMainWin)SAFEDEL(m_pMainWin);
 
     playing = false;
 
@@ -206,6 +211,9 @@ ICRESULT SkeeBall::Init(int argc, char* args[])
 
     // Initialize SkeeBall Settings
     ProcessSettings();
+#ifndef WIIMOTE
+    m_Settings.bWiiMote=false;
+#endif
 
     HACK_FULLSCREEN = m_Settings.bWiiMote;
 
@@ -235,17 +243,14 @@ ICRESULT SkeeBall::Init(int argc, char* args[])
     //uint winFlags = WS_CAPTION ;
     //uint winFlags = WS_POPUP | WS_CLIPCHILDREN | WS_CLIPSIBLINGS;
 #elif defined __APPLE__
-    uint winFlags = kWindowCloseBoxAttribute |
-                    kWindowCollapseBoxAttribute |
-                    kWindowStandardHandlerAttribute ;
-    //uint winFlags = kWindowNoTitleBarAttribute;
+    uint winFlags = 0;
 #else
         uint winFlags = 0;
 #endif
 
     icWindowDef window = {winFlags,
-                          m_Settings.iScreen_x,
-                          m_Settings.iScreen_y,
+                          static_cast<short>(m_Settings.iScreen_x),
+                          static_cast<short>(m_Settings.iScreen_y),
                           0,0,
                           "Skee Ball",
                           m_Settings.bFullscreen};
@@ -264,7 +269,7 @@ ICRESULT SkeeBall::Init(int argc, char* args[])
 	}
 
     // initialize the graphics device
-    m_pGxDevice->Init(m_pMainWin);
+    if(ICEFAIL(res=m_pGxDevice->Init(m_pMainWin)))return res;
 
     //m_pGxDevice->EnableFog(m_Settings.bFog, m_Settings.fogParams);
 
@@ -292,7 +297,7 @@ ICRESULT SkeeBall::Init(int argc, char* args[])
     params.fPitch = 1.0f;
     params.bLoop = true;
     params.fVol = m_Settings.fMusic_vol;
-    m_Content->Load("Resource/audio/01castlevania.wav",&m_BackGroundMusic);
+    if(ICEFAIL(res=m_Content->Load("Resource/audio/01castlevania.wav",&m_BackGroundMusic)))return res;
     m_BackGroundMusic->SetParams(params);
 
 
@@ -309,11 +314,11 @@ ICRESULT SkeeBall::Init(int argc, char* args[])
 	}
 
     // push the main menu (TODO, goes to gamestate right now)
-    m_GameState.Init(m_Content);
-    m_MainMenu.Init(m_Content);
-    m_SettingsMenu.Init(m_Content);
-    m_PauseMenu.Init(m_Content);
-    m_LastGame.Init(m_Content);
+    if(ICEFAIL(res=m_GameState.Init(m_Content)))return res;
+    if(ICEFAIL(res=m_MainMenu.Init(m_Content)))return res;
+    if(ICEFAIL(res=m_SettingsMenu.Init(m_Content)))return res;
+    if(ICEFAIL(res=m_PauseMenu.Init(m_Content)))return res;
+    if(ICEFAIL(res=m_LastGame.Init(m_Content)))return res;
     m_StateMachine.PushState(&m_LastGame);
     m_StateMachine.PushState(&m_MainMenu);
 
@@ -788,7 +793,7 @@ ICRESULT SkeeBall::Update(void)
     icReal elapsed = m_GameTime.Elapsed();
 
     // current input
-#ifndef __APPLE__
+#if 1
     icInput* pInput = icInput::Instance();
 #endif
 
@@ -847,7 +852,7 @@ ICRESULT SkeeBall::Update(void)
     }
 #endif
 
-#ifndef __APPLE__
+#if 1
     pInput->Update();
 #endif
 
@@ -866,7 +871,9 @@ ICRESULT SkeeBall::Update(void)
  *
  *  @param          ICRESULT        Success/failure of render
 **/
-ICRESULT SkeeBall::Render(void)
+ICRESULT SkeeBall::Render(void){return RenderFrame(true);}
+void SkeeBall::PresentFrame(){m_pGxDevice->FrameEnd(true);}
+ICRESULT SkeeBall::RenderFrame(bool present)
 {
     ICRESULT res = IC_OK;
     m_pGxDevice->FrameBegin();
@@ -900,7 +907,7 @@ ICRESULT SkeeBall::Render(void)
     }
 #endif
 
-    m_pGxDevice->FrameEnd(true);
+    if(present)PresentFrame();
     return IC_OK;
 }// END FUNCTION Render(void)
 
@@ -911,6 +918,7 @@ ICRESULT SkeeBall::Render(void)
 **/
 ICRESULT SkeeBall::Quit(void)
 {
+    if(m_pMainWin)m_pMainWin->RequestClose();
     // should probably do some clean-up and what have you here.
     // still not sure about the existance of this function. . . 
     // we'll see. (was thinking it could be called anywere, like exit(0)
@@ -962,7 +970,7 @@ void SkeeBall::ProcessSettings(void)
         m_Settings.fogParams.density = (float)atof(val.ToChar());
 
         val = m_SettingsFile.GetValue("Engine.Fog.Color", "(240,156,46,255)");
-        sscanf(val.ToChar(),"(%u,%u,%u,%u)",&m_Settings.fogParams.col.r,
+        sscanf(val.ToChar(),"(%hhu,%hhu,%hhu,%hhu)",&m_Settings.fogParams.col.r,
                                             &m_Settings.fogParams.col.g,
                                             &m_Settings.fogParams.col.b,
                                             &m_Settings.fogParams.col.a);

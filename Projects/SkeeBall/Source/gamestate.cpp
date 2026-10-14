@@ -334,7 +334,7 @@ ICRESULT GameState::Update(const float fDeltaTime, bool *bFinished)
 
     icInput* input = icInput::Instance();
 
-    bool ldown = input->IsDown(ICMOUSE_L);
+    bool ldown = input->IsDown(ICMOUSE_L) || input->IsDown(ICKEY_SPACE);
 
 #ifdef WIIMOTE
     if (gApp.GetSettings().bWiiMote)
@@ -351,7 +351,7 @@ ICRESULT GameState::Update(const float fDeltaTime, bool *bFinished)
     m_MaxCam.Update(fDeltaTime);
 
     // Update the physics world
-    m_physWorld->stepSimulation(fDeltaTime * 4.0f,3,1.0f/60.0f);
+    m_physWorld->stepSimulation(fDeltaTime,8,1.0f/120.0f);
 
     Ball* ball = NULL;
     
@@ -407,9 +407,12 @@ ICRESULT GameState::Update(const float fDeltaTime, bool *bFinished)
             if (wiimote.Button.Right())
                 x += 100.0f * fDeltaTime;
         }
-        else
-            x = icInput::Instance()->GetAxis(ICAXIS_MOUSE_X) * 12000.0f * fDeltaTime;
+
         
+#endif
+        x += icInput::Instance()->GetAxis(ICAXIS_MOUSE_X) * 12000.0f * fDeltaTime;
+        if (input->IsDown(ICKEY_LEFT)) x -= 45.0f * fDeltaTime;
+        if (input->IsDown(ICKEY_RIGHT)) x += 45.0f * fDeltaTime;
         float new_x = icClamp(pos.x + x, -31.047312f,37.262222f);
         pos.Set(new_x,-23.20f,140.0f);
         
@@ -418,7 +421,6 @@ ICRESULT GameState::Update(const float fDeltaTime, bool *bFinished)
             ball->SetPos(pos);
             ball->m_body->activate(true);
         }
-#endif
     }
 
     if (input->IsPressed(ICKEY_ESCAPE))
@@ -476,7 +478,7 @@ ICRESULT GameState::Update(const float fDeltaTime, bool *bFinished)
 
     if (ldown && m_bLastLMB)
     {
-        m_fDy += abs(input->GetAxis(ICAXIS_MOUSE_Y) * 25000.0f * fDeltaTime);
+        m_fDy += 650.0f * fDeltaTime;
 
 #ifdef WIIMOTE
         if (gApp.GetSettings().bWiiMote)
@@ -494,7 +496,7 @@ ICRESULT GameState::Update(const float fDeltaTime, bool *bFinished)
 #endif
 
         // make sure you keep fluid movement
-        m_fDy -= 50.0f * fDeltaTime;
+        m_fDy = icClamp(m_fDy, 0.0f, 1000.0f);
         float val = icClamp(m_fDy,0.0f, 1000.0f);
         m_fPercent = val/1000.0f * 100.0f;
     }
@@ -751,6 +753,7 @@ ICRESULT GameState::Render(void)
     }
     int balls = (bInPlay || bWaiting) ? MAX_BALLS-m_curBall + 1 : MAX_BALLS-m_curBall;
     m_Font.Printf(icVector2Int(x_pos,y_pos),icColor::BRED, "%02d",balls);
+    m_Font.Print(icVector2Int(20,25),icColor::WHITE,"Aim: mouse or arrows | Hold Space or left mouse, release to roll | Esc: pause");
 
     if (m_bLastLMB)
     {

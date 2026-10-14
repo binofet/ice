@@ -26,9 +26,11 @@
 #include "settings.h"
 #include "last_game.h"
 
+#ifdef WIIMOTE
 #include "wiimote.h"
+#endif
 
-#define WIIMOTE
+#ifdef WIIMOTE
 #define CONSOLE_OUTPUT
 
 
@@ -54,6 +56,9 @@
  _T("                                                                             \n")
 
 
+
+#endif // WIIMOTE console helpers
+
 /*! This is the SkeeBall game
 **/
 class SkeeBall : public icApplication
@@ -72,6 +77,9 @@ public:
     // OPERATIONS
     ICRESULT Update(void);
     ICRESULT Render(void);
+    ICRESULT RenderFrame(bool present);
+    void PresentFrame();
+    icWindow* GetMainWindow() const {return m_pMainWin;}
     ICRESULT Quit(void);
 
     const SkeeBallSettings& GetSettings(void) const;
@@ -121,7 +129,10 @@ private:
 
     icThread*           m_pthread;
 
+
+#ifdef WIIMOTE
     HANDLE console;
+#endif
 
     icSoundDeviceAL     m_SoundDevice;      //! Audio device
     icSoundI*           m_BackGroundMusic;  //! Background music object

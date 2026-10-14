@@ -193,7 +193,7 @@ ICRESULT MainMenu::Update(const float fDeltaTime, bool* bFinished)
     else if (pInput->IsPressed(ICKEY_ESCAPE) || m_btnExit->WasPressed())
     {
         // HACK
-        exit(0);
+        gApp.Quit();
     }
 
 #ifdef WIIMOTE
@@ -204,7 +204,7 @@ ICRESULT MainMenu::Update(const float fDeltaTime, bool* bFinished)
         {
             if (wii_remote.Button.Home())
             {
-                exit(0);
+                gApp.Quit();
             }
 
             if (m_btnOnePlayer->IsHighlight() && wii_remote.Button.A())
@@ -221,7 +221,7 @@ ICRESULT MainMenu::Update(const float fDeltaTime, bool* bFinished)
             }
             else if (m_btnExit->IsHighlight() && wii_remote.Button.A())
             {
-                exit(0);
+                gApp.Quit();
             }
 
         }

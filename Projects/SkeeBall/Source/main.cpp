@@ -1,84 +1,25 @@
-
-//////////////////////////////////////////////////////////////////////////////
-// LOCAL INCLUDES
 #include "skeeball.h"
-
-//////////////////////////////////////////////////////////////////////////////
-// ICE SYSTEM INCLUDES
-#include "Core/Threading/icThread.h"
-#include "Math/icRand.h"
-#include "Util/icTime.h"
-
-
-
-//////////////////////////////////////////////////////////////////////////////
-// GLOBALS
+#include "SampleHost.h"
+#include "Core/IO/icInput.h"
 SkeeBall app;
 SkeeBall& gApp(app);
-
-#if defined(_MSC_VER) || defined(__CYGWIN__) || defined(__MINGW32__)
-#include <windows.h>
-
-HINSTANCE g_hInstance;
-HWND g_hwnd;
-int _stdcall wWinMain(HINSTANCE hIntance, HINSTANCE hPrevInstance,
-                      LPWSTR args, int argc)
-{
-    g_hInstance = hIntance;
-#else
-int main(int argc, char* args[])
-{
-#endif
-    // ICE system initialization
-    icSysTimeInit();
-    icRandAutoSeed();
- 
-    
-    ICRESULT ICE_STATUS = IC_OK;
-
-    // Initialize the app
-    if (ICEFAIL(app.Init(argc, (char**)args)))
-    {
-#ifdef WIN32
-        MessageBoxA(NULL, "SkeeBall can't start", "Error", 0);
-#elif defined (__APPLE__)
-#endif
-        return -1;
+int main(int argc,char** argv){
+    sample::initialize();bool smoke=argc==3&&std::string(argv[1])=="--smoke-test";
+    ICRESULT result=app.Init(argc,argv);if(ICEFAIL(result)){icWarning("SkeeBall initialization failed");return 1;}
+    unsigned frame=0;bool launched=false;
+    while(!app.GetMainWindow()->ShouldClose()){
+        icWindow::PumpEvents();if(app.GetMainWindow()->ShouldClose())break;
+        icPlatformEvent event;while(icPlatformEvents::Poll(event)){}
+        if(smoke&&frame==30)app.GetStateMachine().PushState(&app.m_GameState);
+        if(smoke)icInput::Instance()->SetDown(ICKEY_SPACE,frame>=50&&frame<200);
+        result=app.Update();if(ICEFAIL(result))break;
+        if(smoke&&frame==201)launched=app.m_GameState.ShotInFlight();
+        bool capture=smoke&&(frame==20||frame==240);
+        result=app.RenderFrame(!capture);if(ICEFAIL(result))break;
+        if(smoke&&glGetError()!=GL_NO_ERROR){icWarningf("SkeeBall GL error at frame %u",frame);result=IC_FAIL_GEN;break;}
+        if(capture){if(!sample::capture(app.GetMainWindow(),std::string(argv[2])+(frame==20?"/skeeball-menu.ppm":"/skeeball-game.ppm"))){result=IC_FAIL_GEN;break;}app.PresentFrame();}
+        ++frame;if(smoke&&frame==300){if(!launched){icWarning("Smoke shot did not launch");result=IC_FAIL_GEN;break;}icPrintf("SkeeBall smoke passed: %u frames",frame);break;}
+        if(smoke)std::this_thread::sleep_for(std::chrono::milliseconds(8));
     }
-
-
-    // Message loop
-#ifdef WIN32
-    MSG msg;
-    ZeroMemory(&msg,sizeof(MSG));
-    while (msg.message != WM_QUIT && ICE_STATUS >= IC_OK)
-    {
-        if (::PeekMessage(&msg, 0, 0, 0, PM_REMOVE))
-        {
-            ::TranslateMessage(&msg);
-            ::DispatchMessage(&msg);
-        }
-#else
-    volatile bool running = true;
-    while (running)
-    {
-#ifdef __APPLE__
-        EventRecord eventStruct;
-        if (WaitNextEvent(everyEvent,&eventStruct,1,NULL))
-        {
-            if (eventStruct.what == kEventWindowClosed)
-                running = false;
-            if (eventStruct.what == kEventWindowClickCloseRgn)
-                running = false;
-        }
-#endif
-#endif
-
-        ICE_STATUS = app.Update();
-        ICE_STATUS |= app.Render();
-    }
-
-    icPrintf("Main loop exited with status: %s", icGetStr(ICE_STATUS));
-
-    return ICE_STATUS;
-};
+    app.Cleanup();return ICEFAIL(result)?1:0;
+}

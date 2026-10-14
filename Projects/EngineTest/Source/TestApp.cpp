@@ -1,118 +1,66 @@
-
+#include <cmath>
 #include "TestApp.h"
-#include "Util/icFileName.h"
-
-
-
-TestApp::TestApp( void )
-{
-	_font = NULL;
-	m_bRunning = true;
-	
+#include "Core/IO/icInput.h"
+extern "C" {
+#include "Lua/lua.h"
+#include "Lua/lauxlib.h"
+#include "Lua/lualib.h"
 }
-
-TestApp::~TestApp( void )
-{
+TestApp::~TestApp(){Cleanup();}
+bool TestApp::ReloadScript(){
+    // Use a fresh VM so a failed reload cannot partially change the live scene.
+    lua_State* candidate=luaL_newstate();if(!candidate)return false;luaL_openlibs(candidate);
+    if(luaL_dofile(candidate,"Resource/scripts/scene.lua")!=LUA_OK){icWarningf("Lua: %s",lua_tostring(candidate,-1));lua_close(candidate);return false;}
+    lua_getglobal(candidate,"rotation_speed");bool valid=lua_isnumber(candidate,-1);float speed=(float)lua_tonumber(candidate,-1);
+    if(!valid||!std::isfinite(speed)||fabs(speed)>10){lua_close(candidate);icWarning("rotation_speed must be finite and within -10..10");return false;}
+    if(m_lua)lua_close(m_lua);m_lua=candidate;m_speed=speed;return true;
 }
-
-ICRESULT TestApp::Init(int i32ArgC, char* pszArgs[] )
-{
-	ICRESULT res = IC_OK;
-
-	res = icApplication::Init( i32ArgC, pszArgs );
-	if (ICEFAIL(res)) return res;
-
-	res = _delegatesTest.Init();
-	if (ICEFAIL(res)) return res;
-
-	_routeBuffer = new icRouteBuffer();
-
-	return res;
+ICRESULT TestApp::Init(int argc,char** argv){
+    icWindowDef def={0,960,640,0,0,"ICE EngineTest",false};
+    m_window=icWindow::GetWindow(def);if(!m_window)return IC_FAIL_CREATE_WIND;
+    m_pGxDevice=new icGXDeviceGL();ICRESULT result=m_pGxDevice->Init(m_window);if(ICEFAIL(result))return result;
+    m_pGxDevice->SetClearColor(icColor(24,32,48));
+    m_content=new icContentLoader(m_pGxDevice,nullptr);
+    if(ICEFAIL(result=m_content->Load("Resource/models/iceCubeSimple.icm",&m_cube)))return result;
+    icFontParams font={"Arial",20};if(ICEFAIL(result=m_pGxDevice->CreateFont(&m_font,&font)))return result;
+    m_luaChecks=ReloadScript();if(!m_luaChecks)return IC_FAIL_GEN;
+    if(ICEFAIL(m_path.Load("Resource/decent.path")))return IC_FAIL_GEN;
+    m_routeChecks=m_path.TryPlotRoute(icVector3(0,0,0),icVector3(99,49,0),m_route);
+    if(!m_routeChecks){icWarning("EngineTest route query failed");return IC_FAIL_GEN;}
+    icPrintf("EngineTest: Lua scene loaded; path has %d waypoints",m_route._size);
+    m_window->Show();m_time.Elapsed();return icApplication::Init(argc,argv);
 }
-
-ICRESULT TestApp::Cleanup( void )
-{
-	return icApplication::Cleanup();
+ICRESULT TestApp::Cleanup(){
+    if(m_lua){lua_close(m_lua);m_lua=nullptr;}
+    if(m_pGxDevice){
+        if(m_font){m_pGxDevice->ReleaseFont(m_font);m_font=nullptr;}
+        if(m_cube){m_content->Unload(&m_cube);m_cube=nullptr;}
+        delete m_content;m_content=nullptr;delete m_pGxDevice;m_pGxDevice=nullptr;
+    }
+    if(m_window){delete m_window;m_window=nullptr;}return IC_OK;
 }
-
-void TestApp::LookAt( const icVector3& eye, const icVector3& lookAt, const icVector3& up )
-{
-	m_Camera.SetCameraPos(eye);
-
-	// compute view vectors
-	icVector3 view = lookAt - eye;
-	icVector3 right;
-	icVector3 viewUp;
-	view.Normalize();
-	right =  Cross(view, up );
-	right.Normalize();
-	viewUp =  Cross(right, view );
-	viewUp.Normalize();
-
-	// now set up matrices
-	// base rotation matrix
-	icMatrix33 rotate;
-	rotate.SetColumns( right, viewUp, -view );
-
-	// world->view transform
-	// set rotation
-	rotate.Transpose();
-	icVector3 invEye = -(rotate*eye);
-	icMatrix44 mWorldToViewMatrix(rotate, invEye);
-
-	// send to device
-	m_pGxDevice->SetViewMatrix( mWorldToViewMatrix );
+ICRESULT TestApp::Update(){
+    auto input=icInput::Instance();float dt=icClamp((float)m_time.Elapsed(),0.0f,.1f);
+    if(input->IsPressed(ICKEY_ESCAPE))m_window->RequestClose();
+    if(input->IsPressed(ICKEY_SPACE))m_paused=!m_paused;
+    if(input->IsPressed(ICKEY_R))ReloadScript();
+    if(input->IsPressed(ICKEY_TAB))m_showRoute=!m_showRoute;
+    if(!m_paused)m_angle+=dt*m_speed;
+    input->Update();return IC_OK;
 }
-
-ICRESULT TestApp::Update(void)
-{
-#ifndef __APPLE__
-	_delegatesTest.UpdateTest();
-#endif
-	if (m_pGxDevice)
-	{
-		float deltaTime = _timer.Elapsed();
-		_maxCam.Update(deltaTime);
-	}
-	return icApplication::Update();
-}
-
-ICRESULT TestApp::Render( void )
-{
-	if (_pathingSystem)
-	{
-		icTimer timer;
-
-		timer.Elapsed();
-		_pathingSystem->TryPlotRoute(icVector3(0.0f,0.0f,0.0f), icVector3(99.0f, 49.0f, 0.0f), *_routeBuffer);
-
-		float routeTime = timer.Elapsed();
-		icPrintf("route time = %lf", routeTime);
-	}
-
-	if (!m_pGxDevice)
-		return IC_FAIL_GEN;
-
-	m_pGxDevice->FrameBegin();
-
-	m_pGxDevice->SetProjection(_maxCam.GetProjection());
-	m_pGxDevice->SetViewMatrix(_maxCam.GetViewMat());
-
-	m_pGxDevice->SetCullMode(IC_CULL_CLOCKWISE);
-	icMatrix44 cubeMatrix = icMatrix44::IDENTITY;
-	if (_defaultCubeModel)
-	{
-		_defaultCubeModel->Render(cubeMatrix);
-	}
-
-	//m_pGxDevice->SetCullMode(IC_CULL_ANTICLOCK);
-	if (_font)
-	{
-		_font->Printf(icVector2Int(10,20), icColor::BLACK, "UFPS: %.2f", m_pGxDevice->UFPS());
-		_font->Printf(icVector2Int(10,10), icColor::BLACK, "RFPS: %.2f", m_pGxDevice->RFPS());
-	}
-
-	m_pGxDevice->FrameEnd();
-
-	return IC_OK;
+ICRESULT TestApp::RenderFrame(bool present){
+    int width,height;m_window->GetClientSize(&width,&height);if(height<=0)return IC_OK;
+    m_pGxDevice->FrameBegin();icMatrix44 projection,view,world;
+    icCreatePerspective(IC_PI/4,(icReal)width/height,1,1000,projection);
+    icCreateLookAt(icVector3(0,12,-45),icVector3::ZERO,icVector3::Y_AXIS,view);
+    m_pGxDevice->SetProjection(projection);m_pGxDevice->SetViewMatrix(view);
+    world.Identity();world.RotY(m_angle);world.Scale(8,8,8);ICRESULT result=m_cube->Render(world);
+    m_font->Print(icVector2Int(20,height-35),icColor::WHITE,"EngineTest | Space: pause | R: reload Lua | Tab: route | Esc: close");
+    m_font->Printf(icVector2Int(20,25),icColor::WHITE,"Lua speed %.2f | Path check: %d waypoints",m_speed,m_route._size);
+    if(m_showRoute){
+        m_pGxDevice->SetProjection(projection);m_pGxDevice->SetViewMatrix(view);world.Identity();m_pGxDevice->SetWorldTransform(world);
+        glPushAttrib(GL_ENABLE_BIT|GL_CURRENT_BIT|GL_LINE_BIT);glDisable(GL_LIGHTING);glDisable(GL_TEXTURE_2D);glDisable(GL_DEPTH_TEST);glLineWidth(2);glColor3f(.2f,1,.4f);
+        glBegin(GL_LINE_STRIP);for(int i=0;i<m_route._size;++i)glVertex3f((m_route._wayPoints[i].x-50)*.2f,0,(m_route._wayPoints[i].y-25)*.2f);glEnd();glPopAttrib();
+    }
+    if(present)PresentFrame();return result;
 }

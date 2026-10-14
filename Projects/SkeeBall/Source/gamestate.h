@@ -54,6 +54,7 @@ public:
     void OnPop(void);
 
     int GameMode;
+    bool ShotInFlight() const { return bInPlay; }
 
 
 private:

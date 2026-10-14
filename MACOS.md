@@ -47,3 +47,9 @@ build/macos/bin/ice_platform_smoke
 ```
 
 This requires access to WindowServer. It creates two native windows with independent OpenGL contexts, verifies framebuffer colors, parent association, title and size changes, fullscreen restoration, native key handlers, focus reset, preview-only close and idempotent cleanup.
+
+## More examples
+
+The same build also produces EngineTest, SkeeBall, OrbitalSalvage, WarehouseStealth,
+KartRacer and VoxelSandbox. See [EXAMPLES.md](EXAMPLES.md) for controls, scope and
+smoke-test instructions.

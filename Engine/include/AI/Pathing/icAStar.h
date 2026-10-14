@@ -86,41 +86,26 @@ private:
 };
 
 
-FORCE_INLINE bool icAStar::TryGetNode(const icVector3& worldPosition, ICPATHNODE* node)
+FORCE_INLINE bool icAStar::TryGetNode(const icVector3& p, ICPATHNODE* node)
 {
-	int x = (int)worldPosition.x;
-	int y = (int)worldPosition.y;
-
-	int index = y*m_cols + x;
-	if (index < m_NumNodes)
-	{
-		node = &m_Data[index];
-		return true;
-	}
-	return false;
+    uint index;
+    if (!node || !TryGetNodeIndex(p, &index)) return false;
+    *node = m_Data[index];
+    return true;
 }
 
-FORCE_INLINE bool icAStar::TryGetNodeIndex(const icVector3& worldPosition, uint* nodeIndex)
+FORCE_INLINE bool icAStar::TryGetNodeIndex(const icVector3& p, uint* index)
 {
-	int x = (int)worldPosition.x;
-	int y = (int)worldPosition.y;
-
-	int index = y*m_cols + x;
-	if (index < m_NumNodes)
-	{
-		*nodeIndex = index;
-		return true;
-	}
-	return false;
+    if (!index || !m_Data || !(p.x >= 0 && p.y >= 0 && p.x < m_cols && p.y < m_rows)) return false;
+    *index = (uint)p.y*m_cols + (uint)p.x;
+    return true;
 }
 
-FORCE_INLINE bool icAStar::TryGetWorldPosition(uint nodeIndex, icVector3& worldPosition)
+FORCE_INLINE bool icAStar::TryGetWorldPosition(uint index, icVector3& p)
 {
-	// TODO, make this right
-	uint x = nodeIndex % m_cols;
-	uint y = nodeIndex % m_rows;
-	worldPosition.Set((icReal)x, (icReal)y, 0.0f);
-	return true;
+    if (!m_Data || index >= (uint)m_NumNodes) return false;
+    p.Set((icReal)(index % m_cols), (icReal)(index / m_cols), 0);
+    return true;
 }
 
 FORCE_INLINE bool icAStar::TryInvalidateRegion(

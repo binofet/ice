@@ -1,3 +1,4 @@
+#include <stdint.h>
 /*
 Bullet Continuous Collision Detection and Physics Library
 Copyright (c) 2003-2006 Erwin Coumans  http://continuousphysics.com/Bullet/
@@ -66,7 +67,7 @@ static inline void *btAlignedAllocDefault(size_t size, int alignment)
 
   real = (char *)sAllocFunc(size + sizeof(void *) + (alignment-1));
   if (real) {
-    offset = (alignment - (unsigned long)(real + sizeof(void *))) & (alignment-1);
+    offset = (alignment - (uintptr_t)(real + sizeof(void *))) & (alignment-1);
     ret = (void *)((real + sizeof(void *)) + offset);
     *((void **)(ret)-1) = (void *)(real);
   } else {
@@ -118,7 +119,7 @@ void*   btAlignedAllocInternal  (size_t size, int alignment,int line,char* filen
  
  real = (char *)sAllocFunc(size + 2*sizeof(void *) + (alignment-1));
  if (real) {
-   offset = (alignment - (unsigned long)(real + 2*sizeof(void *))) &
+   offset = (alignment - (uintptr_t)(real + 2*sizeof(void *))) &
 (alignment-1);
    ret = (void *)((real + 2*sizeof(void *)) + offset);
    *((void **)(ret)-1) = (void *)(real);
@@ -169,7 +170,7 @@ void*	btAlignedAllocInternal	(size_t size, int alignment)
 
   real = (char *)sAllocFunc(size + sizeof(void *) + (alignment-1));
   if (real) {
-    offset = (alignment - (unsigned long)(real + sizeof(void *))) & (alignment-1);
+    offset = (alignment - (uintptr_t)(real + sizeof(void *))) & (alignment-1);
     ptr = (void *)((real + sizeof(void *)) + offset);
     *((void **)(ptr)-1) = (void *)(real);
   } else {

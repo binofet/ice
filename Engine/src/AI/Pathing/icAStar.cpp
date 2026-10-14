@@ -56,6 +56,7 @@ ICRESULT icAStar::Create(unsigned int x, unsigned int y, ICPATHNODE state)
 	ICRESULT res = Cleanup();
 	if (ICEFAIL(res))
 		return res;
+    if (!x || !y || (unsigned long long)x*y > MAX_SEARCH) return IC_FAIL_GEN;
 
 	m_rows = y;
 	m_cols = x;
@@ -143,47 +144,26 @@ ICRESULT icAStar::Create(unsigned int x, unsigned int y, ICPATHNODE state)
 **/
 ICRESULT icAStar::Load(const char* szFile)
 {
-	ICRESULT res = Cleanup();
-	if (ICEFAIL(res))
-		return res;
-
-	FILE* fp=NULL;
-
-#if defined(_MSC_VER) && (_MSC_VER > 1400)
-	fopen_s(&fp, szFile, "rb");
-#else
-	fp = fopen(szFile, "wb");
-#endif
-
-	if (!fp)
-		return IC_FAIL_GEN;
-
-	uint x,y;
-	fseek(fp,0,SEEK_SET);
-	fread(&x,sizeof(uint),1,fp);
-	fread(&y,sizeof(uint),1,fp);
-
-	// call create so vert buffers and textures are set up too!
-	Create(x,y,0x00);
-
-	// TODO: really define these and serialize/deserialize them
-	_worldMin.Set(0.0f, 0.0f, 0.0f);
-	_worldMax.Set((icReal)x, (icReal)y, 0.0f);
-
-	// read the pathing data in
-	fread(m_Data,sizeof(ICPATHNODE),m_NumNodes,fp);
-
-	for (int i=0; i<m_NumNodes; ++i)
-	{
-		x = i%m_cols;
-		y = i/m_cols;
-		FixNeighbors(x,y);
-	}
-
-	fclose(fp);
-
-	return IC_OK;
-}// END FUNCTION Load(const char* szFile)
+    FILE* fp = fopen(szFile, "rb");
+    if (!fp) return IC_FAIL_GEN;
+    uint x = 0, y = 0;
+    bool valid = fread(&x, sizeof(x), 1, fp) == 1 &&
+                 fread(&y, sizeof(y), 1, fp) == 1;
+    fseek(fp, 0, SEEK_END);
+    long length = ftell(fp);
+    valid = valid && x && y && x <= 4096 && y <= 4096 &&
+            length >= 8 && (unsigned long long)x*y*sizeof(ICPATHNODE) == (unsigned long long)(length-8);
+    if (!valid) { fclose(fp); return IC_FAIL_GEN; }
+    ICRESULT result = Create(x, y, 0);
+    if (ICEFAIL(result)) { fclose(fp); return result; }
+    _worldMin.Set(0,0,0); _worldMax.Set((icReal)x,(icReal)y,0);
+    fseek(fp, 8, SEEK_SET);
+    valid = fread(m_Data,sizeof(ICPATHNODE),m_NumNodes,fp) == (size_t)m_NumNodes;
+    fclose(fp);
+    if (!valid) { Cleanup(); return IC_FAIL_GEN; }
+    for (int i=0; i<m_NumNodes; ++i) FixNeighbors(i%m_cols,i/m_cols);
+    return IC_OK;
+}
 
 
 /*! Saves the current pathing data to file
@@ -196,7 +176,7 @@ ICRESULT icAStar::Save(const char* szFile)
 	FILE* fp=NULL;
 
 #if defined(_MSC_VER) && (_MSC_VER > 1400)
-	fopen_s(&fp, szFile, "w");
+	fopen_s(&fp, szFile, "wb");
 #else
 	fp = fopen(szFile, "wb");
 #endif
@@ -262,10 +242,10 @@ bool icAStar::TryPlotRoute(
 	}
 
 	int startx = SI % m_cols;
-	int starty = SI % m_rows;
+	int starty = SI / m_cols;
 
 	int goalx = GI % m_cols;
-	int goaly = GI % m_rows;
+	int goaly = GI / m_cols;
 
 	m_numFringe = 0;            //! Reset structures used in the search
 	m_numClosed = 0;
