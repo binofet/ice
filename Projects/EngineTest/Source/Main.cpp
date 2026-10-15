@@ -53,6 +53,31 @@ static bool sceneSuite(TestApp &app, const std::string &directory) {
     if (!captureScene(app, directory, "reference-wireframe"))
         return false;
     app.Wireframe(false);
+    for (unsigned clip = 0; clip < app.Scene().animations.size(); clip++) {
+        double time =
+            double(app.Scene().animations[clip].end - app.Scene().animations[clip].start) * .35;
+        if (!app.AnimationSample(int(clip), time))
+            return false;
+        auto paused = app.Pose().world;
+        if (!captureScene(app, directory, "animation-" + std::to_string(clip)) ||
+            app.Pose().world != paused)
+            return false;
+    }
+    if (!app.Scene().animations.empty()) {
+        if (!app.AnimationSample(0, .2))
+            return false;
+        auto paused = app.Pose().world;
+        if (!app.LoadModel(app.Scene().source, false) || app.Pose().world != paused)
+            return false;
+        app.ShowSkeleton(true);
+        if (!captureScene(app, directory, "animation-bones"))
+            return false;
+        app.ShowSkeleton(false);
+        if (!app.AnimationSample(-1, 0) || !captureScene(app, directory, "animation-rest"))
+            return false;
+        if (!app.AnimationSample(0, 0))
+            return false;
+    }
     if (!app.LoadModel("assets://project/gltf/MaterialLab/MaterialLab.gltf"))
         return false;
     app.DebugMode(0);
@@ -74,7 +99,7 @@ static bool sceneSuite(TestApp &app, const std::string &directory) {
     if (!captureScene(app, directory, "material-lab-portrait"))
         return false;
     icPrintf("glTF viewer suite passed: inspection, wireframe, external model, transactional "
-             "reload and resized HDR surface");
+             "reload, animation clips/pause/bones/rest and resized HDR surface");
     return true;
 }
 int main(int argc, char **argv) {

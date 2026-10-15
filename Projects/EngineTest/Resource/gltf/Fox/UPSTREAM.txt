@@ -1,0 +1,4 @@
+https://github.com/KhronosGroup/glTF-Sample-Assets
+Commit: edc7c9e67c639d230715049ee31f9a96a6babbbe
+Path: Models/Fox/glTF-Binary/Fox.glb
+Unmodified reference asset. See LICENSE.md and README.md for attribution.

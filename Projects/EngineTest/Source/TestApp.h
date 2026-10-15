@@ -29,15 +29,23 @@ class TestApp : public icApplication {
     void Wireframe(bool enabled) { m_wireframe = enabled; }
     void PauseOrbit(bool paused) { m_paused = paused; }
     const icSceneAsset &Scene() const { return m_scene; }
+    bool AnimationSample(int clip, double seconds);
+    void ShowSkeleton(bool show) { m_skeleton = show; }
+    const icScenePose &Pose() const { return m_pose; }
 
   private:
     bool ReloadScript();
     std::shared_ptr<icResourceResolver> m_resources;
     std::string m_projectPath = "Resource/ice.project";
     icSceneAsset m_scene;
+    icScenePose m_pose;
+    int m_clip = -1;
+    double m_animationTime = 0;
+    float m_animationSpeed = 1;
+    bool m_playing = true, m_loop = true, m_bindPose = false, m_skeleton = false;
     std::unique_ptr<icSceneRenderer> m_renderer;
     icSceneCamera m_camera;
-    std::string m_modelPath = "assets://project/gltf/DamagedHelmet/DamagedHelmet.glb", m_message;
+    std::string m_modelPath = "assets://project/gltf/Fox/Fox.glb", m_message;
     bool m_legacy = false, m_sceneReady = false, m_wireframe = false;
     int m_debugMode = 0, m_material = -1, m_preset = 0;
     icWindow *m_window = nullptr;

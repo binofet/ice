@@ -9,7 +9,16 @@ struct icPipelineState {
     icCullMode cull = icCullMode::Back;
     icBlendMode blend = icBlendMode::Opaque;
 };
-enum class icVertexSemantic { Position, Normal, Tangent, TexCoord0, TexCoord1, Color0 };
+enum class icVertexSemantic {
+    Position,
+    Normal,
+    Tangent,
+    TexCoord0,
+    TexCoord1,
+    Color0,
+    Joints0,
+    Weights0
+};
 enum class icVertexFormat { Float2 = 2, Float3 = 3, Float4 = 4 };
 struct icVertexAttribute {
     icVertexSemantic semantic;

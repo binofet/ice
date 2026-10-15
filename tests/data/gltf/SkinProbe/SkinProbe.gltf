@@ -1,0 +1,457 @@
+{
+  "asset": {
+    "version": "2.0",
+    "generator": "ICE deterministic fixtures"
+  },
+  "buffers": [
+    {
+      "uri": "mesh%20data.bin",
+      "byteLength": 540
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteOffset": 0,
+      "byteLength": 48
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 48,
+      "byteLength": 48
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 96,
+      "byteLength": 12
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 108,
+      "byteLength": 16
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 124,
+      "byteLength": 16
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 140,
+      "byteLength": 128
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 268,
+      "byteLength": 8
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 276,
+      "byteLength": 24
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 300,
+      "byteLength": 24
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 324,
+      "byteLength": 72
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 396,
+      "byteLength": 32
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 428,
+      "byteLength": 96
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 524,
+      "byteLength": 4
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 528,
+      "byteLength": 12
+    }
+  ],
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 4,
+      "type": "VEC3",
+      "min": [
+        -0.4,
+        -0.4,
+        0
+      ],
+      "max": [
+        0.4,
+        0.4,
+        0
+      ]
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 4,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5123,
+      "count": 6,
+      "type": "SCALAR"
+    },
+    {
+      "bufferView": 3,
+      "componentType": 5121,
+      "count": 4,
+      "type": "VEC4"
+    },
+    {
+      "bufferView": 4,
+      "componentType": 5121,
+      "count": 4,
+      "type": "VEC4",
+      "normalized": true
+    },
+    {
+      "bufferView": 5,
+      "componentType": 5126,
+      "count": 2,
+      "type": "MAT4"
+    },
+    {
+      "bufferView": 6,
+      "componentType": 5126,
+      "count": 2,
+      "type": "SCALAR",
+      "min": [
+        2
+      ],
+      "max": [
+        4
+      ]
+    },
+    {
+      "bufferView": 7,
+      "componentType": 5126,
+      "count": 2,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 8,
+      "componentType": 5126,
+      "count": 2,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 9,
+      "componentType": 5126,
+      "count": 6,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 10,
+      "componentType": 5126,
+      "count": 2,
+      "type": "VEC4"
+    },
+    {
+      "bufferView": 11,
+      "componentType": 5126,
+      "count": 6,
+      "type": "VEC4"
+    },
+    {
+      "bufferView": 12,
+      "componentType": 5126,
+      "count": 1,
+      "type": "SCALAR",
+      "min": [
+        2
+      ],
+      "max": [
+        2
+      ]
+    },
+    {
+      "bufferView": 13,
+      "componentType": 5126,
+      "count": 1,
+      "type": "VEC3"
+    }
+  ],
+  "meshes": [
+    {
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "NORMAL": 1,
+            "JOINTS_0": 3,
+            "WEIGHTS_0": 4
+          },
+          "material": 0,
+          "indices": 2
+        }
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "name": "Root",
+      "translation": [
+        -1,
+        0,
+        0
+      ],
+      "children": [
+        1
+      ]
+    },
+    {
+      "name": "Moving joint",
+      "translation": [
+        1,
+        0,
+        0
+      ],
+      "children": [
+        3
+      ]
+    },
+    {
+      "name": "Mesh transform must be ignored",
+      "mesh": 0,
+      "skin": 0,
+      "translation": [
+        88,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "Rigid attachment",
+      "translation": [
+        0,
+        1,
+        0
+      ]
+    },
+    {
+      "name": "Mirrored root",
+      "translation": [
+        1,
+        1.2,
+        0
+      ],
+      "scale": [
+        -1,
+        1,
+        1
+      ],
+      "children": [
+        5
+      ]
+    },
+    {
+      "name": "Mirrored moving joint",
+      "translation": [
+        1,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "Ignored singular mesh transform",
+      "mesh": 0,
+      "skin": 1,
+      "scale": [
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "scenes": [
+    {
+      "nodes": [
+        0,
+        2,
+        4,
+        6
+      ]
+    }
+  ],
+  "scene": 0,
+  "materials": [
+    {
+      "name": "Skinned red",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          1,
+          0,
+          0,
+          1
+        ],
+        "metallicFactor": 0
+      },
+      "extensions": {
+        "KHR_materials_unlit": {}
+      }
+    }
+  ],
+  "extensionsUsed": [
+    "KHR_materials_unlit"
+  ],
+  "skins": [
+    {
+      "name": "Two joints",
+      "joints": [
+        0,
+        1
+      ],
+      "inverseBindMatrices": 5
+    },
+    {
+      "name": "Mirrored two joints",
+      "joints": [
+        4,
+        5
+      ],
+      "inverseBindMatrices": 5
+    }
+  ],
+  "animations": [
+    {
+      "name": "Translate both",
+      "samplers": [
+        {
+          "input": 6,
+          "output": 7,
+          "interpolation": "LINEAR"
+        }
+      ],
+      "channels": [
+        {
+          "sampler": 0,
+          "target": {
+            "node": 1,
+            "path": "translation"
+          }
+        },
+        {
+          "sampler": 0,
+          "target": {
+            "node": 5,
+            "path": "translation"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Step scale",
+      "samplers": [
+        {
+          "input": 6,
+          "output": 8,
+          "interpolation": "STEP"
+        }
+      ],
+      "channels": [
+        {
+          "sampler": 0,
+          "target": {
+            "node": 1,
+            "path": "scale"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Cubic translation",
+      "samplers": [
+        {
+          "input": 6,
+          "output": 9,
+          "interpolation": "CUBICSPLINE"
+        }
+      ],
+      "channels": [
+        {
+          "sampler": 0,
+          "target": {
+            "node": 1,
+            "path": "translation"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Quaternion slerp",
+      "samplers": [
+        {
+          "input": 6,
+          "output": 10,
+          "interpolation": "LINEAR"
+        }
+      ],
+      "channels": [
+        {
+          "sampler": 0,
+          "target": {
+            "node": 1,
+            "path": "rotation"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Cubic quaternion",
+      "samplers": [
+        {
+          "input": 6,
+          "output": 11,
+          "interpolation": "CUBICSPLINE"
+        }
+      ],
+      "channels": [
+        {
+          "sampler": 0,
+          "target": {
+            "node": 1,
+            "path": "rotation"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Single key",
+      "samplers": [
+        {
+          "input": 12,
+          "output": 13,
+          "interpolation": "LINEAR"
+        }
+      ],
+      "channels": [
+        {
+          "sampler": 0,
+          "target": {
+            "node": 1,
+            "path": "translation"
+          }
+        }
+      ]
+    }
+  ]
+}

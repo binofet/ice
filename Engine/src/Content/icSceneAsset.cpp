@@ -1,4 +1,5 @@
 #include "Content/icSceneAsset.h"
+#include "Content/icSceneAnimation.h"
 #include "cgltf/cgltf.h"
 #include "stb/stb_image.h"
 #include <algorithm>
@@ -284,8 +285,8 @@ bool icLoadGLTF(const std::string &input, icResourceResolver &resolver, icSceneA
         }
         require(cgltf_validate(parsed) == cgltf_result_success,
                 "Invalid glTF accessor, index or scene data");
-        require(parsed->skins_count == 0 && parsed->animations_count == 0,
-                "Skins and animations are not supported in the static viewer");
+        require(parsed->skins_count < 1024 && parsed->animations_count < 1024,
+                "Skin/animation count exceeds import limits");
         icSceneAsset scene;
         scene.source = path;
         for (cgltf_size i = 0; i < parsed->extensions_used_count; i++)
@@ -401,6 +402,7 @@ bool icLoadGLTF(const std::string &input, icResourceResolver &resolver, icSceneA
                 for (std::size_t v = 0; v < count; v++)
                     std::copy(&positions[v * 3], &positions[v * 3] + 3, prim.vertices[v].position);
                 bool normals = false, haveTangents = false, uvSets[2] = {false, false};
+                bool joints = false, weights = false;
                 for (cgltf_size a = 0; a < p.attributes_count; a++) {
                     auto &attr = p.attributes[a];
                     if (attr.type == cgltf_attribute_type_position)
@@ -408,7 +410,40 @@ bool icLoadGLTF(const std::string &input, icResourceResolver &resolver, icSceneA
                     require(attr.data->count == count, "Attribute counts disagree");
                     int components = (int)cgltf_num_components(attr.data->type);
                     auto values = unpack(attr.data, components);
-                    if (attr.type == cgltf_attribute_type_normal) {
+                    if (attr.type == cgltf_attribute_type_joints ||
+                        attr.type == cgltf_attribute_type_weights) {
+                        require(attr.index == 0 && components == 4,
+                                "Only four influences (JOINTS_0/WEIGHTS_0) are supported");
+                        if (attr.type == cgltf_attribute_type_joints) {
+                            require(!attr.data->normalized &&
+                                        (attr.data->component_type == cgltf_component_type_r_8u ||
+                                         attr.data->component_type == cgltf_component_type_r_16u),
+                                    "JOINTS_0 must be unsigned byte/short VEC4");
+                            joints = true;
+                            for (std::size_t v = 0; v < count; v++)
+                                std::copy(&values[v * 4], &values[v * 4] + 4,
+                                          prim.vertices[v].joints);
+                        } else {
+                            require(attr.data->component_type == cgltf_component_type_r_32f ||
+                                        (attr.data->normalized &&
+                                         (attr.data->component_type == cgltf_component_type_r_8u ||
+                                          attr.data->component_type == cgltf_component_type_r_16u)),
+                                    "WEIGHTS_0 must be float or normalized unsigned VEC4");
+                            weights = true;
+                            for (std::size_t v = 0; v < count; v++) {
+                                float total = 0;
+                                for (unsigned k = 0; k < 4; k++) {
+                                    float w = values[v * 4 + k];
+                                    require(w >= 0, "Negative skin weight");
+                                    total += w;
+                                }
+                                require(std::isfinite(total) && total > 1e-8f,
+                                        "Invalid or zero skin weights");
+                                for (unsigned k = 0; k < 4; k++)
+                                    prim.vertices[v].weights[k] = values[v * 4 + k] / total;
+                            }
+                        }
+                    } else if (attr.type == cgltf_attribute_type_normal) {
                         require(components == 3, "NORMAL must be vec3");
                         normals = true;
                         for (std::size_t v = 0; v < count; v++) {
@@ -435,6 +470,8 @@ bool icLoadGLTF(const std::string &input, icResourceResolver &resolver, icSceneA
                         scene.warnings.push_back("Ignored vertex attribute: " +
                                                  std::string(attr.name ? attr.name : "unknown"));
                 }
+                require(joints == weights, "JOINTS_0 and WEIGHTS_0 must appear together");
+                prim.skinned = joints;
                 std::size_t indexCount = p.indices ? p.indices->count : count;
                 require(indexCount <= (Budget - vertexBytes) /
                                           (p.type == cgltf_primitive_type_triangles ? 4 : 12),
@@ -520,12 +557,142 @@ bool icLoadGLTF(const std::string &input, icResourceResolver &resolver, icSceneA
             node.name = n.name ? n.name : "Node " + std::to_string(i);
             node.parent = n.parent ? (int)(n.parent - parsed->nodes) : -1;
             node.mesh = n.mesh ? (int)(n.mesh - parsed->meshes) : -1;
+            node.skin = n.skin ? (int)(n.skin - parsed->skins) : -1;
+            node.matrixTransform = n.has_matrix;
+            if (n.has_translation)
+                std::copy(n.translation, n.translation + 3, node.translation.begin());
+            if (n.has_scale)
+                std::copy(n.scale, n.scale + 3, node.scale.begin());
+            if (n.has_rotation)
+                std::copy(n.rotation, n.rotation + 4, node.rotation.begin());
             cgltf_node_transform_local(&n, node.local.data());
             cgltf_node_transform_world(&n, node.world.data());
             for (float f : node.world)
                 require(std::isfinite(f), "Non-finite node transform");
             for (cgltf_size c = 0; c < n.children_count; c++)
                 node.children.push_back((unsigned)(n.children[c] - parsed->nodes));
+        }
+        for (cgltf_size si = 0; si < parsed->skins_count; si++) {
+            auto &src = parsed->skins[si];
+            icSceneSkin skin;
+            skin.name = src.name ? src.name : "Skin " + std::to_string(si);
+            skin.skeleton = src.skeleton ? int(src.skeleton - parsed->nodes) : -1;
+            require(src.joints_count > 0 && src.joints_count <= 256,
+                    "Skin must contain 1..256 joints");
+            std::set<unsigned> used;
+            for (cgltf_size j = 0; j < src.joints_count; j++) {
+                unsigned node = unsigned(src.joints[j] - parsed->nodes);
+                require(used.insert(node).second, "Duplicate joint in skin");
+                skin.joints.push_back(node);
+                skin.inverseBind.push_back(icSceneIdentity());
+            }
+            if (src.inverse_bind_matrices) {
+                require(src.inverse_bind_matrices->count == src.joints_count &&
+                            src.inverse_bind_matrices->component_type == cgltf_component_type_r_32f,
+                        "Invalid inverse bind accessor");
+                auto values = unpack(src.inverse_bind_matrices, 16);
+                for (unsigned j = 0; j < skin.joints.size(); j++) {
+                    std::copy(&values[j * 16], &values[j * 16] + 16, skin.inverseBind[j].begin());
+                    auto &m = skin.inverseBind[j];
+                    require(m[3] == 0 && m[7] == 0 && m[11] == 0 && m[15] == 1,
+                            "Inverse bind matrix must be affine");
+                }
+            }
+            scene.skins.push_back(std::move(skin));
+        }
+        for (auto &node : scene.nodes)
+            if (node.skin >= 0) {
+                require(node.mesh >= 0, "Skinned node must have a mesh");
+                for (auto index : scene.meshes[node.mesh].primitives) {
+                    auto &primitive = scene.primitives[index];
+                    require(primitive.skinned, "Skinned mesh is missing JOINTS_0/WEIGHTS_0");
+                    for (auto &vertex : primitive.vertices)
+                        for (float j : vertex.joints)
+                            require(j >= 0 && j < scene.skins[node.skin].joints.size() &&
+                                        std::floor(j) == j,
+                                    "Joint index outside node skin");
+                }
+            }
+        std::size_t animationBytes = 0;
+        for (cgltf_size ai = 0; ai < parsed->animations_count; ai++) {
+            auto &src = parsed->animations[ai];
+            icSceneAnimationClip clip;
+            clip.name = src.name ? src.name : "Clip " + std::to_string(ai);
+            require(src.channels_count > 0 && src.channels_count <= 10000,
+                    "Empty or excessive animation channels");
+            std::set<std::pair<unsigned, int>> targeted;
+            bool first = true;
+            for (cgltf_size ci = 0; ci < src.channels_count; ci++) {
+                auto &channel = src.channels[ci];
+                require(channel.target_node && channel.sampler, "Invalid animation target/sampler");
+                auto &sampler = *channel.sampler;
+                icSceneAnimationTrack track;
+                track.node = unsigned(channel.target_node - parsed->nodes);
+                require(!scene.nodes[track.node].matrixTransform,
+                        "Animation cannot target a matrix node");
+                require(targeted.insert({track.node, int(channel.target_path)}).second,
+                        "Duplicate node/path in animation");
+                unsigned components = 3;
+                switch (channel.target_path) {
+                case cgltf_animation_path_type_translation:
+                    track.path = icAnimationPath::Translation;
+                    break;
+                case cgltf_animation_path_type_scale:
+                    track.path = icAnimationPath::Scale;
+                    break;
+                case cgltf_animation_path_type_rotation:
+                    track.path = icAnimationPath::Rotation;
+                    components = 4;
+                    break;
+                default:
+                    require(false, "Morph animation is not supported");
+                }
+                unsigned multiplier = 1;
+                switch (sampler.interpolation) {
+                case cgltf_interpolation_type_linear:
+                    track.interpolation = icAnimationInterpolation::Linear;
+                    break;
+                case cgltf_interpolation_type_step:
+                    track.interpolation = icAnimationInterpolation::Step;
+                    break;
+                case cgltf_interpolation_type_cubic_spline:
+                    track.interpolation = icAnimationInterpolation::CubicSpline;
+                    multiplier = 3;
+                    break;
+                default:
+                    require(false, "Unsupported animation interpolation");
+                }
+                require(sampler.input && sampler.output &&
+                            sampler.input->component_type == cgltf_component_type_r_32f &&
+                            sampler.output->component_type == cgltf_component_type_r_32f,
+                        "Animation accessors must use float data");
+                require((multiplier != 3 || sampler.input->count >= 2) &&
+                            sampler.input->count <= 2000000 &&
+                            sampler.output->count == sampler.input->count * multiplier,
+                        "Animation key counts disagree");
+                auto bytes = sampler.input->count * sizeof(float) * (1 + components * multiplier);
+                require(bytes <= Budget - animationBytes, "Animation data budget exceeded");
+                animationBytes += bytes;
+                track.times = unpack(sampler.input, 1);
+                track.values = unpack(sampler.output, components);
+                for (unsigned k = 0; k < track.times.size(); k++)
+                    require(track.times[k] >= 0 && (k == 0 || track.times[k] > track.times[k - 1]),
+                            "Animation times must be nonnegative and strictly increasing");
+                if (components == 4)
+                    for (unsigned k = 0; k < track.times.size(); k++) {
+                        unsigned offset = (k * multiplier + (multiplier == 3 ? 1 : 0)) * 4;
+                        double norm = 0;
+                        for (unsigned c = 0; c < 4; c++)
+                            norm += double(track.values[offset + c]) * track.values[offset + c];
+                        require(norm > 1e-12, "Zero animation quaternion");
+                    }
+                clip.start =
+                    first ? track.times.front() : std::min(clip.start, track.times.front());
+                clip.end = first ? track.times.back() : std::max(clip.end, track.times.back());
+                first = false;
+                clip.tracks.push_back(std::move(track));
+            }
+            scene.animations.push_back(std::move(clip));
         }
         cgltf_scene *selected =
             parsed->scene ? parsed->scene : (parsed->scenes_count ? &parsed->scenes[0] : nullptr);
@@ -572,6 +739,13 @@ bool icLoadGLTF(const std::string &input, icResourceResolver &resolver, icSceneA
             }
         }
         require(!scene.instances.empty(), "Selected scene has no renderable mesh instances");
+        icScenePose rest;
+        std::string poseError;
+        bool validPose = icEvaluateScenePose(scene, -1, 0, false, rest, poseError);
+        require(validPose, "Invalid rest pose: " + poseError);
+        bool validBounds =
+            icScenePoseBounds(scene, rest, scene.boundsMin, scene.boundsMax, poseError);
+        require(validBounds, "Invalid posed bounds: " + poseError);
         scene.dependencies = files.paths;
         output = std::move(scene);
         return true;

@@ -30,6 +30,7 @@ bool icShaderGL::Available() {
     LOAD(glUniform2f, PFNGLUNIFORM2F);
     LOAD(glUniform3f, PFNGLUNIFORM3F);
     LOAD(glUniform4f, PFNGLUNIFORM4F);
+    LOAD(glUniformMatrix4fv, PFNGLUNIFORMMATRIX4FV);
 #undef LOAD
 #endif
     const auto version = reinterpret_cast<const char *>(glGetString(GL_VERSION));

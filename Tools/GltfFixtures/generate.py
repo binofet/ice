@@ -105,4 +105,50 @@ def sparse_and_interleaved():
  bad=copy.deepcopy(j);bad['nodes'][1]['children']=[0];(OUT/'Interleaved/cycle.gltf').write_text(json.dumps(bad))
  bad=copy.deepcopy(j);bad['animations']=[{'channels':[],'samplers':[]}];(OUT/'Interleaved/animation.gltf').write_text(json.dumps(bad))
 
-if __name__=='__main__':material_lab();render_probe();sparse_and_interleaved()
+def skin_probe():
+ a=Asset();a.j['extensionsUsed']=['KHR_materials_unlit']
+ a.j['materials']=[{'name':'Skinned red','pbrMetallicRoughness':{'baseColorFactor':[1,0,0,1],'metallicFactor':0},'extensions':{'KHR_materials_unlit':{}}}]
+ m=a.mesh([(-.4,-.4,0),(.4,-.4,0),(.4,.4,0),(-.4,.4,0)],[(0,0,1)]*4,indices=[0,1,2,0,2,3])
+ attrs=a.j['meshes'][m]['primitives'][0]['attributes']
+ attrs['JOINTS_0']=a.accessor(bytes([0,1,0,0]*4),'VEC4',4,5121)
+ attrs['WEIGHTS_0']=a.accessor(bytes([64,192,0,0]*4),'VEC4',4,5121,normalized=True)
+ a.j['nodes']=[{'name':'Root','translation':[-1,0,0],'children':[1]},
+  {'name':'Moving joint','translation':[1,0,0],'children':[3]},
+  {'name':'Mesh transform must be ignored','mesh':0,'skin':0,'translation':[88,0,0]},
+  {'name':'Rigid attachment','translation':[0,1,0]},
+  {'name':'Mirrored root','translation':[1,1.2,0],'scale':[-1,1,1],'children':[5]},
+  {'name':'Mirrored moving joint','translation':[1,0,0]},
+  {'name':'Ignored singular mesh transform','mesh':0,'skin':1,'scale':[0,0,0]}]
+ a.j['scenes'][0]['nodes']=[0,2,4,6]
+ identity=[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1];inverse=identity.copy();inverse[12]=-1
+ ib=a.accessor(struct.pack('<32f',*(identity+inverse)),'MAT4',2)
+ a.j['skins']=[{'name':'Two joints','joints':[0,1],'inverseBindMatrices':ib}, {'name':'Mirrored two joints','joints':[4,5],'inverseBindMatrices':ib}]
+ times=a.accessor(struct.pack('<2f',2,4),'SCALAR',2,min=[2],max=[4])
+ def output(vs,n=3):return a.accessor(struct.pack('<%df'%len(vs),*vs),'VEC'+str(n),len(vs)//n)
+ def clip(name,path,values,interpolation='LINEAR',nodes=[1],input=times,n=3):
+  sampler={'input':input,'output':output(values,n),'interpolation':interpolation}
+  return {'name':name,'samplers':[sampler],'channels':[{'sampler':0,'target':{'node':node,'path':path}} for node in nodes]}
+ a.j['animations']=[clip('Translate both','translation',[1,0,0,3,0,0],nodes=[1,5]),
+  clip('Step scale','scale',[1,1,1,2,1,1],interpolation='STEP'),
+  clip('Cubic translation','translation',[0,0,0,1,0,0,2,0,0,0,0,0,1,0,0,0,0,0],interpolation='CUBICSPLINE'),
+  clip('Quaternion slerp','rotation',[0,0,0,1,0,0,math.sqrt(.5),math.sqrt(.5)],n=4),
+  clip('Cubic quaternion','rotation',[0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0],interpolation='CUBICSPLINE',n=4)]
+ one=a.accessor(struct.pack('<f',2),'SCALAR',1,min=[2],max=[2]);a.j['animations'].append(clip('Single key','translation',[4,0,0],input=one))
+ j=a.save(OUT/'SkinProbe','SkinProbe')
+ for name,mutate in [
+  ('identity-binds',lambda b:b['skins'][0].pop('inverseBindMatrices')),
+  ('duplicate-channel',lambda b:b['animations'][0]['channels'].append(copy.deepcopy(b['animations'][0]['channels'][0]))),
+  ('matrix-target',lambda b:b['nodes'][1].update(matrix=identity)),
+  ('morph-channel',lambda b:b['animations'][0]['channels'][0]['target'].update(path='weights')),
+  ('bad-bind-count',lambda b:b['accessors'][ib].update(count=1)),
+  ('eight-influences',lambda b:b['meshes'][0]['primitives'][0]['attributes'].update(JOINTS_1=attrs['JOINTS_0'],WEIGHTS_1=attrs['WEIGHTS_0']))]:
+  b=copy.deepcopy(j);mutate(b);(OUT/'SkinProbe'/(name+'.gltf')).write_text(json.dumps(b))
+ # Byte-level malformed input fixtures use embedded data, leaving the valid buffer untouched.
+ for name,accessor,offset,data in [('bad-times',times,0,struct.pack('<2f',4,2)),
+  ('zero-weights',attrs['WEIGHTS_0'],0,bytes(16)),
+  ('bad-joint',attrs['JOINTS_0'],0,bytes([9]))]:
+  b=copy.deepcopy(j);binary=bytearray(a.data);start=b['bufferViews'][b['accessors'][accessor]['bufferView']]['byteOffset']+offset
+  binary[start:start+len(data)]=data;b['buffers'][0]['uri']='data:application/octet-stream;base64,'+base64.b64encode(binary).decode()
+  (OUT/'SkinProbe'/(name+'.gltf')).write_text(json.dumps(b))
+
+if __name__=='__main__':material_lab();render_probe();sparse_and_interleaved();skin_probe()

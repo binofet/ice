@@ -1,5 +1,6 @@
 #include "TestApp.h"
 #include "Core/IO/icInput.h"
+#include <algorithm>
 #include <cmath>
 extern "C" {
 #include "Lua/lauxlib.h"
@@ -114,20 +115,58 @@ bool TestApp::LoadModel(const std::string &path, bool frame) {
         icWarningf("glTF: %s", diagnostics.c_str());
         return false;
     }
+    int clip = candidate.animations.empty() ? -1 : 0;
+    double time = 0;
+    if (!frame && path == m_modelPath) {
+        time = m_animationTime;
+        if (m_clip >= 0 && m_clip < int(m_scene.animations.size()))
+            for (unsigned i = 0; i < candidate.animations.size(); i++)
+                if (candidate.animations[i].name == m_scene.animations[m_clip].name)
+                    clip = int(i);
+    }
+    icScenePose pose;
+    if (!icEvaluateScenePose(candidate, m_bindPose ? -1 : clip, time, m_loop, pose, diagnostics)) {
+        m_message = diagnostics;
+        return false;
+    }
+    m_pose = std::move(pose);
+    m_clip = clip;
+    m_animationTime = time;
     m_renderer = std::move(renderer);
     m_scene = std::move(candidate);
     m_sceneReady = true;
     m_modelPath = path;
     m_material = -1;
     m_message = "Loaded " + path;
-    if (frame)
-        m_camera.Fit(m_scene);
+    if (frame) {
+        icSceneAsset bounds;
+        if (icScenePoseBounds(m_scene, m_pose, bounds.boundsMin, bounds.boundsMax, diagnostics))
+            m_camera.Fit(bounds);
+        else
+            m_camera.Fit(m_scene);
+        if (!m_scene.animations.empty()) {
+            m_paused = true;
+            m_camera.Orbit(.8f, 0);
+        }
+    }
     for (auto &warning : m_scene.warnings)
         icWarningf("glTF: %s", warning.c_str());
     icPrintf("glTF loaded: %u nodes, %u instances, %u primitives, %u materials, %u images",
              (unsigned)m_scene.nodes.size(), (unsigned)m_scene.instances.size(),
              (unsigned)m_scene.primitives.size(), (unsigned)m_scene.materials.size(),
              (unsigned)m_scene.images.size());
+    return true;
+}
+bool TestApp::AnimationSample(int clip, double seconds) {
+    std::string diagnostics;
+    icScenePose pose;
+    if (!icEvaluateScenePose(m_scene, clip, seconds, m_loop, pose, diagnostics))
+        return false;
+    m_pose = std::move(pose);
+    m_clip = clip;
+    m_animationTime = seconds;
+    m_bindPose = clip < 0;
+    m_playing = false;
     return true;
 }
 ICRESULT TestApp::UpdateFrame(double seconds) {
@@ -152,17 +191,65 @@ ICRESULT TestApp::UpdateFrame(double seconds) {
             m_debugMode = (m_debugMode + 1) % 5;
         if (input->IsPressed(ICKEY_W))
             m_wireframe = !m_wireframe;
-        if (input->IsPressed(ICKEY_F))
-            m_camera.Fit(m_scene);
+        if (input->IsPressed(ICKEY_F)) {
+            icSceneAsset bounds;
+            std::string error;
+            if (icScenePoseBounds(m_scene, m_pose, bounds.boundsMin, bounds.boundsMax, error))
+                m_camera.Fit(bounds);
+        }
         if (input->IsPressed(ICKEY_M)) {
             ++m_material;
             if (m_material >= (int)m_scene.materials.size())
                 m_material = -1;
         }
         if (input->IsPressed(ICKEY_C)) {
-            m_preset = (m_preset + 1) % 2;
-            LoadModel(m_preset ? "assets://project/gltf/MaterialLab/MaterialLab.gltf"
-                               : "assets://project/gltf/DamagedHelmet/DamagedHelmet.glb");
+            m_preset = (m_preset + 1) % 3;
+            const char *models[] = {"assets://project/gltf/Fox/Fox.glb",
+                                    "assets://project/gltf/DamagedHelmet/DamagedHelmet.glb",
+                                    "assets://project/gltf/MaterialLab/MaterialLab.gltf"};
+            LoadModel(models[m_preset]);
+        }
+        if (input->IsPressed(ICKEY_B))
+            m_skeleton = !m_skeleton;
+        if (input->IsPressed(ICKEY_P))
+            m_playing = !m_playing;
+        if (input->IsPressed(ICKEY_O))
+            m_loop = !m_loop;
+        if (input->IsPressed(ICKEY_T))
+            m_bindPose = !m_bindPose;
+        if (input->IsPressed(ICKEY_A) && !m_scene.animations.empty()) {
+            m_clip = (m_clip + 1) % int(m_scene.animations.size());
+            m_animationTime = 0;
+            m_bindPose = false;
+        }
+        if (input->IsPressed(ICKEY_HOME))
+            m_animationTime = 0;
+        if (input->IsPressed(ICKEY_UP))
+            m_animationSpeed = std::min(2.f, m_animationSpeed + .25f);
+        if (input->IsPressed(ICKEY_DOWN))
+            m_animationSpeed = std::max(-2.f, m_animationSpeed - .25f);
+        if (input->IsPressed(ICKEY_LEFT) || input->IsPressed(ICKEY_RIGHT)) {
+            m_playing = false;
+            m_animationTime += (input->IsPressed(ICKEY_RIGHT) ? 1. : -1.) / 30;
+        }
+        if (m_clip >= 0) {
+            if (m_playing && !m_bindPose)
+                m_animationTime += dt * m_animationSpeed;
+            auto &clip = m_scene.animations[m_clip];
+            double length = double(clip.end) - clip.start;
+            if (m_loop && length > 0) {
+                m_animationTime = std::fmod(m_animationTime, length);
+                if (m_animationTime < 0)
+                    m_animationTime += length;
+            } else
+                m_animationTime = std::max(0., std::min(length, m_animationTime));
+        }
+        std::string poseError;
+        if (!icEvaluateScenePose(m_scene, m_bindPose ? -1 : m_clip, m_animationTime, m_loop, m_pose,
+                                 poseError)) {
+            m_message = poseError;
+            m_playing = false;
+            icWarningf("Animation: %s", poseError.c_str());
         }
         float x = input->GetAxis(ICAXIS_MOUSE_X), y = input->GetAxis(ICAXIS_MOUSE_Y);
         if (input->IsDown(ICMOUSE_L))
@@ -193,6 +280,8 @@ ICRESULT TestApp::RenderFrame(bool present) {
         view.debugMode = m_debugMode;
         view.wireframe = m_wireframe;
         view.material = m_material;
+        view.pose = &m_pose;
+        view.skeleton = m_skeleton;
         std::string diagnostics;
         if (!m_renderer->Draw(view, diagnostics)) {
             icWarningf("Scene renderer: %s", diagnostics.c_str());
@@ -205,8 +294,21 @@ ICRESULT TestApp::RenderFrame(bool present) {
                        "%u instances | %u meshes | %u materials | %u images",
                        (unsigned)m_scene.instances.size(), (unsigned)m_scene.meshes.size(),
                        (unsigned)m_scene.materials.size(), (unsigned)m_scene.images.size());
+        if (m_clip >= 0) {
+            auto &clip = m_scene.animations[m_clip];
+            m_font->Printf(icVector2Int(24, height - 90), icColor::WHITE,
+                           "%s | %.2f / %.2fs | %+.2fx | %s | %s", clip.name.c_str(),
+                           m_animationTime, double(clip.end - clip.start), m_animationSpeed,
+                           m_bindPose  ? "rest pose"
+                           : m_playing ? "playing"
+                                       : "paused",
+                           m_loop ? "loop" : "clamp");
+            m_font->Print(icVector2Int(24, height - 118), icColor::WHITE,
+                          "P: play | A: clip | Left/Right: scrub | Up/Down: speed | O: loop | T: "
+                          "rest | B: bones");
+        }
         if (m_material >= 0)
-            m_font->Printf(icVector2Int(24, height - 90), icColor::WHITE, "Isolated: %s",
+            m_font->Printf(icVector2Int(24, height - 146), icColor::WHITE, "Isolated: %s",
                            m_scene.materials[m_material].name.c_str());
         m_font->Print(icVector2Int(24, 80), icColor::WHITE,
                       "Drag: orbit | Right drag: pan | Scroll: zoom | F: frame | Space: rotation");

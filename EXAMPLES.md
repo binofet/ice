@@ -13,7 +13,7 @@ Windows needs the OpenAL runtime DLL as with Airhockey.
 
 ## Restored samples
 
-**EngineTest** now opens the static glTF viewer with material inspection, orbit/pan/zoom,
+**EngineTest** now opens the animated Fox glTF viewer with clip/pose controls, material inspection, orbit/pan/zoom,
 wireframe, reload and a generated material lab. See [GLTF.md](GLTF.md) for controls,
 URI project mounts, shader/pipeline contracts and scope. `--legacy` or L returns to
 its Lua cube/pathfinder exercise: Space pauses rotation, R reloads

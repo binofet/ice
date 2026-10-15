@@ -26,7 +26,7 @@ static bool pixel(float x, float y, int r, int g, int b, int tolerance = 5) {
     return ok;
 }
 int main(int argc, char **argv) {
-    if (argc != 3)
+    if (argc != 4)
         return 2;
     sample::initialize();
     std::string diagnostics;
@@ -95,11 +95,46 @@ int main(int argc, char **argv) {
     CHECK(renderer->Draw(view, diagnostics));
     CHECK(pixel(0, -1, 188, 137, 137));
     CHECK(glGetError() == GL_NO_ERROR);
+    CHECK(icLoadGLTF(argv[3], scene, diagnostics));
+    CHECK(renderer->Upload(scene, diagnostics));
+    icScenePose rest, animated;
+    CHECK(icEvaluateScenePose(scene, -1, 0, false, rest, diagnostics));
+    view.pose = &rest;
+    CHECK(renderer->Draw(view, diagnostics));
+    CHECK(pixel(-1, 0, 255, 0, 0) && pixel(1, 1.2f, 255, 0, 0));
+    CHECK(icEvaluateScenePose(scene, 0, 2, false, animated, diagnostics));
+    view.pose = &animated;
+    CHECK(renderer->Draw(view, diagnostics));
+    CHECK(pixel(.5f, 0, 255, 0, 0) && pixel(-1, 0, 36, 44, 56));
+    CHECK(pixel(-.5f, 1.2f, 255, 0, 0) && pixel(1, 1.2f, 36, 44, 56));
+    // A shear changes inverse-transpose normals while leaving vertex tangents independent.
+    for (auto &matrix : rest.palettes[0])
+        matrix[2] = 1;
+    view.pose = &rest;
+    view.debugMode = 2;
+    CHECK(renderer->Draw(view, diagnostics));
+    CHECK(pixel(-1, 0, 37, 128, 218));
+    auto tooLarge = scene;
+    tooLarge.skins[0].joints.resize(65, 0);
+    tooLarge.skins[0].inverseBind.resize(65, icSceneIdentity());
+    CHECK(!renderer->Upload(tooLarge, diagnostics) &&
+          diagnostics.find("64 joints") != std::string::npos);
+    view.pose = &animated;
+    view.debugMode = 1;
+    CHECK(renderer->Draw(view, diagnostics) && pixel(.5f, 0, 255, 0, 0));
+    icScenePose invalid;
+    view.pose = &invalid;
+    CHECK(!renderer->Draw(view, diagnostics));
+    view.pose = &animated;
+    view.skeleton = true;
+    CHECK(renderer->Draw(view, diagnostics) && glGetError() == GL_NO_ERROR);
     renderer->Release();
     pipeline.Release();
     fragment->Release();
     vertex->Release();
-    std::puts("Scene GL passed: shader stages/pipeline transaction/reflection/layout, texture "
-              "orientation/UV1, mirrored winding, mask, sorted linear alpha, MR channels, normal "
-              "map, HDR resize and state restoration");
+    std::puts(
+        "Scene GL passed: shader stages/pipeline transaction/reflection/layout, texture "
+        "orientation/UV1, mirrored winding, mask, sorted linear alpha, MR channels, normal "
+        "map, HDR resize/state restoration, weighted GPU skinning, inverse-transpose skin normals, "
+        "mirrored skins, ignored mesh transforms, pose validation and transactional joint limits");
 }

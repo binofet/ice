@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstring>
 #include <map>
+#include <set>
 #include <vector>
 
 namespace {
@@ -16,7 +17,9 @@ struct MeshBuffers {
 };
 struct Instance {
     std::array<float, 16> world;
-    unsigned primitive = 0;
+    unsigned primitive = 0, node = 0;
+    int skin = -1;
+    float localCenter[3] = {};
     float center[3] = {};
     float determinant = 1;
 };
@@ -29,6 +32,9 @@ struct Resources {
     std::vector<GLuint> textures;
     std::vector<icSceneMaterial> materials;
     std::vector<Instance> instances;
+    icScenePose rest;
+    std::vector<std::pair<unsigned, unsigned>> bones;
+    std::vector<unsigned> jointNodes;
     ~Resources() {
         for (auto &m : meshes) {
             if (m.vertices)
@@ -52,6 +58,7 @@ class SceneGL final : public icSceneRenderer {
         pipelines.clear();
         vertex.reset();
         fragment.reset();
+        skinVertex.reset();
     }
     ~SceneGL() { Release(); }
 
@@ -75,20 +82,21 @@ class SceneGL final : public icSceneRenderer {
     icRenderTargetGL target;
     icProgramGL composite;
     std::unique_ptr<Resources> resources;
-    std::shared_ptr<icShaderGL> vertex, fragment;
+    std::shared_ptr<icShaderGL> vertex, fragment, skinVertex;
     std::map<unsigned, std::unique_ptr<icPipelineGL>> pipelines;
-    icPipelineGL *Pipeline(const icSceneMaterial &, bool mirror, bool wire, std::string &);
+    icPipelineGL *Pipeline(const icSceneMaterial &, bool mirror, bool wire, bool skinned,
+                           std::string &);
 };
 icPipelineGL *SceneGL::Pipeline(const icSceneMaterial &material, bool mirror, bool wire,
-                                std::string &diagnostics) {
+                                bool skinned, std::string &diagnostics) {
     bool blend = material.alphaMode == icAlphaMode::Blend;
-    unsigned key =
-        (blend ? 1 : 0) | (material.doubleSided ? 2 : 0) | (mirror ? 4 : 0) | (wire ? 8 : 0);
+    unsigned key = (blend ? 1 : 0) | (material.doubleSided ? 2 : 0) | (mirror ? 4 : 0) |
+                   (wire ? 8 : 0) | (skinned ? 16 : 0);
     auto found = pipelines.find(key);
     if (found != pipelines.end())
         return found->second.get();
     icPipelineDesc desc;
-    desc.vertex = vertex;
+    desc.vertex = skinned ? skinVertex : vertex;
     desc.fragment = fragment;
     desc.label = "glTF metallic/roughness";
     desc.colorTarget = icColorTargetFormat::LinearRGBA16Float;
@@ -100,7 +108,9 @@ icPipelineGL *SceneGL::Pipeline(const icSceneMaterial &material, bool mirror, bo
         {icVertexSemantic::TexCoord0, icVertexFormat::Float2, offsetof(icSceneVertex, uv)},
         {icVertexSemantic::TexCoord1, icVertexFormat::Float2,
          offsetof(icSceneVertex, uv) + sizeof(float) * 2},
-        {icVertexSemantic::Tangent, icVertexFormat::Float4, offsetof(icSceneVertex, tangent)}};
+        {icVertexSemantic::Tangent, icVertexFormat::Float4, offsetof(icSceneVertex, tangent)},
+        {icVertexSemantic::Joints0, icVertexFormat::Float4, offsetof(icSceneVertex, joints)},
+        {icVertexSemantic::Weights0, icVertexFormat::Float4, offsetof(icSceneVertex, weights)}};
     desc.state.blend = blend ? icBlendMode::Alpha : icBlendMode::Opaque;
     desc.state.depthWrite = !blend;
     desc.state.cull = material.doubleSided ? icCullMode::None : icCullMode::Back;
@@ -132,6 +142,32 @@ bool SceneGL::Upload(const icSceneAsset &scene, std::string &diagnostics) {
         vertex = v;
         fragment = f;
     }
+    for (auto &skin : scene.skins)
+        if (skin.joints.size() > 64) {
+            diagnostics = "GL compatibility skinning supports at most 64 joints per skin";
+            return false;
+        }
+    if (!scene.skins.empty() && !skinVertex) {
+        GLint components = 0;
+        glGetIntegerv(GL_MAX_VERTEX_UNIFORM_COMPONENTS, &components);
+        if (components < 64 * 16 + 128) {
+            diagnostics = "GPU has insufficient vertex uniforms for 64-joint skinning";
+            return false;
+        }
+        auto stage = std::make_shared<icShaderGL>();
+        auto source = vertex->Source();
+        auto version = source.source.find("#version");
+        auto newline = source.source.find('\n', version);
+        if (version == std::string::npos || newline == std::string::npos) {
+            diagnostics = "Skinning shader needs a version line";
+            return false;
+        }
+        source.source.insert(newline + 1, "#define ICE_SKINNED\n");
+        source.label = "glTF skinned vertex";
+        if (!stage->Compile(source, diagnostics))
+            return false;
+        skinVertex = stage;
+    }
     const char *extensions = (const char *)glGetString(GL_EXTENSIONS);
     framebufferSRGB = extensions && (std::strstr(extensions, "GL_EXT_framebuffer_sRGB") ||
                                      std::strstr(extensions, "GL_ARB_framebuffer_sRGB"));
@@ -151,6 +187,23 @@ bool SceneGL::Upload(const icSceneAsset &scene, std::string &diagnostics) {
 
     auto next = std::unique_ptr<Resources>(new Resources);
     next->materials = scene.materials;
+    if (!icEvaluateScenePose(scene, -1, 0, false, next->rest, diagnostics))
+        return false;
+    std::set<unsigned> jointNodes;
+    std::set<std::pair<unsigned, unsigned>> bones;
+    for (auto &skin : scene.skins) {
+        std::set<unsigned> members(skin.joints.begin(), skin.joints.end());
+        for (auto joint : skin.joints) {
+            jointNodes.insert(joint);
+            int parent = scene.nodes[joint].parent;
+            while (parent >= 0 && !members.count(unsigned(parent)))
+                parent = scene.nodes[parent].parent;
+            if (parent >= 0)
+                bones.insert({joint, unsigned(parent)});
+        }
+    }
+    next->bones.assign(bones.begin(), bones.end());
+    next->jointNodes.assign(jointNodes.begin(), jointNodes.end());
     GLint oldActive = 0, oldVBO = 0, oldIBO = 0;
     glGetIntegerv(GL_ACTIVE_TEXTURE, &oldActive);
     glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &oldVBO);
@@ -220,20 +273,26 @@ bool SceneGL::Upload(const icSceneAsset &scene, std::string &diagnostics) {
         Instance instance;
         instance.world = scene.nodes[item.node].world;
         instance.primitive = item.primitive;
+        instance.node = item.node;
+        instance.skin = scene.nodes[item.node].skin;
         instance.determinant = determinant(instance.world.data());
         float center[3] = {};
         auto &vertices = scene.primitives[item.primitive].vertices;
         for (auto &v : vertices)
             for (int k = 0; k < 3; k++)
                 center[k] += v.position[k] / vertices.size();
+        std::copy(center, center + 3, instance.localCenter);
         for (int k = 0; k < 3; k++)
             instance.center[k] = instance.world[k] * center[0] + instance.world[k + 4] * center[1] +
                                  instance.world[k + 8] * center[2] + instance.world[k + 12];
         next->instances.push_back(instance);
     }
-    for (auto &m : scene.materials)
-        if (!Pipeline(m, false, false, diagnostics))
+    for (auto &m : scene.materials) {
+        if (!Pipeline(m, false, false, false, diagnostics))
             return false;
+        if (!scene.skins.empty() && !Pipeline(m, false, false, true, diagnostics))
+            return false;
+    }
     resources = std::move(next);
     return true;
 }
@@ -242,6 +301,36 @@ bool SceneGL::Draw(const icSceneView &view, std::string &diagnostics) {
     if (!resources) {
         diagnostics = "No uploaded scene";
         return false;
+    }
+    const auto &pose = view.pose ? *view.pose : resources->rest;
+    if (pose.world.size() != resources->rest.world.size() ||
+        pose.palettes.size() != resources->rest.palettes.size()) {
+        diagnostics = "Pose does not match uploaded scene";
+        return false;
+    }
+    for (unsigned i = 0; i < pose.palettes.size(); i++)
+        if (pose.palettes[i].size() != resources->rest.palettes[i].size()) {
+            diagnostics = "Pose skin palette does not match uploaded scene";
+            return false;
+        }
+    auto instances = resources->instances;
+    for (auto &instance : instances) {
+        instance.world = pose.world[instance.node];
+        instance.determinant = determinant(instance.world.data());
+        for (unsigned k = 0; k < 3; k++)
+            instance.center[k] = instance.world[k] * instance.localCenter[0] +
+                                 instance.world[k + 4] * instance.localCenter[1] +
+                                 instance.world[k + 8] * instance.localCenter[2] +
+                                 instance.world[k + 12];
+        if (instance.skin >= 0) {
+            auto &palette = pose.palettes[instance.skin];
+            instance.determinant = determinant(palette[0].data());
+            for (unsigned k = 0; k < 3; k++) {
+                instance.center[k] = 0;
+                for (auto &joint : palette)
+                    instance.center[k] += joint[k + 12] / palette.size();
+            }
+        }
     }
     if (view.width <= 0 || view.height <= 0)
         return true;
@@ -276,7 +365,7 @@ bool SceneGL::Draw(const icSceneView &view, std::string &diagnostics) {
     glMatrixMode(GL_MODELVIEW);
     glPushMatrix();
     std::vector<const Instance *> order;
-    for (auto &instance : resources->instances)
+    for (auto &instance : instances)
         if (std::fabs(instance.determinant) > 1e-12f &&
             (view.material < 0 ||
              (int)resources->meshes[instance.primitive].material == view.material))
@@ -298,14 +387,21 @@ bool SceneGL::Draw(const icSceneView &view, std::string &diagnostics) {
     for (auto instance : order) {
         auto &mesh = resources->meshes[instance->primitive];
         auto &material = resources->materials[mesh.material];
-        auto pipeline = Pipeline(material, instance->determinant < 0, view.wireframe, diagnostics);
+        auto pipeline = Pipeline(material, instance->determinant < 0, view.wireframe,
+                                 instance->skin >= 0, diagnostics);
         if (!pipeline) {
             ok = false;
             break;
         }
         pipeline->Apply();
         glLoadMatrixf(view.view.data());
-        glMultMatrixf(instance->world.data());
+        if (instance->skin < 0)
+            glMultMatrixf(instance->world.data());
+        else {
+            auto &palette = pose.palettes[instance->skin];
+            glUniformMatrix4fv(pipeline->Uniform("joints[0]"), (GLsizei)palette.size(), GL_FALSE,
+                               palette[0].data());
+        }
         auto uniform = [&](const char *n) { return pipeline->Uniform(n); };
         glUniform1f(uniform("mirrorSign"), instance->determinant < 0 ? -1.f : 1.f);
         glUniform4f(uniform("baseFactor"), material.baseColor[0], material.baseColor[1],
@@ -355,7 +451,9 @@ bool SceneGL::Draw(const icSceneView &view, std::string &diagnostics) {
             } else {
                 unsigned unit = attribute.semantic == icVertexSemantic::TexCoord0   ? 0
                                 : attribute.semantic == icVertexSemantic::TexCoord1 ? 1
-                                                                                    : 2;
+                                : attribute.semantic == icVertexSemantic::Tangent   ? 2
+                                : attribute.semantic == icVertexSemantic::Joints0   ? 3
+                                                                                    : 4;
                 glClientActiveTexture(GL_TEXTURE0 + unit);
                 glEnableClientState(GL_TEXTURE_COORD_ARRAY);
                 glTexCoordPointer(components, GL_FLOAT, stride, offset);
@@ -386,6 +484,32 @@ bool SceneGL::Draw(const icSceneView &view, std::string &diagnostics) {
     glTexCoord2f(0, 1);
     glVertex2f(-1, 1);
     glEnd();
+    if (view.skeleton) {
+        glUseProgram(0);
+        for (unsigned unit = 0; unit < 5; unit++) {
+            glActiveTexture(GL_TEXTURE0 + unit);
+            glDisable(GL_TEXTURE_2D);
+        }
+        glActiveTexture(GL_TEXTURE0);
+        glDisable(GL_DEPTH_TEST);
+        glMatrixMode(GL_PROJECTION);
+        glLoadMatrixf(view.projection.data());
+        glMatrixMode(GL_MODELVIEW);
+        glLoadMatrixf(view.view.data());
+        glColor3f(1, .7f, .15f);
+        glLineWidth(2);
+        glBegin(GL_LINES);
+        for (auto edge : resources->bones) {
+            glVertex3fv(pose.world[edge.first].data() + 12);
+            glVertex3fv(pose.world[edge.second].data() + 12);
+        }
+        glEnd();
+        glPointSize(4);
+        glBegin(GL_POINTS);
+        for (auto joint : resources->jointNodes)
+            glVertex3fv(pose.world[joint].data() + 12);
+        glEnd();
+    }
     glPopMatrix();
     glMatrixMode(GL_PROJECTION);
     glPopMatrix();

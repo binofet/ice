@@ -1,5 +1,5 @@
 #pragma once
-#include "Content/icSceneAsset.h"
+#include "Content/icSceneAnimation.h"
 #include <memory>
 struct icSceneView {
     std::array<float, 16> view, projection;
@@ -8,6 +8,8 @@ struct icSceneView {
     bool wireframe = false;
     int material = -1; // -1 all materials; otherwise isolate one
     float exposure = 1;
+    const icScenePose *pose = nullptr; // null draws the authored rest pose
+    bool skeleton = false;
 };
 class icSceneRenderer {
   public:
