@@ -159,6 +159,10 @@ python3 Projects/MobileProbe/watchos/deploy.py \
 Minimum watchOS is 10.0. Device and simulator builds succeeded with Xcode 26.3,
 including the shared C++ runtime. On a Watch SE simulator (watchOS 11.1), an
 upward drag produced a shot and the two-shot demo replay reported matched outputs.
-Physical Watch installation remains pending
-Apple's developer connection preparation and Developer Mode setup. A successful
-build does not validate wrist gestures on hardware.
+Physical Watch installation remains pending. Developer Mode was enabled on
+the Watch, and recreating its Mac developer pairing restored the connection
+and mounted developer services. Both Xcode's shared-cache symbol copy and the
+app transfer then failed when the connection dropped (IXRemoteErrorDomain 6 /
+CoreDevice transport timeout). Charging the unlocked Watch near the USB-connected
+iPhone did not resolve the repeated failure. No physical Watch launch is claimed.
+A successful build does not validate wrist gestures on hardware.
