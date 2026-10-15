@@ -10,8 +10,7 @@ struct event_state {
 	std::uint64_t                    next_window = 1, next_sequence = 1;
 };
 event_state &state() {
-	// Process lifetime avoids static teardown order hazards with legacy global apps.
-	// An explicit application owner can replace this during lifecycle migration.
+	// A process-lifetime service outlives registered windows and their retirement events.
 	static event_state *instance = new event_state;
 	return *instance;
 }

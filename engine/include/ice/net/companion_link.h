@@ -4,16 +4,14 @@
 #include <string>
 namespace ice::net {
 /// Host-thread-only, nonblocking IPv4 UDP companion connection. No background worker.
-/// Call Poll with a monotonic clock even when a desktop game has no active match.
+/// Call poll with a monotonic clock even when a desktop game has no active match.
 class companion_link {
 public:
-	/// Legacy game-state callbacks. A state machine borrows registered states and coordinates
-	/// activation/pause transitions.
+	/// Connection lifecycle; failed retains a diagnostic until explicitly reopened.
 	enum class state { closed, listening, pairing, connected, failed };
 	/// Create a closed companion link; listen/connect explicitly before polling session actions.
 	companion_link();
-	/// Destroy this instance under the ownership and native-context lifetime rules documented by
-	/// its type.
+	/// Close the socket and release pending local protocol state on the host thread.
 	~companion_link();
 	companion_link(const companion_link &)            = delete;
 	companion_link &operator=(const companion_link &) = delete;

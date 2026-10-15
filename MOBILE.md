@@ -3,11 +3,11 @@
 ICE now has an explicit `ice::platform::host` in `engine/include/ice/platform/host.h`.
 It is built as `ICEPlatformRuntime`, with no window, OpenGL, audio or legacy engine
 dependencies. Desktop ICE links it; mobile probes compile exactly the same C++ source.
-The historical game entry points remain compatible. EngineTest now uses host callbacks.
+The obsolete desktop entry points were removed; mobile probes retain the shared host.
 
 ## Ownership and scheduling
 
-The platform owns its OS callbacks and calls `Frame(monotonicSeconds)`; the engine
+The platform owns its OS callbacks and calls `frame(monotonic_seconds)`; the engine
 owns no mandatory loop. Active applications receive updates even with no surface.
 The host updates once, then renders each visible drawable surface. Inactive/background
 applications do not update or render. Resume resets the clock baseline; large frame
@@ -28,7 +28,7 @@ Acceleration is specific force in m/s² including gravity; gyro is radians/secon
 Apple acceleration units/sign are converted to the Android convention. Real-device
 axis/calibration checks remain necessary before gesture tuning.
 
-Only `PostInput` is thread-safe. All other calls and callbacks run on the platform's
+Only `post_input` is thread-safe. All other calls and callbacks run on the platform's
 host thread. Do not mutate the host inside callbacks; queue platform work instead.
 Stop explicitly before destroying the client or borrowed handles. Suspension, hidden
 or removed surfaces and device removal cancel held input. Stale retired IDs are rejected.
@@ -38,7 +38,7 @@ available, and sampling stops when inactive.
 
 ## iOS and iPadOS
 
-`Projects/MobileProbe/ios` is a native UIKit scene app. Each scene owns a UIView with
+`examples/mobile/ios` is a native UIKit scene app. Each scene owns a UIView with
 a CAMetalLayer surface; a process-wide display callback drives the host. Foreground
 state is aggregated across scenes, and background scenes hide their own surfaces.
 The renderer clears/presents a real Metal drawable. Multitouch and CoreMotion feed
@@ -47,15 +47,15 @@ host devices. This proves the boundary; it is not yet ICE's complete Metal rende
 Build an unsigned simulator or device app:
 
 ```sh
-Projects/MobileProbe/ios/build.sh simulator
-Projects/MobileProbe/ios/build.sh device
+examples/mobile/ios/build.sh simulator
+examples/mobile/ios/build.sh device
 ```
 
 Requires Xcode with iOS SDKs. The default simulator build is Apple Silicon arm64.
 Install/run on a booted simulator:
 
 ```sh
-xcrun simctl install booted build/ios-simulator/Debug-iphonesimulator/ICEMobileProbe.app
+xcrun simctl install booted build/mobile/ios-simulator/Debug-iphonesimulator/ICEMobileProbe.app
 xcrun simctl launch --console-pty booted org.ice.MobileProbe
 ```
 
@@ -67,7 +67,7 @@ an appropriate development team/profile; unsigned device builds cannot be instal
 
 ## Android
 
-`Projects/MobileProbe/android` is a NativeActivity app using Android's native app glue.
+`examples/mobile/android` is a NativeActivity app using Android's native app glue.
 Activity state, focus and native window lifetime are separate. Multitouch and available
 accelerometer/gyro devices feed the shared host. Sensors stop on pause. Native window
 pixels currently provide a software diagnostic renderer with a touch marker. Vulkan
@@ -77,8 +77,8 @@ swapchain/device/resource support is a subsequent renderer milestone.
 # Override these for your installed SDK/NDK locations if needed.
 export ANDROID_SDK_ROOT="$HOME/Library/Android/sdk"
 export ANDROID_NDK_ROOT="$PWD/build/android-sdk/ndk/26.3.11579264"
-Projects/MobileProbe/android/build.sh
-"$ANDROID_SDK_ROOT/platform-tools/adb" install -r build/android-probe/ICE-Mobile-Probe.apk
+examples/mobile/android/build.sh
+"$ANDROID_SDK_ROOT/platform-tools/adb" install -r build/mobile/android-probe/ICE-Mobile-Probe.apk
 "$ANDROID_SDK_ROOT/platform-tools/adb" shell am start -n org.ice.mobileprobe/android.app.NativeActivity
 "$ANDROID_SDK_ROOT/platform-tools/adb" logcat -s ICEHost
 ```
@@ -95,18 +95,26 @@ behavior, real GPU performance or device-specific driver correctness.
 
 ## Next milestones
 
-1. Companion gestures, touch fallback and recorded intent replay are implemented
-   in [COMPANION.md](COMPANION.md). Paired IPv4 local networking and SkeeBall delivery are implemented; a no-install browser touch path is available through desktop F3. Discovery, QR joining and multiplayer remain next.
-2. Platform-owned asset/user-data paths, process-death restoration and host migration
-   for the other samples. Desktop keyboard/mouse remains the compatibility singleton;
-   it has not yet been migrated to the new device stream.
-3. A reusable Metal renderer and Android Vulkan renderer: resource lifetime, pipelines,
-   shaders, textures, meshes and device loss; then full SkeeBall on the phone.
-4. Deepen OrbitalSalvage first for simulation/physics/replay development. Keep the
-   other three prototypes building as clients of the same engine interfaces.
+1. Route desktop keyboard/text/IME and pointer devices through the shared host, with
+   per-window focus and input cancellation instead of a compatibility singleton.
+2. Build reusable Metal, Vulkan and D3D12 renderers: resource lifetime, pipelines,
+   shaders, meshes, resize and device replacement. Mobile surfaces remain first-class.
+3. Restore SkeeBall through shared engine physics/render APIs, then extend companion
+   interaction with AR/pose experiments. QR/browser joining and multiple-player room
+   logic are retained, but the game UI awaits its modern renderer port.
+4. Add Quest/OpenXR surfaces and tracked input; keep watchOS useful as a lightweight
+   remote controller. No current physical Watch deployment is claimed.
 
-SkeeBall physics tuning is intentionally deferred. Mobile is now under native
-engine development, but the full legacy game stack is not yet mobile-compatible.
+SkeeBall physics tuning remains deferred. See [PLAYGROUND.md](PLAYGROUND.md) for the
+shared work order and [EXAMPLES.md](EXAMPLES.md) for retained game status.
+
+## Cleanup verification — 2026-10-15
+
+Fresh builds from `examples/mobile` succeed for the iOS simulator, watchOS simulator
+and Android debug APK. Outputs now live under `build/mobile/` to avoid reusing CMake
+caches for the former project paths. These are rebuild checks, not new hardware tests.
+The iPhone/iPad previously ran the companion successfully; physical Watch deployment
+was deferred after transport failures. The dated checkpoints below describe earlier work.
 
 ## Verification — 2026-10-14
 
@@ -126,11 +134,11 @@ engine development, but the full legacy game stack is not yet mobile-compatible.
   native surface (ID 1 retired, ID 2 attached) observed. Software output captured.
 
 The probes provide local controller pairing. Full game rendering
-are not part of this milestone.
+is not part of this milestone.
 
 ## watchOS input companion
 
-`Projects/MobileProbe/watchos` is a native SwiftUI watch-only app with an
+`examples/mobile/watchos` is a native SwiftUI watch-only app with an
 Objective-C++ bridge to the existing C++ host and companion reducer. It exercises
 application lifecycle, touch and wrist sensors without claiming a render surface
 or running a full game renderer. Minimum watchOS: 10.0.

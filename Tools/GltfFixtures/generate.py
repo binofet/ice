@@ -2,7 +2,7 @@
 """Deterministic CC0 glTF fixtures, no third-party Python modules. Outputs checked in."""
 import base64,copy,json,math,pathlib,struct,zlib
 ROOT=pathlib.Path(__file__).resolve().parents[2]
-OUT=ROOT/'tests/data/gltf';LAB=ROOT/'Projects/EngineTest/Resource/gltf/MaterialLab'
+OUT=ROOT/'tests/data/gltf';LAB=ROOT/'tests/data/gltf/MaterialLab'
 
 def png(pixels,w=2,h=2):
  def chunk(t,b):return struct.pack('>I',len(b))+t+b+struct.pack('>I',zlib.crc32(t+b))

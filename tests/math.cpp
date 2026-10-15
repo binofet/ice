@@ -45,7 +45,7 @@ int main() {
 	const auto view_rh = glm::lookAtRH(eye, target, up);
 	CHECK(close(transform_point(view_rh, eye), vec3(0)));
 	CHECK(close(transform_point(view_rh, target), vec3(0, 0, -8)));
-	const auto pose_lh = camera_pose_lh(eye, target, up);
+	const auto pose_lh = glm::inverse(glm::lookAtLH(eye, target, up));
 	CHECK(close(transform_point(glm::inverse(pose_lh), eye), vec3(0)));
 	CHECK(close(transform_point(glm::inverse(pose_lh), target), vec3(0, 0, 8)));
 	const auto rh_no = glm::perspectiveRH_NO(glm::half_pi<float>(), 1.f, 1.f, 10.f);

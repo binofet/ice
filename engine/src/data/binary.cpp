@@ -1,3 +1,4 @@
+#include "ice/core/utf8.h"
 #include "internal.h"
 #include <bit>
 #include <cstring>
@@ -7,31 +8,7 @@ static_assert(sizeof(double) == 8 && std::numeric_limits<double>::is_iec559);
 static_assert(sizeof(float) == 4 && std::numeric_limits<float>::is_iec559);
 namespace detail {
 bool valid_text(std::string_view input, std::size_t limit) {
-	if (input.size() > limit)
-		return false;
-	for (std::size_t i = 0; i < input.size();) {
-		auto first = static_cast<unsigned char>(input[i++]);
-		if (!first)
-			return false;
-		if (first < 128)
-			continue;
-		unsigned count = first >= 0xF0 ? 3 : first >= 0xE0 ? 2 : first >= 0xC2 ? 1 : 0;
-		if (!count || first > 0xF4 || count > input.size() - i)
-			return false;
-		std::uint32_t point = first & ((1u << (6 - count)) - 1);
-		for (unsigned j = 0; j < count; ++j) {
-			auto next = static_cast<unsigned char>(input[i++]);
-			if ((next & 0xC0) != 0x80)
-				return false;
-			point = (point << 6) | (next & 0x3F);
-		}
-		if (point < (count == 1   ? 0x80u
-		             : count == 2 ? 0x800u
-		                          : 0x10000u) ||
-		    point > 0x10FFFF || (point >= 0xD800 && point <= 0xDFFF))
-			return false;
-	}
-	return true;
+	return ice::core::valid_utf8_text(input, limit);
 }
 } // namespace detail
 namespace {

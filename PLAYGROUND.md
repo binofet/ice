@@ -1,6 +1,6 @@
 # ICE playground direction
 
-ICE is a place to write games and simulations, inspect rendering, try language runtimes, and learn the underlying systems. Airhockey remains the first working sample. Small experiments should produce runnable programs rather than require every subsystem to be finished.
+ICE is a place to write games and simulations, inspect rendering, try language runtimes, and learn the underlying systems. Airhockey and SkeeBall remain retained game examples awaiting modern renderer ports. Small experiments should produce runnable programs rather than require every subsystem to be finished.
 
 ## Application events do not need a root window
 
@@ -12,7 +12,7 @@ OS-wide input is a third, separate feature. Registering a system hotkey or monit
 
 Routing should be platform event -> application queue -> window/device input state -> action map -> game/tool. Tools may observe events, but capture and consumption should be explicit. A global observer must not mean that an unfocused preview can steer the game. Focus loss clears held state and releases pointer capture. A destruction event carries an ID rather than a potentially dangling C++ pointer.
 
-The first implementation adds monotonically allocated window IDs and a bounded application event stream for registration, retirement, focus, close and quit. Existing native input and the singleton remain intact. Registration means a logical window object was allocated, not that native window creation succeeded. Close state remains authoritative even if the diagnostic queue overflows; overflow is counted. The next step is targeted key/pointer events, window-local state and an action-routing test with two interactive previews. Text input/IME must be a distinct path from physical keys.
+The first implementation adds monotonically allocated window IDs and a bounded application event stream for registration, retirement, focus, close and quit. The obsolete singleton input path is removed; desktop input still needs connection to the shared host. Registration means a logical window object was allocated, not that native window creation succeeded. Close state remains authoritative even if the diagnostic queue overflows; overflow is counted. The next step is targeted key/pointer events, window-local state and an action-routing test with two interactive previews. Text input/IME must be a distinct path from physical keys.
 
 ## A small fast core with visible behavior
 
@@ -45,11 +45,11 @@ The schema needs stable explicit type/field IDs, versioning and migration polici
 
 Generate C/C++ declarations and ABI adapters, serializers, migration scaffolding, editor descriptions, binding manifests and language wrappers. Treat automatic data binding as generated observability and explicit updates, not invisible mutation on every field access. Treat replication as explicit authority, change tracking, cadence, quantization and reliability rules rather than attaching a generic Networked attribute to everything.
 
-Prototype one small schema, such as PaddleSettings, and prove a native round trip, a version migration and one language binding before building a large attribute library. Cache compiler outputs so shipping an ordinary native build can consume generated artifacts without starting .NET.
+The scalar settings proof and rich graph/container conformance now establish native round trips, migration and independent provider/generator examples. Continue proving concrete consumers before expanding the attribute library. Cache compiler outputs so shipping an ordinary native build can consume generated artifacts without starting .NET.
 
 ## Four languages, different jobs
 
-- Lua: compact embedded gameplay and configuration; improve the existing integration first.
+- Lua: compact embedded gameplay/configuration with an interpreter baseline; optional JIT where the target permits it. The old binding was removed and does not define the new interface.
 - Python: experiments, numerical tools, asset pipelines and automation. Use batch interfaces instead of crossing into Python per particle or per vertex.
 - C#: authored object definitions and optionally managed gameplay/tools. Define whether a module uses hosted .NET or Native AOT. Native AOT can export explicit C entry points; it does not mean arbitrary managed plugins can be hot-reloaded. [Native AOT interop](https://learn.microsoft.com/en-us/dotnet/core/deploying/native-aot/interop).
 - JavaScript: interactive tools and experiments. Choose and isolate a runtime when the first sample needs one; require jobs, error handling and lifetime ownership to be explicit.
@@ -58,7 +58,7 @@ All adapters share Metagen schema semantics and ABI rules. C# assemblies and Pyt
 
 ## Rendering across eras
 
-Retain the current OpenGL sample as the reference during migration. Add a new rendering interface alongside the legacy device instead of stretching fixed-function calls into modern resource/barrier semantics.
+The fixed-function OpenGL renderer and old device APIs are removed. Build a new explicit rendering interface around modern resource, pipeline, synchronization and surface requirements. Retained CPU import/animation fixtures provide reference data; backend pixel correctness must be established again.
 
 The common interface describes buffers/textures, pipelines, bindings, draw/dispatch work, render passes, synchronization and presentation surfaces. It exposes capabilities and native extensions. Resource state tracking and lifetime validation belong in the debuggable layer. Avoid promising that every backend supports the same shader features, binding model or command submission behavior: [D3D12 binding differs substantially from older Direct3D](https://learn.microsoft.com/en-us/windows/win32/direct3d12/important-changes-from-directx-11-to-directx-12), and [Metal has its own argument-buffer model](https://developer.apple.com/documentation/metal/improving-cpu-performance-by-using-argument-buffers).
 
@@ -66,7 +66,7 @@ Implement Metal first on this Mac, Vulkan next on spacegoo, and D3D12 with Windo
 
 Keep backend-specific shaders available for experiments. Shared material shaders can acquire an offline compilation path after two real backends demonstrate the requirements. For Apple targets, native Metal stays the first choice for this learning project; Vulkan portability layers are a separate experiment. [Khronos documents the additional layer needed for Vulkan on Apple platforms](https://github.khronos.org/Vulkan-Site/guide/latest/windowing_audio_input.html).
 
-Define profiles rather than a universal lowest common denominator: legacy/fixed-function, portable programmable rendering, and modern compute/advanced rendering. A scene declares requirements. The asset pipeline can produce simpler variants; unsupported features report useful errors rather than silently changing the image.
+Define capability profiles rather than a universal lowest common denominator: portable programmable rendering, modern compute/advanced rendering, and optional constrained retro experiments. A scene declares requirements. The asset pipeline can produce simpler variants; unsupported features report useful errors rather than silently changing the image.
 
 ## Runtime renderer replacement
 
@@ -168,80 +168,45 @@ UI and session/frame lifecycle rather than a single flat window assumption. Ques
 the first available XR hardware target; native device proofs remain follow-up work.
 The detailed Ignition experience and implementation plan live in its private repository.
 
-## Implementation order after the standards/GLM milestone
+## Current checkpoint and next implementation order
 
-The desktop native backends, mobile controller probes, URI resource search, glTF
-materials/animation/skinning, and standards/GLM migration form the current foundation.
-CMake-selectable C++20/C++23, C#/Python schema proofs, native/RTTR/Rust consumers and
-headless transactional data labs extend it. Native graph preparation/activation is now
-implemented independently of graphics; gameplay/GPU resource activation and the shared
-command service still need their own contracts. See [Tools/Metagen/README.md](Tools/Metagen/README.md).
+The independently owned Metagen SDK is pinned as an ICE submodule. ICE keeps native
+adapters and generated consumer caches. Rich native graphs support enums, nested records,
+inline/local/external references, opt-in data inheritance and explicit container merge
+operations, with bounded preparation, revision checks, undo and generation handles.
+C# and Python source providers, JSON/XML/codecs and Rust consumers are demonstrated in
+Metagen; native runtime JSON/XML/codecs and typed materialization remain separate work.
+See `Tools/MetagenIntegration/README.md` for the exact supported native contract.
 
-1. **Metagen/native data foundation (validated and pushed).**
-   The scalar runtime and rich Python/C++ graph conformance now cover enums, recursive
-   containers, inline/local/external references and opt-in prototypes/merge operations.
-   Native snapshots support revision-checked activation, checked handles and undo.
-   Continue richer adapters, cooked binary benchmarks and native JSON/XML/codec consumers
-   from real needs; the generic Metagen SDK remains independent. See
-   [Tools/Metagen/DATA_MODEL.md](Tools/Metagen/DATA_MODEL.md).
-2. **External Ignition consumer.** Build the private application against ICE, establishing
-   shared desktop/iOS/Android and XR host/session boundaries, text input, command history,
-   diagnostics, presentation lifecycle and an inspectable readiness model. EngineTest
-   remains a regression fixture and receives no new interactive development surface.
-3. **Resilient live development in Ignition.** Connect detached data preparation and
-   revision-checked publication to the host boundary; inspect, replace and undo a scene.
-   Add one reloadable Lua behavior with explicit state transfer and a procedural art
-   experiment. Document edits that require native regeneration/recompilation.
-4. **Agent development clients.** Expose the same command service through local MCP.
-   Demonstrate discover -> inspect -> edit -> step/replay -> capture/measure -> undo/save
-   without restarting. Run the docs-only agent trials and turn their limitations into
-   reproducible examples and interface improvements.
-5. **Window-local input and modern rendering.** Finish targeted text/key/pointer events,
-   action routing and two independent previews. Build reusable Metal rendering on Mac/iOS,
-   then matching Vulkan and D3D12 examples. Keep OpenGL as the tested reference and expose
-   capabilities throughout. Validate Windows rendering on hardware when available.
-6. **Broader experiments and extraction.** Extend language bindings, headless replay,
-   ARKit/ARCore party controllers and optional retro targets as samples require them.
-   Publish Metagen after standalone packaging, licensing and CI release review.
-   SkeeBall physics tuning remains deferred.
+The cleanup retains CPU math, URI, glTF/animation, host/input, companion and data modules.
+Native AppKit/Win32/X11 windows no longer own graphics contexts. EngineTest, disposable
+prototype games, old platform/device APIs and unused historical dependencies are removed.
+Airhockey and SkeeBall source/art/physics snapshots remain in `examples`; they are not
+build targets until ported. Native iOS/Android/watchOS probes remain independent examples.
 
-Each milestone leaves a runnable playground. Ignition should drive the next requirements
-through actual experiments rather than waiting for every future subsystem to be finished.
+1. Finish the clean core/window checkpoint with C++20/23, headless builds, mobile rebuilds,
+   API/style checks and case-sensitive Linux/native-window validation.
+2. Drive Metal from external Ignition: surface lifecycle, shader triangle, programmable
+   warm-up, terminal/text and human input. Define resource/pipeline/handle lifetime tests
+   rather than emulate the old device. Add Vulkan and D3D12 against those same contracts.
+3. Connect typed command operations and prepared resource/data activation at a host boundary.
+   Inspect, pause/step, edit, capture, undo and save through a shared service; add MCP as a
+   client adapter. Add bounded interpreted scripting and staged script replacement.
+4. Re-establish animated glTF/materials on modern backends, resource reload and retained
+   scene state, then prove renderer replacement without discarding the session.
+5. Add optional engine physics modules and port Airhockey/SkeeBall onto them. Mobile
+   companion/browser party input, QR join and multiple players remain useful integration
+   examples. Revisit SkeeBall tuning after that shared interaction stack works.
+6. Extend first-class mobile and Quest/OpenXR surfaces/input. The Watch can be a lightweight
+   remote client; no current physical Watch deployment is claimed. AR-driven physical
+   interaction and screen casting are later experiments with explicit device capabilities.
+7. Run docs/MCP-only exploratory agents once the surface is useful. Record reproducible
+   failures, missing capabilities and measurements; do not equate a generated scene with
+   correct physics or rendering merely because the command succeeded.
 
-## Native mobile host
-
-The first callback-driven host and iOS/Android platform probes are implemented. See
-[MOBILE.md](MOBILE.md) for ownership, scheduling, input conventions, builds and the
-remaining renderer/companion work. SkeeBall physics tuning is deferred; OrbitalSalvage
-is the first prototype to deepen for simulation and replay.
-
-## Companion input lab
-
-The native mobile hosts now share calibrated shot gestures, touch fallback, bounded
-recordings and deterministic replay. A desktop replay tool consumes the same exported
-takes. See [COMPANION.md](COMPANION.md). Local pairing and SkeeBall delivery are implemented; SkeeBall
-physics tuning remains deferred.
-
-
-### Party-game direction
-
-Keep an authoritative game host, controller inputs and presentation surfaces
-separable. A future mobile host could run a whole game and present on an external
-screen, while additional players join with browser controllers via a QR/link.
-The first no-install touch controller now uses a small local HTTP bridge into the
-native UDP path. Permission-based browser motion, HTTPS and an eventual
-WebSocket/WebRTC adapter remain future experiments. Host/join
-lifecycle, multiple players, reconnects and readable onboarding come first.
-
-A native ARKit/ARCore controller can then supply tracked pose and tracking quality.
-For SkeeBall, calibrate a launch plane and direction relative to the room, estimate
-release velocity in that shared space, and gate throws on tracking quality. Treat
-this as a measured experiment: visual-inertial tracking does not guarantee perfect
-ball trajectories, especially under fast movement or poor lighting. Keep intent
-mapping and recorded traces so physical accuracy and game feel can be compared.
-
-Full-screen presentation, a better game camera and readable player feedback should
-precede publication. Phone hosting requires completing the mobile game renderer;
-current mobile apps are controllers. Prototype external display/mirroring first,
-measure display latency, and evaluate dedicated Cast/TV receivers as a separate
-presentation backend. This is a roadmap, not a claim these features already exist.
+Ignition's private design records the teapot/bunny conversation as a planned acceptance
+scenario. It requires contextual scene selection, PBR chrome/environment lighting, fur,
+deformable bodies, instanced construction, bounded automatic spawning, first-person input
+and rigged physics ragdolls. These capabilities are not implemented by this cleanup.
+A static bunny asset does not supply skeleton/joints/limits or skin weights automatically.
+Each operation should be inspectable and independently undoable while the session stays live.

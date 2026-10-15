@@ -10,7 +10,6 @@
 #ifndef GLM_FORCE_CTOR_INIT
 #define GLM_FORCE_CTOR_INIT
 #endif
-#include "ice/math/common_math.h"
 #include <glm/ext/matrix_clip_space.hpp>
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/glm.hpp>
@@ -72,10 +71,5 @@ inline std::span<float, 16> elements(mat4 &matrix) {
 /// Borrow read-only column-major scalars; invalidated when the matrix is destroyed.
 inline std::span<const float, 16> elements(const mat4 &matrix) {
 	return std::span<const float, 16>(glm::value_ptr(matrix), 16);
-}
-/// Camera-to-world frame for the legacy left-handed camera API, with +Y up.
-/// The graphics device inverts this pose when accepting SetViewMatrix.
-inline mat4 camera_pose_lh(const vec3 &eye, const vec3 &target, const vec3 &up) {
-	return glm::inverse(glm::lookAtLH(eye, target, up));
 }
 } // namespace ice::math

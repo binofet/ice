@@ -1,7 +1,7 @@
 #pragma once
 
 #include "ice/io/resource_uri.h"
-#include "ice/math/mat4.h"
+#include "ice/math/types.h"
 #include <array>
 #include <cstdint>
 #include <string>
@@ -30,24 +30,26 @@ struct scene_vertex {
 struct scene_image {
 	/// Human-readable identifier; the enclosing object owns the string.
 	std::string name;
-	/// Vertical extent in pixels unless the owning API specifies logical UI units. Horizontal
-	/// extent in pixels unless the owning API specifies logical UI units.
+	/// Decoded image width and height in pixels.
 	int width = 0, height = 0;
 	/// Owned tightly packed RGBA8 image bytes, with four bytes per pixel.
 	std::vector<unsigned char> rgba;
 };
 /// Asset image index and glTF sampler tokens. A negative image index denotes an absent image.
 struct scene_texture {
-	/// Sampler wrap token for the second texture coordinate. Sampler wrap token for the first
-	/// texture coordinate. glTF/OpenGL minification/mipmap filter token. glTF/OpenGL magnification
-	/// filter token. Index into the asset image array; negative means no image.
-	int image = -1, mag_filter = 9729, min_filter = 9987, wrap_s = 10497, wrap_t = 10497;
+	/// Index into scene_asset::images; negative means no image.
+	int image = -1;
+	/// glTF magnification and minification/mipmap sampler tokens; translate in the GPU backend.
+	int mag_filter = 9729, min_filter = 9987;
+	/// glTF sampler address modes for the first and second texture coordinates.
+	int wrap_s = 10497, wrap_t = 10497;
 };
 /// Material texture reference, UV set, and slot-specific strength/scale.
 struct scene_texture_slot {
-	/// Texture coordinate set index used by this slot. Index/reference selecting the material
-	/// texture; negative indices denote no texture.
-	int texture = -1, uv_set = 0;
+	/// Index into scene_asset::textures; negative means the slot has no texture.
+	int texture = -1;
+	/// Vertex texture coordinate set selected by this material slot.
+	int uv_set = 0;
 	/// Scale factor; for normal/occlusion slots this is the glTF slot strength.
 	float scale = 1;
 };

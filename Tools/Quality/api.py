@@ -95,8 +95,8 @@ def scan(record):
                                   "file": str(path.relative_to(ROOT)),
                                   "line": cursor.location.line,
                                   "arguments": names})
-        if "include" not in path.parts or path.name == "api.h":
-            continue  # Native GL declarations follow the platform specification.
+        if "include" not in path.parts:
+            continue
         owner = cursor
         hidden = False
         while owner and owner.kind != clang.CursorKind.TRANSLATION_UNIT:

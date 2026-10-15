@@ -12,7 +12,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[2]
 VERSION = "18.1.8"
 EXTENSIONS = {".cpp", ".h", ".hpp", ".cc", ".c", ".mm", ".m", ".inl"}
-VENDOR_ROOTS = ("engine/3rdparty/", "Projects/Airhockey/Box2D/", "Projects/SkeeBall/bullet/",
+VENDOR_ROOTS = ("engine/3rdparty/", "examples/airhockey/Box2D/", "examples/skeeball/bullet/",
                 "Common/", "Experimental/", "build/")
 
 

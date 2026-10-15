@@ -14,7 +14,7 @@ using device_id = std::uint64_t;
 /// Application activity state; stopped is terminal for a host instance.
 enum class app_state { inactive, active, background, stopped };
 /// Native graphics API associated with a render surface; no context is implicitly created.
-enum class surface_api { software, open_gl, metal, vulkan };
+enum class surface_api { software, metal, vulkan, d3d12 };
 /// Borrowed render surface description. Dimensions are drawable pixels; the host owns the
 /// registration, not the native handle.
 struct surface {
@@ -22,12 +22,11 @@ struct surface {
 	surface_id id = 0;
 	/// Graphics API associated with the native surface handle.
 	surface_api api = surface_api::software;
-	/// Borrowed; the platform keeps it alive through OnSurfaceRemoved.
+	/// Borrowed; the platform keeps it alive through on_surface_removed.
 	void *native_handle = nullptr;
-	/// Vertical extent in pixels unless the owning API specifies logical UI units. Horizontal
-	/// extent in pixels unless the owning API specifies logical UI units.
+	/// Drawable width/height in pixels; zero suppresses rendering.
 	int width = 0, height = 0; // drawable pixels, not UI points
-	/// Scale factor; for normal/occlusion slots this is the glTF slot strength.
+	/// Drawable pixels per logical UI unit, supplied by the platform.
 	float scale = 1;
 	/// Whether this registered surface participates in rendering.
 	bool visible = true;
@@ -58,7 +57,7 @@ struct device_input {
 	double seconds = 0; // host monotonic clock, in seconds
 	/// Input/event category determining payload interpretation.
 	input_kind kind = input_kind::pointer;
-	/// Input transition or party-room phase, as specified by the type.
+	/// Contact/key transition or instantaneous sensor sample.
 	input_phase phase = input_phase::sample;
 	/// Pointer: normalized top-left x/y (may exceed 0..1 during a drag).
 	/// Motion: natural device axes, X right/Y top/Z out; acceleration is specific force
@@ -69,8 +68,7 @@ struct device_input {
 /// mutate the host.
 class host_client {
 public:
-	/// Destroy this instance under the ownership and native-context lifetime rules documented by
-	/// its type.
+	/// Destroy after the borrowing host has stopped invoking callbacks.
 	virtual ~host_client() {}
 	/// Observe an application-state transition on the host thread; do not mutate the host in this
 	/// callback.
@@ -96,7 +94,7 @@ public:
 	virtual void on_render([[maybe_unused]] const surface &surface) {}
 };
 /// One explicit application owner; no native window, singleton, renderer, or loop required.
-/// All methods/callbacks are host-thread-only except PostInput. Do not mutate the host
+/// All methods/callbacks are host-thread-only except post_input. Do not mutate the host
 /// inside callbacks. Stop explicitly while client and native handles are still alive.
 class host {
 public:

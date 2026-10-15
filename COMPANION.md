@@ -1,7 +1,11 @@
 # Companion controller milestone
 
+Current scope: mobile probes and headless pairing/browser tools remain buildable.
+The desktop game integration described in historical checkpoints below is retained
+source awaiting port; the root build no longer produces SkeeBall or Airhockey.
+
 The native mobile probes now contain a companion controller with optional local desktop delivery. They use the
-same `icCompanionSession` / `icShotGesture` C++ implementation on iOS, Android and
+same `ice::input::companion_session` / `shot_gesture` C++ implementation on iOS, Android and
 desktop. The existing bundle/package identifiers are retained so installed probes
 upgrade in place. App labels now say **ICE Companion**.
 
@@ -24,7 +28,7 @@ selection, calibration, recording, replay and sharing.
 
 First launch supplies a clearly labelled two-shot demo take. It is not user input and
 is not saved until explicitly shared. Recording replaces it. The dotted guide is an
-intent preview, not SkeeBall physics. Replay remains local. Live gestures can drive the desktop SkeeBall game after pairing.
+intent preview, not SkeeBall physics. Replay remains local. The prior desktop SkeeBall integration demonstrated live gestures; the retained game awaits a modern renderer port.
 
 Calibration requires at least 20 stationary acceleration samples spanning 250 ms,
 plausible gravity magnitude and low variation/rotation. Samples use SI units and
@@ -54,8 +58,8 @@ Saving writes a temporary sibling file and replaces the previous completed take.
 The parser limits files to 8 MiB. This is a diagnostic format, not a networking protocol.
 
 ```sh
-cmake --build build/macos -j6
-build/macos/ice_take_replay path/to/recording.iceinput
+cmake --build build/desktop -j6
+build/desktop/ice_take_replay path/to/recording.iceinput
 ```
 
 The tool emits JSON with the reproduced aim/power values. Exit 0 means a match,
@@ -68,7 +72,7 @@ Xcode's app-container tools. On the debug Android app:
 ```sh
 "$ANDROID_SDK_ROOT/platform-tools/adb" exec-out run-as org.ice.mobileprobe \
  cat files/last-take.iceinput > build/android-take.iceinput
-build/macos/ice_take_replay build/android-take.iceinput
+build/desktop/ice_take_replay build/android-take.iceinput
 ```
 
 `tests/data/android-touch.iceinput` and `android-motion.iceinput` were generated
@@ -114,7 +118,7 @@ Once an account/team is available, the project accepts configurable signing valu
 ```sh
 export ICE_DEVELOPMENT_TEAM=YOURTEAMID
 export ICE_BUNDLE_ID=com.yourname.icecompanion
-python3 Projects/MobileProbe/ios/deploy.py --device iPhone
+python3 examples/mobile/ios/deploy.py --device iPhone
 ```
 
 Use the device name as shown by `xcrun devicectl list devices`, or its identifier.
@@ -141,19 +145,19 @@ Physical gesture feel and calibration still need hands-on feedback.
 The iOS companion was signed, installed and launched on an 11-inch iPad Pro
 (4th generation); the user confirmed the Companion Lab screen on hardware.
 
-`Projects/MobileProbe/watchos` adds a watch-only SwiftUI application around the
-same C++ `icHost` and `icCompanionSession`. It provides an upward-drag shot pad,
+`examples/mobile/watchos` adds a watch-only SwiftUI application around the
+same C++ `ice::platform::host` and `ice::input::companion_session`. It provides an upward-drag shot pad,
 optional calibrated wrist motion, recording to the app's Documents directory,
 and replay (a clearly labelled demo is available when no take exists).
 It is an input/lifecycle companion, with no game renderer or network delivery yet.
 Sensors and ticking stop outside the active scene; suspension cancels gestures
 and invalidates calibration. It requests no workout/background session.
 
-Build with `Projects/MobileProbe/watchos/build.sh simulator`, or deploy to an
+Build with `examples/mobile/watchos/build.sh simulator`, or deploy to an
 unlocked, trusted Watch with Developer Mode enabled:
 
 ```sh
-python3 Projects/MobileProbe/watchos/deploy.py \
+python3 examples/mobile/watchos/deploy.py \
   --device '<Watch name or identifier>' --team '<development team>'
 ```
 
@@ -180,7 +184,7 @@ match from the desktop menu if needed. F2 disconnects and closes the listener.
 No port is opened until explicitly enabled. Choose an address on the same LAN;
 this first transport uses IPv4 and manual pairing, without discovery or QR codes.
 
-`icCompanionLink` lives in `ICEPlatformRuntime`. It uses nonblocking native UDP
+`ice::net::companion_link` lives in the optional `ICECompanionRuntime`. It uses nonblocking native UDP
 sockets on macOS/iOS, Linux/Android, and Windows. A fixed 40-byte network-order
 packet checks magic, version and shot-intent capability before a nonce/session
 handshake. Aim/power use bounded 1/10000 quantization, never native object layouts.
@@ -213,7 +217,7 @@ the game's framebuffer capture (`--pairing-smoke output.ppm`).
 For a standalone receiver:
 
 ```sh
-build/macos/ice_companion_host --port 47519 --code 726418 --shots 1 --timeout 120
+build/desktop/ice_companion_host --port 47519 --code 726418 --shots 1 --timeout 120
 ```
 
 It prints the pairing details and received shots as JSON. `--send <IPv4> <port>
@@ -250,7 +254,7 @@ bridge. It does not make the native UDP protocol multiplayer.
 
 `ICECompanionWeb` serves a self-contained HTML/CSS/JavaScript page using native
 nonblocking TCP sockets. No framework, CDN, account, external QR service or package
-is needed. `icJoinQR` implements QR version 3-L byte encoding with Reed–Solomon parity
+is needed. `ice::util::join_qr` implements QR version 3-L byte encoding with Reed–Solomon parity
 and a four-module quiet zone. SkeeBall renders its integer-sized modules directly.
 The current encoder accepts at most 53 bytes, enough for the numeric IPv4 join URL.
 
@@ -265,7 +269,7 @@ timeout handles suspended pages. An explicit Leave releases the seat immediately
 
 The room owns turn generations and shot ownership. HTTP sequences suppress duplicates,
 and a stale turn cannot launch on a later turn. Accepted intents go through one ordinary
-`icCompanionLink` loopback client and the existing game readiness checks. A settled
+`ice::net::companion_link` loopback client and the existing game readiness checks. A settled
 ball reports points to its recorded shooter. Only the current party ball is eligible
 to score, so a previous physical ball cannot earn points for the next player. SkeeBall
 recycles its physical five-ball pool while room totals remain independent. A host

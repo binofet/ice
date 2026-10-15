@@ -27,8 +27,8 @@ void scene_camera::pan(float x, float y) {
 		center_[k] += right[k] * x * distance_;
 	center_[1] += y * distance_;
 }
-scene_view scene_camera::view(int width, int height) const {
-	scene_view view;
+camera_view scene_camera::view(int width, int height, clip_depth depth) const {
+	camera_view view;
 	view.width   = width;
 	view.height  = height;
 	float aspect = float(std::max(1, width)) / std::max(1, height),
@@ -39,7 +39,9 @@ scene_view scene_camera::view(int width, int height) const {
 	view.view =
 	    glm::lookAtRH(glm::make_vec3(eye), glm::make_vec3(center_), ice::math::vec3(0, 1, 0));
 	float near_plane = std::max(radius_ * .001f, d - radius_ * 1.5f), far_plane = d + radius_ * 4.f;
-	view.projection = glm::perspectiveRH_NO(3.14159265f / 4, aspect, near_plane, far_plane);
+	view.projection = depth == clip_depth::zero_to_one
+	                      ? glm::perspectiveRH_ZO(3.14159265f / 4, aspect, near_plane, far_plane)
+	                      : glm::perspectiveRH_NO(3.14159265f / 4, aspect, near_plane, far_plane);
 	return view;
 }
 

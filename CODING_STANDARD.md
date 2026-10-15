@@ -13,14 +13,14 @@ NDK r26 selects C++23 with its supported `-std=c++2b` spelling; GNU extensions r
 
 Engine-owned directories and filenames use lowercase snake_case. The public
 include root is `engine/include/ice`; include headers using paths such as
-`ice/math/mat4.h` and `ice/animation/scene_animation.h`. Implementations live in
+`ice/math/types.h` and `ice/animation/scene_animation.h`. Implementations live in
 `engine/src`, with the same responsibility directories. Engine assets live in
 `engine/resources`. Preserve upstream third-party names and platform project
 bundle names when their tooling requires them.
 
 Use `ice` as the root namespace, with responsibility namespaces such as `math`,
 `platform`, `input`, `io`, `assets`, `animation`, `render`, and `net`. Backend APIs
-belong in namespaces such as `ice::render::gl`. Types, functions, methods, enum
+belong in namespaces such as `ice::render::metal`. Types, functions, methods, enum
 values, and namespaces use lowercase snake_case. Private data members have a
 trailing underscore. Public data fields use snake_case without that suffix.
 Avoid type prefixes and Hungarian notation. Function and method arguments also use
@@ -69,12 +69,10 @@ diff before committing or pushing.
 
 ## Migration status
 
-The working tree contains the breaking namespace/directory/API migration and the
-GLM conversion. The argument-name and public-documentation audit is automated;
-review comments for semantic quality as well as coverage. Native platform entry
-points retain operating-system spellings. A small set of legacy result macros
-and format/usage constants still retain historical prefixes; their conversion
-is separate from the completed type/method/member/argument naming pass.
-See `Tools/Quality/README.md` for check commands and platform coverage limits.
-CMake is the maintained build system. Historical IDE project files do not define
-the current source list.
+The supported core uses the namespace/directory/API migration and GLM conversion.
+Obsolete engine APIs, fixed-function rendering and historical engine build projects
+have been removed. Retained game sources under `examples` need ports and do not
+establish supported engine API compatibility. Native platform entry points keep OS
+spellings. The argument-name and public-documentation audit is automated; review
+comments for semantic quality as well as coverage. See `Tools/Quality/README.md` for
+commands and platform coverage limits. CMake defines the maintained source lists.

@@ -53,3 +53,28 @@ Keep package version, serialized schema/profile version, file-format version and
 module ABI version separate. A package tag does not migrate saved data. Pin exact
 submodule commits even when selecting a released version. Make Metagen public only after
 its explicit licensing, documentation, packaging and conformance release review.
+
+## Modern cleanup checkpoint — 2026-10-15
+
+The supported engine contains no OpenGL context or fixed-function renderer. The
+native desktop layer owns windows independently of GPU presentation. Airhockey and
+SkeeBall retain all 492 relocated files with unchanged contents, plus their port
+notes; they are not active build targets. CPU glTF assets retain licenses/provenance.
+The retained games need ports onto the new renderer and engine-level physics APIs.
+
+Validation of this source checkpoint:
+
+- macOS: C++20 and C++23 each pass 14 CTest cases and the two-window native smoke.
+- Linux/spacegoo: C++23 and C++20 with ASan/UBSan each pass 14 tests and the X11
+  two-window smoke under Xvfb. The source copy contains no private Metagen checkout.
+- Windows: the complete root project compiles and links with MinGW in both modes;
+  no Windows runtime/device validation is available.
+- Minimal headless configuration: 7 tests pass without desktop or companion modules.
+- iOS/watchOS simulator apps rebuild; Android debug APK builds and passes signature
+  verification. No new physical-device deployment is part of this cleanup.
+- Formatting and the adopted 16-unit analyzer scope pass. API documentation and
+  argument-name checks pass; review comments for semantics as well as coverage.
+- Ten Metagen consumer caches verify; the five-test native/RTTR integration passes.
+
+Modern GPU backends, desktop text/IME/pointer integration, game ports and renderer
+replacement remain future work. These checks do not establish them implicitly.

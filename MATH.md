@@ -4,8 +4,7 @@ GLM 1.0.3 supplies the default vector, matrix, and quaternion implementation.
 The headers are vendored with their upstream license and archive checksum in
 `engine/3rdparty/glm`. Building ICE does not fetch a dependency from the network.
 
-Link the CMake target `ice::math` and include `ice/math/types.h` (or a focused
-header such as `ice/math/vec3.h`). The target is available to desktop, mobile,
+Link the CMake target `ice::math` and include `ice/math/types.h` . The target is available to desktop, mobile,
 and headless consumers through `cmake/ICEMath.cmake`.
 
 ## Types and operations
@@ -45,7 +44,7 @@ Vectors and matrices use packed default storage. Compile-time checks enforce a
 12-byte `vec3` and 64-byte `mat4`, as required by existing vertex buffers and joint
 palettes. Globally aligned default GLM types are prohibited. Upload bytes through
 `glm::value_ptr`, rather than casting a C++ object or relying on a conversion
-operator. OpenAL orientations are assembled into an explicit six-scalar array.
+operator.
 
 GLM's scalar quaternion constructor takes **w, x, y, z**. glTF data is stored as
 **x, y, z, w**: `glm::make_quat(data)` reads that storage order, and
@@ -58,17 +57,14 @@ normalization and shortest-path spherical interpolation.
 Select handedness and clip depth explicitly; do not use global GLM handedness
 or depth-range switches to choose a rendering backend.
 
-- The glTF viewer uses a right-handed world, +Y up, `glm::lookAtRH`, and
-  `glm::perspectiveRH_NO`. Its view matrix is already world-to-camera and its
-  OpenGL normalized depth spans [-1,+1].
-- The legacy game renderer still accepts a **camera-to-world pose** in
-  `SetViewMatrix`, which it inverts. `camera_pose_lh` builds that pose from a
-  left-handed look-at frame. Existing game projections use the explicit LH_ZO
-  variants, retaining their historical [0,1] clip-depth convention during this
-  migration.
-- Future Metal, Vulkan, and DirectX backends can choose explicit ZO projections
-  without changing a process-wide GLM configuration. Viewport orientation and
-  winding remain backend concerns and must be tested along with clip depth.
+- `scene_camera` uses a right-handed world, +Y up and `glm::lookAtRH`.
+  Its default projection is `glm::perspectiveRH_ZO`; explicit `clip_depth` selects
+  [0,1] or [-1,1]. The camera is CPU math and does not create a rendering device.
+- The retired game renderer accepted camera-to-world poses and inverted them.
+  That convention and its helper were removed from the supported API; ports should
+  use explicit world-to-camera matrices.
+- Metal, Vulkan and D3D12 must handle viewport orientation, winding, depth and
+  surface transforms explicitly, with backend image tests.
 
 GLM scaling now scales the full basis rather than only the old matrix diagonal.
 This correctly handles a nonuniform scale composed with rotation.
@@ -79,7 +75,7 @@ This correctly handles a nonuniform scale composed with rotation.
 TRS composition, point/direction semantics, inverse/transpose, XYZW quaternion
 import, round trips, shortest-path interpolation, camera frames, and RH/LH NO/ZO
 clip depth. Animation tests exercise posed bounds, blending, and skin palettes;
-native render probes validate the uploaded matrices and normals visually.
+modern backend probes will need to revalidate uploaded matrices and normals visually.
 
 GLM is the default implementation, not a claim of universal peak performance.
 Measure representative simulation or animation workloads before adding a

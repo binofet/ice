@@ -14,7 +14,7 @@ jobs:
           python-version: '3.12'
       - name: Linux development libraries
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y clang-18 libgl-dev libglu1-mesa-dev libopenal-dev libx11-dev xvfb
+        run: sudo apt-get update && sudo apt-get install -y clang-18 libx11-dev xvfb
       - name: Pinned quality tools
         run: python -m pip install -r Tools/Quality/requirements.txt
       - name: Metagen consumer cache integrity
@@ -32,7 +32,7 @@ jobs:
           python Tools/MetagenIntegration/check_rust.py --native-build build/metagen-ci
       - name: Configure
         run: cmake -S . -B build/ci -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DICE_WARNINGS_AS_ERRORS=ON -DICE_CXX_STANDARD=${{ matrix.cpp }}
-      - name: Build public headers, engine, examples and tests
+      - name: Build public headers, engine modules and tests
         run: cmake --build build/ci --parallel 4
       - name: Regression tests
         run: ctest --test-dir build/ci --output-on-failure
@@ -42,12 +42,6 @@ jobs:
         run: python Tools/Quality/api.py --build-dir build/ci
       - name: Static analysis
         run: python Tools/Quality/check.py lint --build-dir build/ci
-      - name: Linux native rendering
+      - name: Linux native window lifecycle
         if: runner.os == 'Linux'
-        env:
-          LIBGL_ALWAYS_SOFTWARE: '1'
-          ALSOFT_DRIVERS: 'null'
-        run: |
-          xvfb-run -a build/ci/bin/ice_platform_smoke
-          xvfb-run -a build/ci/bin/ice_render_gl_tests
-          xvfb-run -a build/ci/bin/ice_scene_render_tests "$PWD/tests/data/gltf/RenderProbe/RenderProbe.glb" "$PWD/Projects/EngineTest/ice.project" "$PWD/tests/data/gltf/SkinProbe/SkinProbe.glb"
+        run: xvfb-run -a build/ci/bin/ice_window_smoke

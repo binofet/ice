@@ -34,6 +34,6 @@ audit does not cover the Win32 or X11 branches. Comments still require human
 review for accuracy and usefulness.
 
 CMake builds `tests/public_headers.cpp` to ensure supported public headers can be
-included together. Historical, unimplemented APIs live in `Experimental/legacy`.
+included together. Retained game sources are not part of the current supported API build.
 The GitHub Actions workflow checks Linux and macOS; Windows runtime validation
 requires a Windows machine.

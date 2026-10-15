@@ -58,6 +58,15 @@ int main(int argc, char **argv) {
 		        .5f +
 		    ice::math::element(view.view, 12 + k);
 	CHECK(std::fabs(p[0]) < .001f && std::fabs(p[1]) < .001f && p[2] < 0);
+	// The same camera must explicitly support both clip conventions; projection does
+	// not silently depend on a process-wide GLM switch or a graphics backend.
+	auto legacy_depth = camera.view(1280, 720, ice::render::clip_depth::negative_one_to_one);
+	for (float distance : {0.1f, 1.f, 10.f}) {
+		auto point = ice::math::vec4(0, 0, -distance, 1);
+		auto zo    = view.projection * point;
+		auto no    = legacy_depth.projection * point;
+		CHECK(std::fabs(zo.z / zo.w - (no.z / no.w * .5f + .5f)) < .0001f);
+	}
 	std::puts("glTF passed: external/data/GLB resources, sparse/interleaved/normalized accessors, "
 	          "hierarchy, instances, images, transactional diagnostics, RH camera");
 }

@@ -38,6 +38,16 @@
       "cacheVariables": {
         "ICE_CXX_STANDARD": "20"
       }
+    },
+    {
+      "name": "headless-debug",
+      "inherits": "desktop-debug",
+      "binaryDir": "${sourceDir}/build/headless-debug",
+      "cacheVariables": {
+        "ICE_BUILD_DESKTOP": "OFF",
+        "ICE_BUILD_COMPANION": "OFF",
+        "ICE_BUILD_TOOLS": "OFF"
+      }
     }
   ],
   "buildPresets": [
@@ -56,6 +66,10 @@
     {
       "name": "desktop-cxx20",
       "configurePreset": "desktop-cxx20"
+    },
+    {
+      "name": "headless-debug",
+      "configurePreset": "headless-debug"
     }
   ],
   "testPresets": [
@@ -83,6 +97,13 @@
     {
       "name": "desktop-cxx20",
       "configurePreset": "desktop-cxx20",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "headless-debug",
+      "configurePreset": "headless-debug",
       "output": {
         "outputOnFailure": true
       }
