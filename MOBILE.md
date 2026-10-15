@@ -46,7 +46,7 @@ process-wide device/pipeline and a presentation surface per scene. The bundled
 `shaders://mobile/companion.metal` source compiles through the URI pipeline and draws
 an animated background that responds to the controller gesture. UIKit controls,
 multitouch and CoreMotion feed the same host. This proves procedural rendering and
-surface ownership; meshes, textures, depth and compute remain renderer milestones.
+surface ownership; mesh buffers, material texture sets, depth and compute remain renderer milestones.
 
 Build an unsigned simulator or device app:
 

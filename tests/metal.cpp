@@ -46,6 +46,10 @@ int main(int argc, char **argv) {
 	                                "unsupported_buffer"));
 	CHECK(!(*gpu)->prepare_pipeline(resolver, "shaders://tests/probe.metal", "probe_vertex",
 	                                "unsupported_texture"));
+	CHECK(!(*gpu)->prepare_pipeline(resolver, "shaders://tests/probe.metal", "probe_vertex",
+	                                "unsupported_depth"));
+	CHECK(!(*gpu)->prepare_pipeline(resolver, "shaders://tests/probe.metal", "probe_vertex",
+	                                "unsupported_texture_array"));
 	std::array<float, 4> values{.25f, .5f, .75f, 1};
 	auto                 uniforms = std::as_bytes(std::span(values));
 	CHECK(!(*gpu)->render_offscreen(**prepared, 32, 16));
@@ -74,6 +78,27 @@ int main(int argc, char **argv) {
 	std::size_t last = oriented->rgba.size() - 4;
 	CHECK(oriented->rgba[last] > 245 && oriented->rgba[last + 1] > 245);
 	CHECK(std::abs(int(oriented->rgba[last + 2]) - 64) <= 1);
+	// An asymmetric image catches both RGBA swizzles and top/bottom convention errors.
+	ice::render::image pixels{
+	    2, 2, {255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255}};
+	auto sampled       = (*gpu)->create_texture(pixels);
+	auto foreign_image = (*other)->create_texture(pixels);
+	CHECK(sampled && foreign_image);
+	CHECK(!(*gpu)->create_texture({2, 2, {}}));
+	CHECK(!(*gpu)->create_texture({4097, 1, {}}));
+	auto textured = (*gpu)->prepare_pipeline(resolver, "shaders://tests/probe.metal",
+	                                         "probe_vertex", "probe_texture");
+	CHECK(textured);
+	values = {2, 2, 0, 0};
+	CHECK(!(*gpu)->render_offscreen(**textured, 2, 2, uniforms));
+	CHECK(!(*gpu)->render_offscreen(**textured, 2, 2, uniforms, foreign_image->get()));
+	auto uploaded = (*gpu)->render_offscreen(**textured, 2, 2, uniforms, sampled->get());
+	CHECK(uploaded && uploaded->rgba == pixels.rgba);
+	pixels.rgba[0] = 64;
+	CHECK((*sampled)->update(pixels));
+	CHECK(!(*sampled)->update({1, 1, {0, 0, 0, 0}}));
+	auto updated = (*gpu)->render_offscreen(**textured, 2, 2, uniforms, sampled->get());
+	CHECK(updated && updated->rgba == pixels.rgba);
 	values      = {.25f, .5f, .75f, 1};
 	auto first  = desktop_window::create({"ICE Metal one", 640, 400, true});
 	auto second = desktop_window::create({"ICE Metal two", 480, 320, true});

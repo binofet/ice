@@ -1,4 +1,5 @@
 #include "ice/render/gl/device.h"
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cmath>
@@ -31,6 +32,56 @@ public:
 		return ice::io::resource_read_result::success;
 	}
 };
+class sampled_sources final : public ice::io::virtual_scheme_handler {
+public:
+	ice::io::resource_read_result read(const ice::io::resource_uri &uri,
+	                                   std::vector<unsigned char>  &bytes,
+	                                   std::string                 &diagnostics) override {
+		(void)diagnostics;
+		std::string fragment;
+		if (uri.path == "/array")
+			fragment = "uniform sampler2D images[2]; void sampled_fragment() { color = "
+			           "texture(images[0],vec2(.5))+texture(images[1],vec2(.5)); }";
+		else if (uri.path == "/array-one")
+			fragment = "uniform sampler2D images[1]; void sampled_fragment() { color = "
+			           "texture(images[0],vec2(.5)); }";
+		else if (uri.path == "/cube")
+			fragment = "uniform samplerCube image; void sampled_fragment() { color = "
+			           "texture(image,vec3(1)); }";
+		else if (uri.path == "/shadow")
+			fragment = "uniform sampler2DShadow image; void sampled_fragment() { color = "
+			           "vec4(texture(image,vec3(.5))); }";
+		else if (uri.path == "/two")
+			fragment = "uniform sampler2D first_image, second_image; void sampled_fragment() { "
+			           "color = texture(first_image,vec2(.5))+texture(second_image,vec2(.5)); }";
+		else {
+			const std::string coordinates = uri.path == "/linear" ? "vec2(.5)"
+			                                : uri.path == "/clamp"
+			                                    ? "vec2(-2,2)"
+			                                    : "vec2(gl_FragCoord.x/2,1-gl_FragCoord.y/2)";
+			fragment = "uniform sampler2D image; void sampled_fragment() { color = "
+			           "texture(image," +
+			           coordinates + "); }";
+		}
+		const std::string source =
+		    "#ifdef ICE_VERTEX_STAGE\nvoid sampled_vertex() { const vec2 p[3] = "
+		    "vec2[3](vec2(-1,-1),vec2(3,-1),vec2(-1,3)); "
+		    "gl_Position = vec4(p[gl_VertexID],0,1); }\n#endif\n"
+		    "#ifdef ICE_FRAGMENT_STAGE\nlayout(location=0) out vec4 color;\n" +
+		    fragment + "\n#endif\n";
+		bytes.assign(source.begin(), source.end());
+		return ice::io::resource_read_result::success;
+	}
+};
+bool matches(const ice::render::image &actual, const ice::render::image &expected) {
+	if (actual.width != expected.width || actual.height != expected.height ||
+	    actual.rgba.size() != expected.rgba.size())
+		return false;
+	for (std::size_t index = 0; index < actual.rgba.size(); ++index)
+		if (std::abs(int(actual.rgba[index]) - int(expected.rgba[index])) > 1)
+			return false;
+	return true;
+}
 } // namespace
 
 int main(int argc, char **argv) {
@@ -45,6 +96,7 @@ int main(int argc, char **argv) {
 	CHECK(ice::io::resource_uri::from_path(std::string(argv[1]) + "/", directory, diagnostics));
 	CHECK(resolver.mount("shaders://tests/", directory.string(), diagnostics));
 	resolver.register_handler("malformed", std::make_shared<malformed_sources>());
+	resolver.register_handler("sampled", std::make_shared<sampled_sources>());
 	auto gpu = device::create();
 	if (!gpu) {
 		std::cerr << gpu.error().message << '\n';
@@ -67,8 +119,7 @@ int main(int argc, char **argv) {
 	                                "invalid name"));
 	CHECK(!(*gpu)->prepare_pipeline(resolver, "shaders://tests/unsupported.glsl",
 	                                "attribute_vertex", "plain_fragment"));
-	for (const auto *fragment :
-	     {"uniform_fragment", "texture_fragment", "blocks_fragment", "oversized_fragment"})
+	for (const auto *fragment : {"uniform_fragment", "blocks_fragment", "oversized_fragment"})
 		CHECK(!(*gpu)->prepare_pipeline(resolver, "shaders://tests/unsupported.glsl",
 		                                "probe_vertex", fragment));
 
@@ -87,6 +138,50 @@ int main(int argc, char **argv) {
 	CHECK(!(*gpu)->render_offscreen(**prepared, 32, 16, oversized));
 	auto other = device::create();
 	CHECK(other && !(*other)->render_offscreen(**prepared, 32, 16, uniforms));
+	auto sampled_pipeline = (*gpu)->prepare_pipeline(resolver, "sampled:///oriented",
+	                                                 "sampled_vertex", "sampled_fragment");
+	CHECK(sampled_pipeline);
+	for (const auto *path : {"array", "array-one", "cube", "shadow", "two"})
+		CHECK(!(*gpu)->prepare_pipeline(resolver, std::string("sampled:///") + path,
+		                                "sampled_vertex", "sampled_fragment"));
+	ice::render::image pixels{
+	    2, 2, {255, 0, 0, 255, 0, 255, 0, 128, 0, 0, 255, 64, 255, 255, 255, 0}};
+	CHECK(!(*gpu)->create_texture({0, 2, {}}));
+	CHECK(!(*gpu)->create_texture({-1, 2, {}}));
+	CHECK(!(*gpu)->create_texture({4097, 1, {}}));
+	CHECK(!(*gpu)->create_texture({2, 4097, {}}));
+	auto malformed_pixels = pixels;
+	malformed_pixels.rgba.pop_back();
+	CHECK(!(*gpu)->create_texture(malformed_pixels));
+	malformed_pixels.rgba.insert(malformed_pixels.rgba.end(), 2, 0);
+	CHECK(!(*gpu)->create_texture(malformed_pixels));
+	CHECK((*gpu)->create_texture({1, 1, {255, 0, 0, 255}}));
+	CHECK((*gpu)->create_texture({4096, 1, std::vector<std::uint8_t>(4096 * 4)}));
+	auto sampled         = (*gpu)->create_texture(pixels);
+	auto foreign_texture = (*other)->create_texture(pixels);
+	CHECK(sampled && foreign_texture);
+	CHECK(!(*gpu)->render_offscreen(**sampled_pipeline, 2, 2));
+	CHECK(!(*gpu)->render_offscreen(**sampled_pipeline, 2, 2, {}, foreign_texture->get()));
+	CHECK(!(*gpu)->render_offscreen(**prepared, 2, 2, uniforms, foreign_texture->get()));
+	auto uploaded = (*gpu)->render_offscreen(**sampled_pipeline, 2, 2, {}, sampled->get());
+	CHECK(uploaded && matches(*uploaded, pixels));
+	auto linear = (*gpu)->prepare_pipeline(resolver, "sampled:///linear", "sampled_vertex",
+	                                       "sampled_fragment");
+	auto clamp  = (*gpu)->prepare_pipeline(resolver, "sampled:///clamp", "sampled_vertex",
+	                                       "sampled_fragment");
+	CHECK(linear && clamp);
+	auto filtered = (*gpu)->render_offscreen(**linear, 1, 1, {}, sampled->get());
+	CHECK(filtered && matches(*filtered, {1, 1, {128, 128, 128, 112}}));
+	auto clamped = (*gpu)->render_offscreen(**clamp, 1, 1, {}, sampled->get());
+	CHECK(clamped && matches(*clamped, {1, 1, {0, 0, 255, 64}}));
+	CHECK(!(*sampled)->update({1, 4, pixels.rgba}));
+	CHECK(!(*sampled)->update(malformed_pixels));
+	uploaded = (*gpu)->render_offscreen(**sampled_pipeline, 2, 2, {}, sampled->get());
+	CHECK(uploaded && matches(*uploaded, pixels));
+	std::reverse(pixels.rgba.begin(), pixels.rgba.end());
+	CHECK((*sampled)->update(pixels));
+	uploaded = (*gpu)->render_offscreen(**sampled_pipeline, 2, 2, {}, sampled->get());
+	CHECK(uploaded && matches(*uploaded, pixels));
 
 	// Prior valid programs remain usable after all failed preparation attempts. Width 63
 	// exposes implementations that confuse GPU row alignment with the packed image contract.
@@ -117,6 +212,14 @@ int main(int argc, char **argv) {
 	auto first_surface  = (*gpu)->attach(**first);
 	auto second_surface = (*gpu)->attach(**second);
 	CHECK(first_surface && second_surface);
+	CHECK(!(*first_surface)->draw(**sampled_pipeline));
+	CHECK(!(*first_surface)->draw(**sampled_pipeline, {}, foreign_texture->get()));
+	CHECK((*first_surface)->draw(**sampled_pipeline, {}, sampled->get()));
+	CHECK((*second_surface)->draw(**sampled_pipeline, {}, sampled->get()));
+	std::reverse(pixels.rgba.begin(), pixels.rgba.end());
+	CHECK((*sampled)->update(pixels));
+	CHECK((*first_surface)->draw(**sampled_pipeline, {}, sampled->get()));
+	CHECK((*second_surface)->draw(**sampled_pipeline, {}, sampled->get()));
 	CHECK(!(*first_surface)->draw(**prepared));
 	CHECK(!(*first_surface)->draw(**prepared, oversized));
 	auto foreign = (*other)->prepare_pipeline(resolver, "shaders://tests/probe.glsl",
@@ -158,11 +261,16 @@ int main(int argc, char **argv) {
 	CHECK((*gpu)->render_offscreen(**prepared, 16, 16, uniforms));
 	CHECK((*gpu)->take_error().empty());
 	gpu->reset();
+	CHECK((*sampled)->update(pixels));
+	CHECK((*second_surface)->draw(**sampled_pipeline, {}, sampled->get()));
+	sampled->reset();
+	CHECK((*second_surface)->wait_idle());
 	CHECK((*second_surface)->draw(**prepared, uniforms));
 	CHECK((*second_surface)->wait_idle());
 	second_surface->reset();
 	second->reset();
 	std::cout
 	    << "OpenGL passed: URI diagnostics, binding validation, RGBA/orientation readback, "
-	       "independent previews, resize/suspend, queue drain and retained resource lifetime\n";
+	       "top-origin texture upload/update, sampling bounds/filtering, independent previews, "
+	       "resize/suspend, queue drain and retained resource lifetime\n";
 }

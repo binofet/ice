@@ -86,13 +86,13 @@ Validation of this source checkpoint:
 Those cleanup checks did not establish GPU backends, desktop text/IME/pointer support
 or game ports. The following work is a separate reviewable milestone.
 
-## Procedural renderer parity — working milestone
+## Procedural renderer parity — checkpoint `ab6bc38`
 
 Native Metal and OpenGL 4.1+ core share explicit device/pipeline/surface ownership,
 URI shader preparation, read-only uniform blocks, procedural draws and RGBA8 capture.
 Common device tokens reject foreign pipelines; one common renderer attachment is
-allowed per logical window. This is a deliberately small interface, with mesh/texture
-resources, scene migration and compute still to add.
+allowed per logical window. This is a deliberately small interface; indexed meshes,
+material resource sets, scene migration and compute remain to add.
 
 Validation recorded so far:
 
@@ -121,8 +121,23 @@ Validation recorded so far:
   closing one leaves another responsive. Both device and arm64 simulator builds pass.
   See [MOBILE.md](MOBILE.md) for the hardware checkpoint and opt-in diagnostics.
 
-Keep new code available for diff review before committing/pushing this milestone.
+The renderer checkpoint is committed and published. New native text and sampled-image
+work builds on that baseline; review and validate each coherent checkpoint before pushing.
 Ignition uses an explicit local ICE checkout while these changes are uncommitted;
 update its submodule to the reviewed engine commit before publishing its application
 checkpoint. A first submitted frame log measures submission, not physical display
 latency or a cold-start benchmark.
+
+## Native input and sampled images — working checkpoint
+
+The next engine slice adds per-window committed/preedit UTF-8 and interpreted editing,
+with native AppKit/IMM/XIM adapters and bounded cancellation-aware queues. It also adds
+RGBA8 sampled images to both Metal and modern GL, using fresh storage for safe updates.
+Ignition consumes these through its procedural display shader and native font canvases.
+
+Mac C++20/23 builds, CPU regressions, both texture GPU suites and renderer replacements
+are checked separately from native IME interaction. The earlier AppKit23 native delivery
+fixture passed before late-focus/runloop hardening; an unlocked-desktop rerun of the final
+native fixture remains necessary. A locked desktop reports unavailable, not a pass.
+Linux/Xvfb and Windows cross-build results are recorded after the reviewed Git transfer.
+No Windows runtime or hands-on full IME candidate-selection result is implied.

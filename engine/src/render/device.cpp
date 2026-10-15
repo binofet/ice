@@ -44,6 +44,15 @@ struct pipeline::implementation {
 	std::unique_ptr<gl::pipeline> opengl;
 #endif
 };
+struct texture::implementation {
+	std::shared_ptr<const int> token;
+#ifdef ICE_RENDER_METAL
+	std::unique_ptr<metal::texture> metal;
+#endif
+#ifdef ICE_RENDER_OPENGL
+	std::unique_ptr<gl::texture> opengl;
+#endif
+};
 struct presentation_surface::implementation {
 	// Destroy the native endpoint before releasing its exclusive logical-window lease.
 	std::unique_ptr<window_lease> lease;
@@ -61,6 +70,20 @@ device::~device() = default;
 pipeline::pipeline(std::unique_ptr<implementation> implementation)
     : implementation_(std::move(implementation)) {}
 pipeline::~pipeline() = default;
+texture::texture(std::unique_ptr<implementation> implementation)
+    : implementation_(std::move(implementation)) {}
+texture::~texture() = default;
+ice::expected<void, diagnostic> texture::update(const image &pixels) {
+#ifdef ICE_RENDER_METAL
+	if (implementation_->metal)
+		return implementation_->metal->update(pixels);
+#endif
+#ifdef ICE_RENDER_OPENGL
+	if (implementation_->opengl)
+		return implementation_->opengl->update(pixels);
+#endif
+	return failure("Graphics backend unavailable");
+}
 presentation_surface::presentation_surface(std::unique_ptr<implementation> implementation)
     : implementation_(std::move(implementation)) {}
 presentation_surface::~presentation_surface() = default;
@@ -140,6 +163,29 @@ device::prepare_pipeline(const ice::io::resource_resolver &resolver, const shade
 	// NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks)
 	return std::unique_ptr<pipeline>(new pipeline(std::move(result)));
 }
+ice::expected<std::unique_ptr<texture>, diagnostic> device::create_texture(const image &pixels) {
+	auto result   = std::make_unique<texture::implementation>();
+	result->token = implementation_->token;
+#ifdef ICE_RENDER_METAL
+	if (implementation_->metal) {
+		auto native = implementation_->metal->create_texture(pixels);
+		if (!native)
+			return ice::unexpected(native.error());
+		result->metal = std::move(*native);
+	}
+#endif
+#ifdef ICE_RENDER_OPENGL
+	if (implementation_->opengl) {
+		auto native = implementation_->opengl->create_texture(pixels);
+		if (!native)
+			return ice::unexpected(native.error());
+		result->opengl = std::move(*native);
+	}
+#endif
+	// The unique owner moves into tl::expected; analyzer 18 loses that ownership path.
+	// NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks)
+	return std::unique_ptr<texture>(new texture(std::move(result)));
+}
 ice::expected<std::unique_ptr<presentation_surface>, diagnostic>
 device::attach(ice::platform::desktop_window &window) {
 	if (window_lease::active().contains(window.id()))
@@ -190,18 +236,23 @@ device::attach(const ice::platform::surface &target) {
 }
 ice::expected<image, diagnostic> device::render_offscreen(const pipeline &pipeline, int width,
                                                           int                        height,
-                                                          std::span<const std::byte> uniforms) {
+                                                          std::span<const std::byte> uniforms,
+                                                          const texture *sampled_image) {
+	if (sampled_image && implementation_->token != sampled_image->implementation_->token)
+		return failure("Foreign-device texture");
 	if (implementation_->token != pipeline.implementation_->token)
 		return failure("Foreign-device pipeline");
 #ifdef ICE_RENDER_METAL
 	if (implementation_->metal)
-		return implementation_->metal->render_offscreen(*pipeline.implementation_->metal, width,
-		                                                height, uniforms);
+		return implementation_->metal->render_offscreen(
+		    *pipeline.implementation_->metal, width, height, uniforms,
+		    sampled_image ? sampled_image->implementation_->metal.get() : nullptr);
 #endif
 #ifdef ICE_RENDER_OPENGL
 	if (implementation_->opengl)
-		return implementation_->opengl->render_offscreen(*pipeline.implementation_->opengl, width,
-		                                                 height, uniforms);
+		return implementation_->opengl->render_offscreen(
+		    *pipeline.implementation_->opengl, width, height, uniforms,
+		    sampled_image ? sampled_image->implementation_->opengl.get() : nullptr);
 #endif
 	return failure("Graphics backend unavailable");
 }
@@ -217,16 +268,23 @@ bool presentation_surface::resize(int width, int height) {
 	return false;
 }
 ice::expected<frame_status, diagnostic>
-presentation_surface::draw(const pipeline &pipeline, std::span<const std::byte> uniforms) {
+presentation_surface::draw(const pipeline &pipeline, std::span<const std::byte> uniforms,
+                           const texture *sampled_image) {
+	if (sampled_image && implementation_->token != sampled_image->implementation_->token)
+		return failure("Foreign-device texture");
 	if (implementation_->token != pipeline.implementation_->token)
 		return failure("Foreign-device pipeline");
 #ifdef ICE_RENDER_METAL
 	if (implementation_->metal)
-		return implementation_->metal->draw(*pipeline.implementation_->metal, uniforms);
+		return implementation_->metal->draw(
+		    *pipeline.implementation_->metal, uniforms,
+		    sampled_image ? sampled_image->implementation_->metal.get() : nullptr);
 #endif
 #ifdef ICE_RENDER_OPENGL
 	if (implementation_->opengl)
-		return implementation_->opengl->draw(*pipeline.implementation_->opengl, uniforms);
+		return implementation_->opengl->draw(
+		    *pipeline.implementation_->opengl, uniforms,
+		    sampled_image ? sampled_image->implementation_->opengl.get() : nullptr);
 #endif
 	return failure("Graphics backend unavailable");
 }

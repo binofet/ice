@@ -1,6 +1,6 @@
 # ICE
 
-ICE is a C++20/23 playground engine for native rendering, simulations, live data and
+ICE (Infinite Combustion Engine) is a C++20/23 playground engine for native rendering, simulations, live data and
 language experiments. This is a breaking rebuild: the fixed-function renderer and
 abandoned compatibility APIs have been removed. Native Metal and OpenGL 4.1+ core
 backends now share a small programmable rendering interface. Vulkan and D3D12 remain

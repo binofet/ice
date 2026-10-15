@@ -8,7 +8,7 @@ struct diagnostic {
 	/// URI-qualified compiler output or native failure explanation.
 	std::string message;
 };
-/// Owned RGBA8 capture, top row first, from an explicit offscreen render/readback.
+/// Owned RGBA8 pixels, top row first, for uploads or explicit offscreen captures.
 struct image {
 	/// Pixel dimensions of the owned image.
 	int width = 0, height = 0;

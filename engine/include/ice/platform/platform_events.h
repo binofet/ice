@@ -1,6 +1,7 @@
 #pragma once
 #include <cstddef>
 #include <cstdint>
+#include <string>
 namespace ice::platform {
 
 /// Process-scoped window identity; zero denotes application scope.
@@ -8,7 +9,7 @@ using window_id = std::uint64_t;
 /// Zero denotes application scope. A native root window is not required.
 constexpr window_id application_scope = 0;
 
-/// Window registration, resize, close, focus and application-termination notifications.
+/// Window/application lifecycle, native text, interpreted editing and cancellation categories.
 enum class platform_event_type {
 	window_registered,
 	window_retired,
@@ -16,17 +17,78 @@ enum class platform_event_type {
 	close_requested,
 	focus_gained,
 	focus_lost,
-	application_quit_requested
+	application_quit_requested,
+	input_activity,
+	text_committed,
+	text_composition,
+	edit_command,
+	input_cancelled
 };
+
+/// Native interpreted editing action; composition navigation does not produce these actions.
+enum class edit_command {
+	none,
+	accept_line,
+	cancel,
+	tab,
+	backspace,
+	delete_forward,
+	move_left,
+	move_right,
+	move_up,
+	move_down,
+	line_start,
+	line_end,
+	page_up,
+	page_down,
+	word_left,
+	word_right,
+	delete_word_backward,
+	delete_word_forward,
+	delete_to_line_start,
+	delete_to_line_end,
+	select_all,
+	copy,
+	cut,
+	paste
+};
+/// Keyboard modifier bits reported with a native input action.
+enum class key_modifier : std::uint8_t {
+	shift     = 1,
+	control   = 2,
+	alt       = 4,
+	super     = 8,
+	caps_lock = 16
+};
+/// Bit mask of key_modifier values; the super key means Command on macOS and Windows on Win32.
+using key_modifiers = std::uint8_t;
+/// Return the mask bit for a keyboard modifier.
+constexpr key_modifiers modifier_flag(key_modifier modifier) {
+	return static_cast<key_modifiers>(modifier);
+}
+/// Test whether the given native modifier mask contains a modifier.
+constexpr bool has_modifier(key_modifiers modifiers, key_modifier modifier) {
+	return (modifiers & modifier_flag(modifier)) != 0;
+}
 
 /// Application event ordered by sequence number; window zero denotes application scope.
 struct platform_event {
 	/// Event category determining which payload fields are meaningful.
-	platform_event_type type;
+	platform_event_type type = platform_event_type::window_registered;
 	/// Target window identity; zero denotes application scope.
-	window_id window;
+	window_id window = application_scope;
 	/// Monotonically ordered event-stream sequence number.
-	std::uint64_t sequence;
+	std::uint64_t sequence = 0;
+	/// Owning UTF-8 commit/preedit payload, at most 4096 bytes; never synthesize it from key codes.
+	std::string text{};
+	/// Interpreted action, meaningful only for edit_command events.
+	ice::platform::edit_command command = ice::platform::edit_command::none;
+	/// Modifier state for input_activity, text and edit-command events.
+	key_modifiers modifiers = 0;
+	/// True for an OS keyboard-repeat action.
+	bool repeat = false;
+	/// Selection within preedit text, measured in UTF-8 bytes on code-point boundaries.
+	std::size_t selection_start = 0, selection_length = 0;
 };
 
 /// A bounded application event stream. Poll once, then route by window ID.
@@ -37,6 +99,11 @@ public:
 	static window_id allocate_window_id();
 	/// Append an event to the bounded application stream; route by window ID after polling.
 	static void post(platform_event_type type, window_id window = application_scope);
+	/// Append a native/injected action, validating UTF-8, text bounds and preedit selection.
+	/// The stream holds at most 1024 events and 256 KiB of text. Overflow clears queued
+	/// actions and delivers application-scope input_cancelled before accepting new input.
+	/// False denotes rejection; callers must cancel native composition after rejection.
+	static bool post(platform_event event);
 	/// Consume one queued lifecycle notification without blocking.
 	static bool poll(platform_event &event);
 	/// Return the cumulative count of events discarded by the bounded stream.

@@ -29,6 +29,13 @@ struct window_extent {
 	/// Drawable pixels per logical UI unit.
 	float scale = 1;
 };
+/// Text caret/candidate anchor in logical client units, measured from the top-left corner.
+struct text_input_rect {
+	/// Caret origin; finite coordinates with absolute value at most one million.
+	float x = 0, y = 0;
+	/// Caret dimensions; finite values in [0,16384].
+	float width = 1, height = 18;
+};
 /// Initial native window description; no renderer or context is implicitly created.
 struct desktop_window_options {
 	/// UTF-8 title, with no embedded NUL and at most 1024 bytes.
@@ -59,7 +66,7 @@ public:
 	window_id id() const { return id_; }
 	/// Return the authoritative close request even if the bounded event stream overflowed.
 	bool should_close() const { return close_requested_; }
-	/// Request closure once; native destruction remains explicit and owned by the caller.
+	/// Request closure once and discard native preedit; destruction remains caller-owned.
 	void request_close();
 	/// Show/hide the native window; showing may request focus according to OS policy.
 	virtual void show(bool visible = true) = 0;
@@ -71,15 +78,34 @@ public:
 	virtual window_extent extent() const = 0;
 	/// Borrow backend-specific OS handles for renderer/native extension integration.
 	virtual native_window_handle native_handle() const = 0;
+	/// Enable native committed-text/IME and interpreted editing actions for this window.
+	/// Disabled by default. Disabling cancels preedit; focus loss never commits marked text.
+	/// This insertion/preedit client does not expose surrounding-document reconversion.
+	/// Clipboard commands are application actions; clipboard transport is not provided.
+	void enable_text_input(bool enabled = true);
+	/// Return whether this window accepts native text/IME input.
+	bool text_input_enabled() const { return text_input_enabled_; }
+	/// Discard current native preedit and emit input_cancelled without committing text.
+	void cancel_text_input();
+	/// Update the logical candidate anchor; reject nonfinite/out-of-bounds values unchanged.
+	bool set_text_input_rect(const text_input_rect &rect);
+	/// Return the last accepted text caret/candidate anchor.
+	text_input_rect text_input_area() const { return text_input_rect_; }
 
 protected:
 	/// Allocate a routing identity and register this owner with the process event stream.
 	desktop_window();
+	/// Refresh native text-input activation/candidate placement after a public setting changes.
+	virtual void text_input_changed() {}
+	/// Discard native preedit after focus/hide/disable or an explicit client cancellation.
+	virtual void cancel_native_text_input() {}
 
 private:
 	desktop_window(const desktop_window &other)            = delete;
 	desktop_window &operator=(const desktop_window &other) = delete;
 	window_id       id_                                    = 0;
 	bool            close_requested_                       = false;
+	bool            text_input_enabled_                    = false;
+	text_input_rect text_input_rect_;
 };
 } // namespace ice::platform

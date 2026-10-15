@@ -17,7 +17,7 @@ struct shader_source {
 	std::string uri;
 	/// Procedural vertex entry, with no vertex-buffer inputs in this first slice.
 	std::string vertex_entry;
-	/// Fragment entry, with an optional read-only buffer(0)/std140 uniform block.
+	/// Fragment entry; optional buffer(0)/std140 bytes and sampled image zero are reflected.
 	std::string fragment_entry;
 };
 /// Device-owned prepared pipeline. Keep the authored URI/parameters separately for recreation.
@@ -35,6 +35,24 @@ private:
 	friend class device;
 	friend class presentation_surface;
 };
+/// Owned sampled RGBA8 image. Row zero is the top row and samples at UV y=0.
+/// Updates replace native storage so preceding submissions keep their original image.
+class texture {
+public:
+	/// Release this owner; preceding native submissions retain the sampled storage.
+	~texture();
+	/// Replace pixels with the same dimensions, preserving the old image on failure.
+	ice::expected<void, diagnostic> update(const image &pixels);
+
+private:
+	struct implementation;
+	explicit texture(std::unique_ptr<implementation> implementation);
+	texture(const texture &other)                                   = delete;
+	texture                        &operator=(const texture &other) = delete;
+	std::unique_ptr<implementation> implementation_;
+	friend class device;
+	friend class presentation_surface;
+};
 /// Explicit presentation owner, independent of the native window and simulation. UI/render thread
 /// only; drain before a backend handoff, then destroy before the native endpoint is retired.
 class presentation_surface {
@@ -44,9 +62,10 @@ public:
 	/// Set drawable pixels; zero suspends rendering. False rejects out-of-range dimensions.
 	bool resize(int width, int height);
 	/// Submit a procedural three-vertex draw; copy at most 4096 uniform bytes to binding zero.
-	/// Foreign-device pipelines and undersized uniform blocks fail before submission.
+	/// Foreign resources, missing required images and undersized uniforms fail before submission.
 	ice::expected<frame_status, diagnostic> draw(const pipeline            &pipeline,
-	                                             std::span<const std::byte> uniforms = {});
+	                                             std::span<const std::byte> uniforms = {},
+	                                             const texture *sampled_image        = nullptr);
 	/// Synchronously finish preceding work for this presentation before a backend handoff.
 	/// A driver failure returns a diagnostic; arbitrary driver hangs are not crash-contained.
 	ice::expected<void, diagnostic> wait_idle();
@@ -76,6 +95,10 @@ public:
 	/// Prepare a detached library/pipeline without replacing an existing pipeline on failure.
 	ice::expected<std::unique_ptr<pipeline>, diagnostic>
 	prepare_pipeline(const ice::io::resource_resolver &resolver, const shader_source &source);
+	/// Upload one tightly packed RGBA8 image with dimensions in [1,4096].
+	/// Sampling is linear/clamped without mipmaps; bind as texture(0)/sampler2D unit zero in either
+	/// shader stage.
+	ice::expected<std::unique_ptr<texture>, diagnostic> create_texture(const image &pixels);
 	/// Attach to a desktop window. The window must have no other active renderer attached;
 	/// the caller keeps it alive through surface destruction.
 	ice::expected<std::unique_ptr<presentation_surface>, diagnostic>
@@ -88,7 +111,8 @@ public:
 	/// Synchronously capture a procedural draw as top-row-first RGBA8, with [1,4096] dimensions.
 	ice::expected<image, diagnostic> render_offscreen(const pipeline &pipeline, int width,
 	                                                  int                        height,
-	                                                  std::span<const std::byte> uniforms = {});
+	                                                  std::span<const std::byte> uniforms = {},
+	                                                  const texture *sampled_image = nullptr);
 	/// Consume a bounded backend error report, or an empty string when none is pending.
 	std::string take_error();
 

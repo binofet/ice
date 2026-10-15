@@ -26,9 +26,19 @@ struct pipeline::implementation {
 	std::shared_ptr<detail::device_state> state;
 	GLuint                                program       = 0;
 	std::size_t                           uniform_bytes = 0;
+	bool                                  samples_image = false;
 	~implementation() {
 		if (program && state->context->make_current())
 			state->api.DeleteProgram(program);
+	}
+};
+struct texture::implementation {
+	std::shared_ptr<detail::device_state> state;
+	GLuint                                name  = 0;
+	int                                   width = 0, height = 0;
+	~implementation() {
+		if (name && state->context->make_current())
+			state->api.DeleteTextures(1, &name);
 	}
 };
 struct presentation_surface::implementation {
@@ -109,8 +119,45 @@ bool valid_draw(const std::shared_ptr<detail::device_state> &state,
                 std::span<const std::byte> uniforms, std::size_t required) {
 	return state == pipeline_state && uniforms.size() >= required && uniforms.size() <= 4096;
 }
+ice::expected<GLuint, diagnostic> upload_texture(detail::device_state &state, const image &pixels) {
+	if (pixels.width < 1 || pixels.height < 1 || pixels.width > 4096 || pixels.height > 4096 ||
+	    pixels.rgba.size() != std::size_t(pixels.width) * std::size_t(pixels.height) * 4)
+		return failure(
+		    "Texture dimensions must be in [1,4096] with exactly width*height*4 RGBA bytes");
+	if (!state.context->make_current())
+		return failure("Cannot activate OpenGL texture preparation context");
+	auto  &api  = state.api;
+	GLuint name = 0;
+	api.GenTextures(1, &name);
+	if (!name)
+		return failure("OpenGL texture allocation failed");
+	api.ActiveTexture(GL_TEXTURE0);
+	api.BindTexture(GL_TEXTURE_2D, name);
+	api.BindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+	api.PixelStorei(GL_UNPACK_ALIGNMENT, 1);
+	api.PixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+	api.PixelStorei(GL_UNPACK_SKIP_ROWS, 0);
+	api.PixelStorei(GL_UNPACK_SKIP_PIXELS, 0);
+	// Keep top-row-first bytes in their authored order. A shader using top-origin UVs
+	// samples the first uploaded row at v=0; OpenGL capture normalization stays separate.
+	api.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, pixels.width, pixels.height, 0, GL_RGBA,
+	               GL_UNSIGNED_BYTE, pixels.rgba.data());
+	api.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	api.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	api.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	api.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	api.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
+	api.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+	// Shared presentation contexts must see the completed upload before sampling it.
+	api.Finish();
+	if (auto error = check(state); !error.empty()) {
+		api.DeleteTextures(1, &name);
+		return failure(error);
+	}
+	return name;
+}
 void encode(detail::functions &api, GLuint program, GLuint vao, GLuint buffer, int width,
-            int height, std::span<const std::byte> uniforms) {
+            int height, std::span<const std::byte> uniforms, GLuint sampled_image) {
 	api.Viewport(0, 0, width, height);
 	api.Disable(GL_DEPTH_TEST);
 	api.Disable(GL_BLEND);
@@ -121,6 +168,8 @@ void encode(detail::functions &api, GLuint program, GLuint vao, GLuint buffer, i
 	api.Clear(GL_COLOR_BUFFER_BIT);
 	api.UseProgram(program);
 	api.BindVertexArray(vao);
+	api.ActiveTexture(GL_TEXTURE0);
+	api.BindTexture(GL_TEXTURE_2D, sampled_image);
 	if (!uniforms.empty()) {
 		// Orphaning gives the driver permission to retain bytes referenced by prior draws.
 		// Each surface owns its own UBO; independent contexts never race shared uniform bytes.
@@ -135,6 +184,22 @@ void encode(detail::functions &api, GLuint program, GLuint vao, GLuint buffer, i
 pipeline::pipeline(std::unique_ptr<implementation> implementation)
     : implementation_(std::move(implementation)) {}
 pipeline::~pipeline() = default;
+texture::texture(std::unique_ptr<implementation> implementation)
+    : implementation_(std::move(implementation)) {}
+texture::~texture() = default;
+ice::expected<void, diagnostic> texture::update(const image &pixels) {
+	auto &data = *implementation_;
+	if (pixels.width != data.width || pixels.height != data.height)
+		return failure("Texture update must preserve dimensions");
+	auto uploaded = upload_texture(*data.state, pixels);
+	if (!uploaded)
+		return ice::unexpected(uploaded.error());
+	// Allocate replacement storage rather than writing into an image still sampled by
+	// queued work in another context. GL retains old storage while draws/bindings use it.
+	auto previous = std::exchange(data.name, *uploaded);
+	data.state->api.DeleteTextures(1, &previous);
+	return {};
+}
 presentation_surface::presentation_surface(std::unique_ptr<implementation> implementation)
     : implementation_(std::move(implementation)) {}
 presentation_surface::~presentation_surface() = default;
@@ -236,14 +301,35 @@ device::prepare_pipeline(const ice::io::resource_resolver &resolver, const std::
 			return failure(
 			    uri + ": initial pipelines support procedural vertices without vertex attributes");
 	}
+	GLint uniform_name_bytes = 0;
+	api.GetProgramiv(prepared->program, GL_ACTIVE_UNIFORM_MAX_LENGTH, &uniform_name_bytes);
+	if (uniform_name_bytes < 0 || uniform_name_bytes > 65536)
+		return failure(uri + ": invalid uniform reflection name bounds");
+	std::vector<char> uniform_name(std::max(uniform_name_bytes, 1));
 	for (GLint index = 0; index < uniforms; ++index) {
 		GLuint uniform = GLuint(index);
 		GLint  block   = -1;
 		api.GetActiveUniformsiv(prepared->program, 1, &uniform, GL_UNIFORM_BLOCK_INDEX, &block);
-		if (block < 0)
-			return failure(
-			    uri +
-			    ": standalone uniforms/textures are not supported in this first pipeline slice");
+		if (block >= 0)
+			continue;
+		GLsizei length = 0;
+		GLint   size   = 0;
+		GLenum  type   = 0;
+		api.GetActiveUniform(prepared->program, uniform, GLsizei(uniform_name.size()), &length,
+		                     &size, &type, uniform_name.data());
+		if (type != GL_SAMPLER_2D || size != 1 || prepared->samples_image ||
+		    std::string_view(uniform_name.data()).find('[') != std::string_view::npos)
+			return failure(uri +
+			               ": pipelines support one non-array sampler2D and uniform block zero");
+		GLint location = api.GetUniformLocation(prepared->program, uniform_name.data());
+		GLint binding  = -1;
+		if (location >= 0)
+			api.GetUniformiv(prepared->program, location, &binding);
+		if (binding != 0)
+			return failure(uri + ": sampler2D must use texture unit zero");
+		api.UseProgram(prepared->program);
+		api.Uniform1i(location, 0);
+		prepared->samples_image = true;
 	}
 	if (blocks) {
 		GLint size = 0;
@@ -261,6 +347,19 @@ device::prepare_pipeline(const ice::io::resource_resolver &resolver, const std::
 	// Ownership transfers into tl::expected rather than escaping as a raw allocation.
 	// NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks)
 	return std::unique_ptr<pipeline>(new pipeline(std::move(prepared)));
+}
+ice::expected<std::unique_ptr<texture>, diagnostic> device::create_texture(const image &pixels) {
+	auto data     = std::make_unique<texture::implementation>();
+	data->state   = state_;
+	auto uploaded = upload_texture(*state_, pixels);
+	if (!uploaded)
+		return ice::unexpected(uploaded.error());
+	data->name   = *uploaded;
+	data->width  = pixels.width;
+	data->height = pixels.height;
+	// Ownership transfers into tl::expected rather than escaping as a raw allocation.
+	// NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks)
+	return std::unique_ptr<texture>(new texture(std::move(data)));
 }
 ice::expected<std::unique_ptr<presentation_surface>, diagnostic>
 device::attach(ice::platform::desktop_window &window) {
@@ -294,18 +393,23 @@ bool presentation_surface::resize(int width, int height) {
 	return true;
 }
 ice::expected<frame_status, diagnostic>
-presentation_surface::draw(const pipeline &pipeline, std::span<const std::byte> uniforms) {
+presentation_surface::draw(const pipeline &pipeline, std::span<const std::byte> uniforms,
+                           const texture *sampled_image) {
 	auto &data     = *implementation_;
 	auto &prepared = *pipeline.implementation_;
 	if (!valid_draw(data.state, prepared.state, uniforms, prepared.uniform_bytes))
 		return failure("Foreign pipeline or invalid uniform byte count");
+	if (sampled_image && sampled_image->implementation_->state != data.state)
+		return failure("Foreign sampled texture");
+	if (prepared.samples_image && !sampled_image)
+		return failure("Pipeline requires a sampled texture");
 	if (!data.width || !data.height)
 		return frame_status::unavailable;
 	if (!data.context->make_current())
 		return failure("Cannot activate OpenGL presentation context");
 	data.state->api.BindFramebuffer(GL_FRAMEBUFFER, 0);
 	encode(data.state->api, prepared.program, data.vao, data.uniforms, data.width, data.height,
-	       uniforms);
+	       uniforms, sampled_image ? sampled_image->implementation_->name : 0);
 	if (auto error = check(*data.state); !error.empty())
 		return failure(error);
 	if (!data.context->present())
@@ -324,11 +428,16 @@ ice::expected<void, diagnostic> presentation_surface::wait_idle() {
 
 ice::expected<image, diagnostic> device::render_offscreen(const pipeline &pipeline, int width,
                                                           int                        height,
-                                                          std::span<const std::byte> uniforms) {
+                                                          std::span<const std::byte> uniforms,
+                                                          const texture *sampled_image) {
 	auto &prepared = *pipeline.implementation_;
 	if (width < 1 || height < 1 || width > 4096 || height > 4096 ||
 	    !valid_draw(state_, prepared.state, uniforms, prepared.uniform_bytes))
 		return failure("Invalid capture dimensions, foreign pipeline or uniform byte count");
+	if (sampled_image && sampled_image->implementation_->state != state_)
+		return failure("Foreign sampled texture");
+	if (prepared.samples_image && !sampled_image)
+		return failure("Pipeline requires a sampled texture");
 	if (!state_->context->make_current())
 		return failure("Cannot activate OpenGL capture context");
 	auto &api = state_->api;
@@ -355,7 +464,8 @@ ice::expected<image, diagnostic> device::render_offscreen(const pipeline &pipeli
 	                         0);
 	if (api.CheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
 		return failure("OpenGL capture framebuffer is incomplete");
-	encode(api, prepared.program, state_->vao, state_->uniforms, width, height, uniforms);
+	encode(api, prepared.program, state_->vao, state_->uniforms, width, height, uniforms,
+	       sampled_image ? sampled_image->implementation_->name : 0);
 	image result{width, height, std::vector<std::uint8_t>(std::size_t(width) * height * 4)};
 	api.PixelStorei(GL_PACK_ALIGNMENT, 1);
 	api.ReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, result.rgba.data());

@@ -32,6 +32,11 @@ struct functions {
 	PFNGLGETACTIVEUNIFORMBLOCKIVPROC GetActiveUniformBlockiv = nullptr;
 	PFNGLUNIFORMBLOCKBINDINGPROC     UniformBlockBinding     = nullptr;
 	PFNGLGETACTIVEUNIFORMSIVPROC     GetActiveUniformsiv     = nullptr;
+	PFNGLGETACTIVEUNIFORMPROC        GetActiveUniform        = nullptr;
+	PFNGLGETUNIFORMLOCATIONPROC      GetUniformLocation      = nullptr;
+	PFNGLGETUNIFORMIVPROC            GetUniformiv            = nullptr;
+	PFNGLUNIFORM1IPROC               Uniform1i               = nullptr;
+	PFNGLACTIVETEXTUREPROC           ActiveTexture           = nullptr;
 	PFNGLGENTEXTURESPROC             GenTextures             = nullptr;
 	PFNGLBINDTEXTUREPROC             BindTexture             = nullptr;
 	PFNGLTEXIMAGE2DPROC              TexImage2D              = nullptr;
@@ -210,6 +215,34 @@ struct functions {
             context.resolve("glGetActiveUniformsiv"));
         if (!GetActiveUniformsiv) {
             error = "Missing OpenGL entry point glGetActiveUniformsiv";
+            return false;
+        }
+        GetActiveUniform =
+            reinterpret_cast<PFNGLGETACTIVEUNIFORMPROC>(context.resolve("glGetActiveUniform"));
+        if (!GetActiveUniform) {
+            error = "Missing OpenGL entry point glGetActiveUniform";
+            return false;
+        }
+        GetUniformLocation =
+            reinterpret_cast<PFNGLGETUNIFORMLOCATIONPROC>(context.resolve("glGetUniformLocation"));
+        if (!GetUniformLocation) {
+            error = "Missing OpenGL entry point glGetUniformLocation";
+            return false;
+        }
+        GetUniformiv = reinterpret_cast<PFNGLGETUNIFORMIVPROC>(context.resolve("glGetUniformiv"));
+        if (!GetUniformiv) {
+            error = "Missing OpenGL entry point glGetUniformiv";
+            return false;
+        }
+        Uniform1i = reinterpret_cast<PFNGLUNIFORM1IPROC>(context.resolve("glUniform1i"));
+        if (!Uniform1i) {
+            error = "Missing OpenGL entry point glUniform1i";
+            return false;
+        }
+        ActiveTexture =
+            reinterpret_cast<PFNGLACTIVETEXTUREPROC>(context.resolve("glActiveTexture"));
+        if (!ActiveTexture) {
+            error = "Missing OpenGL entry point glActiveTexture";
             return false;
         }
         GenTextures = reinterpret_cast<PFNGLGENTEXTURESPROC>(context.resolve("glGenTextures"));

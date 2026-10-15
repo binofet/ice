@@ -53,6 +53,12 @@ struct pipeline::implementation {
 	std::shared_ptr<detail::device_state> state;
 	id<MTLRenderPipelineState>            native;
 	std::size_t                           uniform_bytes = 0;
+	bool                                  sampled_image = false;
+};
+struct texture::implementation {
+	std::shared_ptr<detail::device_state> state;
+	id<MTLTexture>                        native;
+	int                                   width = 0, height = 0;
 };
 struct presentation_surface::implementation {
 	// Release exclusivity after native state; both common and backend-specific APIs use it.
@@ -93,7 +99,8 @@ bool valid_draw(const std::shared_ptr<detail::device_state> &state,
 }
 id<MTLRenderCommandEncoder> encode(id<MTLCommandBuffer> command, id<MTLTexture> target,
                                    id<MTLRenderPipelineState> pipeline,
-                                   std::span<const std::byte> uniforms) {
+                                   std::span<const std::byte> uniforms,
+                                   id<MTLTexture>             sampled_image) {
 	MTLRenderPassDescriptor *pass        = [MTLRenderPassDescriptor renderPassDescriptor];
 	pass.colorAttachments[0].texture     = target;
 	pass.colorAttachments[0].loadAction  = MTLLoadActionClear;
@@ -107,6 +114,10 @@ id<MTLRenderCommandEncoder> encode(id<MTLCommandBuffer> command, id<MTLTexture> 
 		[encoder setVertexBytes:uniforms.data() length:uniforms.size() atIndex:0];
 		[encoder setFragmentBytes:uniforms.data() length:uniforms.size() atIndex:0];
 	}
+	if (sampled_image) {
+		[encoder setVertexTexture:sampled_image atIndex:0];
+		[encoder setFragmentTexture:sampled_image atIndex:0];
+	}
 	[encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
 	[encoder endEncoding];
 	return encoder;
@@ -115,6 +126,34 @@ id<MTLRenderCommandEncoder> encode(id<MTLCommandBuffer> command, id<MTLTexture> 
 pipeline::pipeline(std::unique_ptr<implementation> implementation)
     : implementation_(std::move(implementation)) {}
 pipeline::~pipeline() = default;
+texture::texture(std::unique_ptr<implementation> implementation)
+    : implementation_(std::move(implementation)) {}
+texture::~texture() = default;
+ice::expected<void, diagnostic> texture::update(const image &pixels) {
+	auto &data = *implementation_;
+	if (pixels.width != data.width || pixels.height != data.height ||
+	    pixels.rgba.size() != std::size_t(data.width) * data.height * 4)
+		return failure("Texture update requires matching dimensions and exact RGBA8 pixels");
+	@autoreleasepool {
+		MTLTextureDescriptor *descriptor =
+		    [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
+		                                                       width:data.width
+		                                                      height:data.height
+		                                                   mipmapped:NO];
+		descriptor.storageMode     = MTLStorageModeShared;
+		descriptor.usage           = MTLTextureUsageShaderRead;
+		id<MTLTexture> replacement = [data.state->device newTextureWithDescriptor:descriptor];
+		if (!replacement)
+			return failure("Metal sampled texture allocation failed");
+		[replacement replaceRegion:MTLRegionMake2D(0, 0, data.width, data.height)
+		               mipmapLevel:0
+		                 withBytes:pixels.rgba.data()
+		               bytesPerRow:std::size_t(data.width) * 4];
+		// Never overwrite storage that an earlier command buffer may still sample.
+		data.native = replacement;
+		return {};
+	}
+}
 presentation_surface::presentation_surface(std::unique_ptr<implementation> implementation)
     : implementation_(std::move(implementation)) {}
 presentation_surface::~presentation_surface() = default;
@@ -185,11 +224,21 @@ device::prepare_pipeline(const ice::io::resource_resolver &resolver, const std::
 				for (id<MTLBinding> binding in bindings) {
 					if (!binding.used || !binding.argument)
 						continue;
+					if (binding.type == MTLBindingTypeTexture && binding.index == 0 &&
+					    binding.access == MTLBindingAccessReadOnly) {
+						auto sampled = static_cast<id<MTLTextureBinding>>(binding);
+						if (sampled.textureType != MTLTextureType2D ||
+						    sampled.textureDataType != MTLDataTypeFloat || sampled.depthTexture ||
+						    sampled.arrayLength != 1)
+							return failure(uri + ": only a float sampled texture2d at fragment "
+							                     "texture(0) is supported");
+						result->sampled_image = true;
+						continue;
+					}
 					if (binding.type != MTLBindingTypeBuffer || binding.index != 0 ||
 					    binding.access != MTLBindingAccessReadOnly)
 						return failure(
-						    uri +
-						    ": this initial pipeline supports only read-only uniform buffer(0)");
+						    uri + ": this pipeline supports read-only buffer(0) and texture(0)");
 					auto buffer = static_cast<id<MTLBufferBinding>>(binding);
 					result->uniform_bytes =
 					    std::max(result->uniform_bytes, std::size_t(buffer.bufferDataSize));
@@ -203,6 +252,22 @@ device::prepare_pipeline(const ice::io::resource_resolver &resolver, const std::
 		// NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks)
 		return std::unique_ptr<pipeline>(new pipeline(std::move(result)));
 	}
+}
+ice::expected<std::unique_ptr<texture>, diagnostic> device::create_texture(const image &pixels) {
+	if (pixels.width < 1 || pixels.height < 1 || pixels.width > 4096 || pixels.height > 4096 ||
+	    pixels.rgba.size() != std::size_t(pixels.width) * pixels.height * 4)
+		return failure("Invalid sampled image dimensions or RGBA8 byte count");
+	auto data    = std::make_unique<texture::implementation>();
+	data->state  = state_;
+	data->width  = pixels.width;
+	data->height = pixels.height;
+	// The owner transfers through tl::expected; analyzer 18 loses that ownership path.
+	// NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks)
+	auto result   = std::unique_ptr<texture>(new texture(std::move(data)));
+	auto uploaded = result->update(pixels);
+	if (!uploaded)
+		return ice::unexpected(uploaded.error());
+	return result;
 }
 ice::expected<std::unique_ptr<presentation_surface>, diagnostic>
 device::attach_layer(void *layer, int width, int height) {
@@ -282,9 +347,13 @@ ice::expected<void, diagnostic> presentation_surface::wait_idle() {
 	}
 }
 ice::expected<frame_status, diagnostic>
-presentation_surface::draw(const pipeline &pipeline, std::span<const std::byte> uniforms) {
+presentation_surface::draw(const pipeline &pipeline, std::span<const std::byte> uniforms,
+                           const texture *sampled_image) {
 	auto &data     = *implementation_;
 	auto &prepared = *pipeline.implementation_;
+	if ((prepared.sampled_image && !sampled_image) ||
+	    (sampled_image && data.state != sampled_image->implementation_->state))
+		return failure("Missing required sampled image or foreign-device texture");
 	if (!valid_draw(data.state, prepared.state, uniforms, prepared.uniform_bytes))
 		return failure("Foreign pipeline or invalid uniform byte count");
 	if (!data.width || !data.height)
@@ -294,7 +363,8 @@ presentation_surface::draw(const pipeline &pipeline, std::span<const std::byte> 
 	@autoreleasepool {
 		id<CAMetalDrawable>  drawable = [data.layer nextDrawable];
 		id<MTLCommandBuffer> command  = drawable ? [data.state->queue commandBuffer] : nil;
-		if (!command || !encode(command, drawable.texture, prepared.native, uniforms)) {
+		if (!command || !encode(command, drawable.texture, prepared.native, uniforms,
+		                        sampled_image ? sampled_image->implementation_->native : nil)) {
 			dispatch_semaphore_signal(data.available);
 			if (!drawable)
 				return frame_status::unavailable;
@@ -315,8 +385,12 @@ presentation_surface::draw(const pipeline &pipeline, std::span<const std::byte> 
 }
 ice::expected<image, diagnostic> device::render_offscreen(const pipeline &pipeline, int width,
                                                           int                        height,
-                                                          std::span<const std::byte> uniforms) {
+                                                          std::span<const std::byte> uniforms,
+                                                          const texture *sampled_image) {
 	auto &prepared = *pipeline.implementation_;
+	if ((prepared.sampled_image && !sampled_image) ||
+	    (sampled_image && state_ != sampled_image->implementation_->state))
+		return failure("Missing required sampled image or foreign-device texture");
 	if (width < 1 || height < 1 || width > 4096 || height > 4096 ||
 	    !valid_draw(state_, prepared.state, uniforms, prepared.uniform_bytes))
 		return failure("Invalid capture dimensions, foreign pipeline or uniform byte count");
@@ -333,7 +407,9 @@ ice::expected<image, diagnostic> device::render_offscreen(const pipeline &pipeli
 		id<MTLBuffer>        readback = [state_->device newBufferWithLength:stride * height
                                                              options:MTLResourceStorageModeShared];
 		id<MTLCommandBuffer> command  = [state_->queue commandBuffer];
-		if (!target || !readback || !command || !encode(command, target, prepared.native, uniforms))
+		if (!target || !readback || !command ||
+		    !encode(command, target, prepared.native, uniforms,
+		            sampled_image ? sampled_image->implementation_->native : nil))
 			return failure("Metal capture allocation/encoding failed");
 		id<MTLBlitCommandEncoder> copy = [command blitCommandEncoder];
 		if (!copy)

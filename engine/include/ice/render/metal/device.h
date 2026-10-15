@@ -30,8 +30,26 @@ private:
 	friend class device;
 	friend class presentation_surface;
 };
+/// Owned sampled RGBA8 image. Row zero is the top row and samples at UV y=0.
+/// Updates replace native storage so preceding submissions keep their original image.
+class texture {
+public:
+	/// Release this owner; preceding native submissions retain the sampled storage.
+	~texture();
+	/// Replace pixels with the same dimensions, preserving the old image on failure.
+	ice::expected<void, diagnostic> update(const image &pixels);
+
+private:
+	struct implementation;
+	explicit texture(std::unique_ptr<implementation> implementation);
+	texture(const texture &other)                                   = delete;
+	texture                        &operator=(const texture &other) = delete;
+	std::unique_ptr<implementation> implementation_;
+	friend class device;
+	friend class presentation_surface;
+};
 /// Native presentation owner. UI/render-thread-only; destroy before the owning view/layer.
-/// This first backend supports procedural triangles and optional buffer(0) uniform bytes.
+/// Supports procedural triangles, optional buffer(0) bytes and one sampled RGBA8 image.
 class presentation_surface {
 public:
 	/// Detach owned presentation state; in-flight commands retain their resources.
@@ -41,7 +59,8 @@ public:
 	/// Draw three procedural vertices. Uniform bytes are copied, at most 4096, to buffer(0)
 	/// in both shader stages. Return busy rather than queue more than three in-flight frames.
 	ice::expected<frame_status, diagnostic> draw(const pipeline            &pipeline,
-	                                             std::span<const std::byte> uniforms = {});
+	                                             std::span<const std::byte> uniforms = {},
+	                                             const texture *sampled_image        = nullptr);
 	/// Finish preceding queue submissions before handing the native view to another renderer.
 	ice::expected<void, diagnostic> wait_idle();
 
@@ -70,6 +89,10 @@ public:
 	ice::expected<std::unique_ptr<pipeline>, diagnostic>
 	prepare_pipeline(const ice::io::resource_resolver &resolver, const std::string &uri,
 	                 const std::string &vertex_entry, const std::string &fragment_entry);
+	/// Upload one tightly packed RGBA8 image with dimensions in [1,4096].
+	/// Sampling is linear/clamped without mipmaps; bind as texture(0)/sampler2D unit zero in either
+	/// shader stage.
+	ice::expected<std::unique_ptr<texture>, diagnostic> create_texture(const image &pixels);
 	/// Attach a CAMetalLayer to an AppKit window's borrowed view. Restore its previous layer
 	/// on destruction. The caller keeps the window alive; only available on macOS.
 	ice::expected<std::unique_ptr<presentation_surface>, diagnostic>
@@ -83,7 +106,8 @@ public:
 	/// Dimensions are in [1,4096]. Intended for tests/captures, not the frame loop.
 	ice::expected<image, diagnostic> render_offscreen(const pipeline &pipeline, int width,
 	                                                  int                        height,
-	                                                  std::span<const std::byte> uniforms = {});
+	                                                  std::span<const std::byte> uniforms = {},
+	                                                  const texture *sampled_image = nullptr);
 	/// Consume a completed asynchronous GPU failure (at most 4096 UTF-8 bytes), or an empty
 	/// string; render-thread-only.
 	std::string take_error();
