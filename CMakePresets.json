@@ -45,6 +45,8 @@
       "binaryDir": "${sourceDir}/build/headless-debug",
       "cacheVariables": {
         "ICE_BUILD_DESKTOP": "OFF",
+        "ICE_BUILD_METAL": "OFF",
+        "ICE_BUILD_OPENGL": "OFF",
         "ICE_BUILD_COMPANION": "OFF",
         "ICE_BUILD_TOOLS": "OFF"
       }

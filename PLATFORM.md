@@ -44,12 +44,33 @@ build/desktop/bin/ice_window_smoke
 xvfb-run -a build/desktop/bin/ice_window_smoke
 ```
 
-Linux desktop configuration requires X11 development headers/libraries. Windows
-uses the Windows 10 SDK APIs and user32/gdi32; no OpenAL, OpenGL or old DirectX SDK
-is needed. Visual Studio builds place multi-configuration executables under the
+The window module requires X11 development headers/libraries on Linux and the Windows
+10 SDK with user32/gdi32 on Windows. Enabling the separate OpenGL renderer also requires
+the system OpenGL development libraries; there is no old DirectX SDK dependency.
+Visual Studio builds place multi-configuration executables under the
 configuration directory. Windows runtime/DPI/fullscreen behavior needs hardware
 validation; cross-compilation alone cannot establish it.
 
+## Renderer attachment and replacement
+
+`ice::render::device` selects Metal or OpenGL explicitly. A presentation surface borrows
+its native window; pipelines and surfaces independently retain their backend device.
+The common API grants one renderer attachment per logical window and rejects pipelines
+from another device. Keep simulation state and authored resource descriptions outside
+the GPU objects so a replacement can reconstruct them.
+
+The tested handoff prepares a candidate shader through a URI, renders a detached probe,
+drains the old surface, detaches it and attaches the candidate to the same window. Keep
+the prior device/pipeline until attachment succeeds so the application can restore them
+on failure. This sequence is currently application code, not a general scene migration
+service. Preparation and draining are synchronous. DLL unloading, mesh/texture resource
+migration and recovery from arbitrary driver hangs are not implemented.
+
+Metal creates a CAMetalLayer for desktop windows, or borrows an existing layer through
+the platform-surface adapter for an Apple mobile host. OpenGL uses native core-profile
+contexts: NSOpenGL on macOS, GLX on Linux and WGL on Windows. No GLFW or fixed-function
+drawing is involved. The Quest probe uses a separate OpenGL ES/OpenXR bootstrap; it
+does not imply the desktop GL backend runs on mobile.
+
 X11 display-server failure is not crash-contained. Native window callbacks and
-in-process C++ remain trusted engine code. Renderer loss/replacement will have a
-separate state/resource contract; no modern GPU backend is implemented here yet.
+in-process C++ remain trusted engine code.

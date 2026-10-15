@@ -32,7 +32,23 @@
     "engine/src/platform/win32/desktop_window.cpp",
     "engine/src/platform/x11/desktop_window.cpp",
     "tests/desktop_window.cpp",
-    "tests/public_headers.cpp"
+    "tests/public_headers.cpp",
+    "engine/include/ice/render/types.h",
+    "engine/include/ice/render/device.h",
+    "engine/include/ice/render/gl/device.h",
+    "engine/include/ice/render/metal/device.h",
+    "engine/src/render/device.cpp",
+    "engine/src/render/gl/api.h",
+    "engine/src/render/gl/native_context.h",
+    "engine/src/render/gl/device.cpp",
+    "engine/src/render/gl/macos.mm",
+    "engine/src/render/gl/x11.cpp",
+    "engine/src/render/gl/win32.cpp",
+    "engine/src/render/metal/device.mm",
+    "tests/gl.cpp",
+    "tests/metal.cpp",
+    "tests/render_switch.cpp",
+    "tests/metal_layer.mm"
   ],
   "lint": [
     "engine/src/io/resource_uri.cpp",
@@ -50,6 +66,21 @@
     "engine/src/data/graph.cpp",
     "engine/src/data/activation.cpp",
     "tests/data_graph.cpp",
-    "engine/src/platform/desktop_window.cpp"
-  ]
+    "engine/src/platform/desktop_window.cpp",
+    "engine/src/render/device.cpp",
+    "engine/src/render/gl/device.cpp",
+    "tests/gl.cpp",
+    "tests/render_switch.cpp"
+  ],
+  "lint_platform": {
+    "Darwin": [
+      "engine/src/render/metal/device.mm",
+      "engine/src/render/gl/macos.mm",
+      "tests/metal.cpp",
+      "tests/metal_layer.mm"
+    ],
+    "Linux": [
+      "engine/src/render/gl/x11.cpp"
+    ]
+  }
 }

@@ -62,7 +62,14 @@ The fixed-function OpenGL renderer and old device APIs are removed. Build a new 
 
 The common interface describes buffers/textures, pipelines, bindings, draw/dispatch work, render passes, synchronization and presentation surfaces. It exposes capabilities and native extensions. Resource state tracking and lifetime validation belong in the debuggable layer. Avoid promising that every backend supports the same shader features, binding model or command submission behavior: [D3D12 binding differs substantially from older Direct3D](https://learn.microsoft.com/en-us/windows/win32/direct3d12/important-changes-from-directx-11-to-directx-12), and [Metal has its own argument-buffer model](https://developer.apple.com/documentation/metal/improving-cpu-performance-by-using-argument-buffers).
 
-Implement Metal first on this Mac, Vulkan next on spacegoo, and D3D12 with Windows compile checks followed by actual hardware validation when available. Each backend must clear a surface, draw a shader triangle, upload a textured mesh, handle resize and independent previews, then run the same scene. These are planned backends, not completed implementations.
+Metal and OpenGL 4.1+ core now share the first procedural pipeline/presentation/capture
+slice, with actual Mac/Linux tests and same-window Mac backend handoffs. Keep the two
+close in feature parity as buffers, textures, mesh draws, depth and glTF materials are
+added. Mac OpenGL's 4.1 ceiling defines one portable profile, not every backend's maximum
+capability. Windows OpenGL has compile/link coverage; runtime validation awaits hardware.
+Add Vulkan against the same contracts on Linux/Android, then D3D12 when Windows test
+hardware is available. Resize, multiple previews, failed preparation and retained CPU
+state must continue working as each resource type is introduced.
 
 Keep backend-specific shaders available for experiments. Shared material shaders can acquire an offline compilation path after two real backends demonstrate the requirements. For Apple targets, native Metal stays the first choice for this learning project; Vulkan portability layers are a separate experiment. [Khronos documents the additional layer needed for Vulkan on Apple platforms](https://github.khronos.org/Vulkan-Site/guide/latest/windowing_audio_input.html).
 
@@ -95,7 +102,7 @@ can be recoverable; arbitrary in-process native corruption cannot be promised re
 Use disposable workers where crash containment is actually required.
 
 Remove abandoned fixed-function and old backend APIs instead of carrying compatibility
-layers into the modern interface. Metal, Vulkan and D3D12 should be driven by the same
+layers into the modern interface. Metal, OpenGL, Vulkan and D3D12 should be driven by the same
 resource/command/lifetime tests, with backend capabilities and extensions explicit.
 
 ## Retro targets as experiments
@@ -155,7 +162,8 @@ then grow the supported operations from demonstrated needs.
 ## Ignition as an external application
 
 Ignition becomes the primary interactive development application in a separate private
-repository outside ICE. Keep EngineTest as an ICE regression fixture. ICE owns reusable
+repository outside ICE. Retain importer/animation and runtime proofs as focused tests;
+the obsolete EngineTest application is removed. ICE owns reusable
 platform, rendering, data, language and command APIs; Ignition owns its experience,
 prompts, scenes, agent orchestration and product assets. Begin with an explicit local
 ICE checkout dependency, then pin tested revisions as the consumer boundary settles.
@@ -165,8 +173,17 @@ Desktop, iOS/Android and VR/AR are first-class host profiles. The shared session
 command model must support independent controller, simulation and presentation endpoints,
 including an optional watch remote client. XR needs tracked views/poses, actions, spatial
 UI and session/frame lifecycle rather than a single flat window assumption. Quest 3 is
-the first available XR hardware target; native device proofs remain follow-up work.
+the first XR hardware target; its standalone stereo/controller probe now runs on hardware.
 The detailed Ignition experience and implementation plan live in its private repository.
+
+Support both standalone XR and XR rendered by a more powerful desktop computer, with
+a wired headset connection as an explicit future host profile. The desktop OpenXR
+runtime owns device transport/composition; ICE supplies tracked views, actions and
+rendered frames through that runtime. Keep scene/session authority independent of
+where rendering runs so the same experience can use either host. Negotiate capabilities,
+latency/frame budgets and reconnect behavior explicitly. Wireless PC-driven XR can
+follow the wired proof. This is planned work after the current standalone Quest slice;
+ADB over Wi-Fi is only a development connection and does not implement PC rendering.
 
 ## Current checkpoint and next implementation order
 
@@ -184,20 +201,24 @@ prototype games, old platform/device APIs and unused historical dependencies are
 Airhockey and SkeeBall source/art/physics snapshots remain in `examples`; they are not
 build targets until ported. Native iOS/Android/watchOS probes remain independent examples.
 
-1. Finish the clean core/window checkpoint with C++20/23, headless builds, mobile rebuilds,
-   API/style checks and case-sensitive Linux/native-window validation.
-2. Drive Metal from external Ignition: surface lifecycle, shader triangle, programmable
-   warm-up, terminal/text and human input. Define resource/pipeline/handle lifetime tests
-   rather than emulate the old device. Add Vulkan and D3D12 against those same contracts.
+1. The clean core/window checkpoint is merged into `master` at `249485d`. Complete review
+   of the first Metal/OpenGL parity slice and external Ignition boot study, including
+   C++20/23, real GPU captures, Linux software GPU and Windows cross-link coverage.
+2. The independent OpenXR stereo/action/lifecycle bootstrap now runs on Quest 3,
+   and the iOS companion uses shared Metal with native multiwindow surfaces. Continue
+   desktop text/IME and input routing for Ignition's terminal. Expand shared rendering
+   with buffers, textures, indexed meshes and depth before porting glTF materials.
 3. Connect typed command operations and prepared resource/data activation at a host boundary.
    Inspect, pause/step, edit, capture, undo and save through a shared service; add MCP as a
    client adapter. Add bounded interpreted scripting and staged script replacement.
-4. Re-establish animated glTF/materials on modern backends, resource reload and retained
-   scene state, then prove renderer replacement without discarding the session.
+4. Re-establish animated glTF/materials on both backends, resource reload and retained
+   scene state. Extend the existing procedural renderer-switch proof to these resources;
+   add Vulkan and D3D12 against the same tests as hardware/capabilities allow.
 5. Add optional engine physics modules and port Airhockey/SkeeBall onto them. Mobile
    companion/browser party input, QR join and multiple players remain useful integration
    examples. Revisit SkeeBall tuning after that shared interaction stack works.
-6. Extend first-class mobile and Quest/OpenXR surfaces/input. The Watch can be a lightweight
+6. Connect first-class mobile and Quest/OpenXR surfaces/input to the shared rendering and
+   session model. The Watch can be a lightweight
    remote client; no current physical Watch deployment is claimed. AR-driven physical
    interaction and screen casting are later experiments with explicit device capabilities.
 7. Run docs/MCP-only exploratory agents once the surface is useful. Record reproducible
@@ -210,3 +231,26 @@ deformable bodies, instanced construction, bounded automatic spawning, first-per
 and rigged physics ragdolls. These capabilities are not implemented by this cleanup.
 A static bunny asset does not supply skeleton/joints/limits or skin weights automatically.
 Each operation should be inspectable and independently undoable while the session stays live.
+
+## Live sound authoring and collaborative rooms
+
+Two additional acceptance scenarios drive reusable engine work:
+
+- Record the user's own laser/banana-shotgun sound effects, preview/edit them, then
+  bind them to firing events while the game continues. This needs microphone capture,
+  bounded recording, audio assets with stable URIs/provenance, event bindings, mixing
+  and spatial playback, plus prepared audio replacement at a safe runtime boundary.
+- Invite friends into the sandbox and let humans and their scoped agents jointly
+  generate scripts, assets and game behavior inside a running VR session. This needs
+  shared identities, authoritative simulation, revisioned transactions, concurrent-edit
+  conflict handling, snapshots/deltas for late join and capability-aware asset delivery.
+
+Both use the same session/command model as the terminal and MCP clients. Prepare code,
+media and renderer variants away from the frame loop, then activate coherent changes;
+failure keeps the last working version. Preserve state and generation-checked references
+across reloads. Session roles/capabilities govern who may edit, run scripts or invite
+others; an owner can grant ongoing authoring access so normal collaboration stays fast.
+Publishing a room and sharing recorded assets are explicit operations. Per-client
+interpreter/resource budgets and local/desktop-rendered XR profiles remain part of
+this design. These scenarios are planned; the current XR probe has no multiplayer,
+microphone capture, audio runtime or live script service.

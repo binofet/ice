@@ -4,4 +4,5 @@ add_library(ICEUriRuntime STATIC "${ICE_URI_ROOT}/engine/src/io/resource_uri.cpp
 add_library(ice::uri ALIAS ICEUriRuntime)
 target_include_directories(ICEUriRuntime PUBLIC "${ICE_URI_ROOT}/engine/include")
 target_compile_features(ICEUriRuntime PUBLIC cxx_std_${ICE_CXX_STANDARD})
+set_target_properties(ICEUriRuntime PROPERTIES POSITION_INDEPENDENT_CODE ON XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED NO)
 ice_strict_target(ICEUriRuntime)

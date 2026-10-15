@@ -3,6 +3,16 @@
 
 /build/
 
+# Generated native objects/libraries belong in build directories, never in source control.
+*.a
+*.lib
+*.o
+*.so
+*.so.*
+*.dylib
+*.dll
+*.pdb
+
 # Python quality-tool and schema-reader caches.
 __pycache__/
 *.py[cod]

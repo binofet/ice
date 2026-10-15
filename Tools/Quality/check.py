@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import platform
 from pathlib import Path
 import re
 import shutil
@@ -55,6 +56,7 @@ def main():
     if args.fix and args.command != "format":
         parser.error("--fix applies only to formatting; analyzer fixes require manual review")
     scope = json.loads((ROOT / "Tools/Quality/scope.json").read_text())
+    scope["lint"] += scope.get("lint_platform", {}).get(platform.system(), [])
     if args.changed_from:
         paths = git_paths("diff", "--name-only", "--diff-filter=ACMR", args.changed_from)
         paths += git_paths("ls-files", "--others", "--exclude-standard")

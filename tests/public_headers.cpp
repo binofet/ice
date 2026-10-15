@@ -13,7 +13,14 @@
 #include "ice/net/companion_web.h"
 #include "ice/platform/host.h"
 #include "ice/platform/platform_events.h"
+#include "ice/render/device.h"
 #include "ice/render/scene_camera.h"
+#ifdef ICE_HAS_METAL
+#include "ice/render/metal/device.h"
+#endif
+#ifdef ICE_HAS_OPENGL
+#include "ice/render/gl/device.h"
+#endif
 #include "ice/util/join_qr.h"
 #ifdef ICE_HAS_DESKTOP
 #include "ice/platform/desktop_window.h"

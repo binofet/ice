@@ -1,8 +1,8 @@
 # Repository and release workflow
 
-This is the proposed workflow for the rebuilt ICE ecosystem. ICE keeps its existing
-`master` default branch; current engine work is on `codex/ice-playground`. Metagen and
-Ignition were created on `main`. No engine merge or branch rename has been performed.
+ICE keeps its existing `master` default branch. The validated cleanup was merged and
+pushed at `249485d`; renderer development continues on `feature/render-parity`. Metagen
+and Ignition use `main`. No branch rename is needed.
 
 ## Default and feature branches
 
@@ -11,10 +11,8 @@ Use the stable default branch (`master` in ICE) and short-lived `feature/`, `fix
 coherent milestones. Avoid a permanent develop branch and another long-lived catch-all
 playground branch. Code can merge without becoming a public release.
 
-After repository separation and the current cleanup have a reviewed, tested checkpoint,
-check that the old default branch is an ancestor, reconcile any independent changes,
-then merge the engine milestone into the existing `master`. Preserve commit history;
-do not force-rewrite the default to manufacture a clean merge. Branch
+Before merging a milestone, check ancestry and reconcile any independent changes.
+Preserve commit history; do not force-rewrite the default to manufacture a clean merge. Branch
 protections/release automation are follow-up configuration, not already enabled policy.
 
 ## Three repositories and explicit dependency commits
@@ -41,6 +39,15 @@ python3 Tools/MetagenIntegration/check.py --cached-only
 Do not blindly run recursive `update --remote`: it may select a branch unrelated to the
 consumer's validated baseline. Explicitly select the intended child commit and record it.
 
+## Linux agent workspace
+
+Spacegoo has a persistent checkout at `~/dev/ice`, initially on
+`feature/linux-validation` at the cleanup baseline. Linux agents work and run builds
+directly there. Exchange reviewed commits through Git and preserve each host's local
+branches; review diffs before pushing. Avoid repeated temporary source copies as the
+normal development workflow. The ignored `build/linux-tools/README.md` records the
+native dependency setup and Xvfb/GPU commands; it does not depend on `/tmp` tools.
+
 ## Versions
 
 Each repository owns separate `vMAJOR.MINOR.PATCH` tags and release notes. Begin on a
@@ -56,7 +63,7 @@ its explicit licensing, documentation, packaging and conformance release review.
 
 ## Modern cleanup checkpoint — 2026-10-15
 
-The supported engine contains no OpenGL context or fixed-function renderer. The
+At commit `249485d`, the supported engine contained no OpenGL context or fixed-function renderer. The
 native desktop layer owns windows independently of GPU presentation. Airhockey and
 SkeeBall retain all 492 relocated files with unchanged contents, plus their port
 notes; they are not active build targets. CPU glTF assets retain licenses/provenance.
@@ -76,5 +83,46 @@ Validation of this source checkpoint:
   argument-name checks pass; review comments for semantics as well as coverage.
 - Ten Metagen consumer caches verify; the five-test native/RTTR integration passes.
 
-Modern GPU backends, desktop text/IME/pointer integration, game ports and renderer
-replacement remain future work. These checks do not establish them implicitly.
+Those cleanup checks did not establish GPU backends, desktop text/IME/pointer support
+or game ports. The following work is a separate reviewable milestone.
+
+## Procedural renderer parity — working milestone
+
+Native Metal and OpenGL 4.1+ core share explicit device/pipeline/surface ownership,
+URI shader preparation, read-only uniform blocks, procedural draws and RGBA8 capture.
+Common device tokens reject foreign pipelines; one common renderer attachment is
+allowed per logical window. This is a deliberately small interface, with mesh/texture
+resources, scene migration and compute still to add.
+
+Validation recorded so far:
+
+- Mac: both native backend suites and eight Metal/OpenGL handoffs pass; the same
+  logical window and CPU simulation state survive. Failed preparation preserves the
+  working pipeline. Borrowed Metal layers reject overlapping common/native renderer
+  owners and allow reattachment after retirement. The Ignition consumer also switches
+  its actual boot shader.
+- Linux/spacegoo: Mesa core-profile tests, OpenGL device replacements and the external
+  Ignition executable run under Xvfb. This is software-GPU validation.
+- Windows: C++20/23 OpenGL and switching executables cross-compile/link with MinGW;
+  runtime graphics, DPI and fullscreen remain unverified.
+- Ignition's deterministic Metal/OpenGL boot captures at 1280x800 differ by at most
+  3/255 per RGB channel on this Mac. This covers one procedural shader, not future
+  materials or cross-driver precision in general.
+- Quest: native arm64 OpenXR/GLES probes build/sign in C++20/23, and both have run
+  on Quest 3. Recorded stereo/head/controller input and menu/remove-rewear lifecycle
+  checks include a wireless C++20 installation. An origin-change anchoring defect was
+  found and fixed; host regressions and a correlated fixed-build hardware retest pass,
+  including origin-change records and stereo frames after both resume checks.
+  [The hardware record](examples/xr/hardware-validation.md) separates these results. Wireless ADB works while awake; reconnect after reboot remains untested.
+- iOS/iPadOS: the companion uses the common Metal renderer on physical A17 Pro and
+  M2 devices, compiling its URI shader and submitting animated frames. The user
+  confirmed touch, rotation and Home/reopen behavior on both. iPad multiwindow
+  diagnostics record independent submitted frames, resizes and surface retirement;
+  closing one leaves another responsive. Both device and arm64 simulator builds pass.
+  See [MOBILE.md](MOBILE.md) for the hardware checkpoint and opt-in diagnostics.
+
+Keep new code available for diff review before committing/pushing this milestone.
+Ignition uses an explicit local ICE checkout while these changes are uncommitted;
+update its submodule to the reviewed engine commit before publishing its application
+checkpoint. A first submitted frame log measures submission, not physical display
+latency or a cold-start benchmark.

@@ -41,8 +41,12 @@ available, and sampling stops when inactive.
 `examples/mobile/ios` is a native UIKit scene app. Each scene owns a UIView with
 a CAMetalLayer surface; a process-wide display callback drives the host. Foreground
 state is aggregated across scenes, and background scenes hide their own surfaces.
-The renderer clears/presents a real Metal drawable. Multitouch and CoreMotion feed
-host devices. This proves the boundary; it is not yet ICE's complete Metal renderer.
+The companion uses `ice::render::device` and the shared Metal backend, with one
+process-wide device/pipeline and a presentation surface per scene. The bundled
+`shaders://mobile/companion.metal` source compiles through the URI pipeline and draws
+an animated background that responds to the controller gesture. UIKit controls,
+multitouch and CoreMotion feed the same host. This proves procedural rendering and
+surface ownership; meshes, textures, depth and compute remain renderer milestones.
 
 Build an unsigned simulator or device app:
 
@@ -59,9 +63,9 @@ xcrun simctl install booted build/mobile/ios-simulator/Debug-iphonesimulator/ICE
 xcrun simctl launch --console-pty booted org.ice.MobileProbe
 ```
 
-The probe now hosts the [companion controller lab](COMPANION.md). The initial
-new-surface button has been replaced by controller controls; use iPadOS window
-controls to open additional scenes. Rotate, background/resume, and open another scene
+The probe now hosts the [companion controller lab](COMPANION.md). On systems that
+support multiple scenes, **Tools → New window** requests an additional native scene.
+Rotate, background/resume, and open another scene
 to exercise surface/lifecycle behavior. Physical deployment needs Xcode signing with
 an appropriate development team/profile; unsigned device builds cannot be installed.
 
@@ -97,16 +101,35 @@ behavior, real GPU performance or device-specific driver correctness.
 
 1. Route desktop keyboard/text/IME and pointer devices through the shared host, with
    per-window focus and input cancellation instead of a compatibility singleton.
-2. Build reusable Metal, Vulkan and D3D12 renderers: resource lifetime, pipelines,
-   shaders, meshes, resize and device replacement. Mobile surfaces remain first-class.
+2. Extend the shared Metal/OpenGL pipeline and presentation foundation with meshes,
+   textures and depth; add Vulkan and D3D12. Mobile surfaces remain first-class.
 3. Restore SkeeBall through shared engine physics/render APIs, then extend companion
    interaction with AR/pose experiments. QR/browser joining and multiple-player room
    logic are retained, but the game UI awaits its modern renderer port.
-4. Add Quest/OpenXR surfaces and tracked input; keep watchOS useful as a lightweight
-   remote controller. No current physical Watch deployment is claimed.
+4. Extend the working Quest/OpenXR GLES probe toward shared rendering and spatial
+   interaction; keep watchOS useful as a lightweight remote controller. No current
+   physical Watch deployment is claimed. See [examples/xr/README.md](examples/xr/README.md).
 
 SkeeBall physics tuning remains deferred. See [PLAYGROUND.md](PLAYGROUND.md) for the
 shared work order and [EXAMPLES.md](EXAMPLES.md) for retained game status.
+
+## Shared Metal hardware checkpoint — 2026-10-15
+
+The signed companion ran the common renderer on iPhone 15 Pro Max (Apple A17 Pro)
+and iPad Pro 11-inch, fourth generation (Apple M2). Both compiled the bundled shader
+on-device, submitted animated frames and received input. The user confirmed normal
+controls after dragging/releasing, rotating and going Home/reopening on both devices.
+The iPad also submitted frames to independent scene surfaces while resizing them;
+closing a window retired its surface. The user confirmed both windows worked and
+the remaining window stayed responsive after closing the other. This is a functional
+check, not a performance or cold-start benchmark.
+
+For bounded diagnostics, launch with `--record-render-diagnostics`. The probe writes
+at most 128 sparse events of up to 2048 bytes each into
+`Library/Caches/ice-render-diagnostics.txt` in its own container. It records renderer,
+scene/surface, state, resize, submission and error information. Per-surface frame counts
+make simultaneous scene submissions distinguishable. The flag is opt-in; it does not
+collect raw motion samples or system logs.
 
 ## Cleanup verification — 2026-10-15
 

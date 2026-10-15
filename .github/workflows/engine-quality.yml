@@ -14,7 +14,7 @@ jobs:
           python-version: '3.12'
       - name: Linux development libraries
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y clang-18 libx11-dev xvfb
+        run: sudo apt-get update && sudo apt-get install -y clang-18 libx11-dev libgl-dev libgl1-mesa-dri xvfb xauth
       - name: Pinned quality tools
         run: python -m pip install -r Tools/Quality/requirements.txt
       - name: Metagen consumer cache integrity
@@ -42,6 +42,11 @@ jobs:
         run: python Tools/Quality/api.py --build-dir build/ci
       - name: Static analysis
         run: python Tools/Quality/check.py lint --build-dir build/ci
-      - name: Linux native window lifecycle
+      - name: Linux native window and software GPU checks
         if: runner.os == 'Linux'
-        run: xvfb-run -a build/ci/bin/ice_window_smoke
+        env:
+          LIBGL_ALWAYS_SOFTWARE: '1'
+        run: |
+          xvfb-run -a build/ci/bin/ice_window_smoke
+          xvfb-run -a build/ci/bin/ice_gl_tests tests/data/gl
+          xvfb-run -a build/ci/bin/ice_render_switch_tests tests/data

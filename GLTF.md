@@ -49,8 +49,10 @@ root motion, events, retargeting and modern GPU palette transport remain future 
 
 `scene_camera` uses RH world-to-camera matrices, +Y up, with explicit clip depth. Default
 is [0,1]; callers can select [-1,1]. Viewport orientation and winding belong to a backend.
-The engine contains no surviving GL shader, GPU skinning or PBR implementation in this
-checkpoint; modern backend tests must re-establish image correctness.
+The new Metal/OpenGL backends currently exercise procedural shaders and uniform
+blocks. GPU mesh/texture upload, skinning and PBR have not yet been ported onto them;
+their importer fixtures will drive the next shared rendering slice. Matching procedural
+captures alone does not establish glTF material, winding or skinning correctness.
 
 Headless `ice_gltf_assets`, `ice_resource_uri` and `ice_scene_animation` tests cover
 resource decoding, transactional failure, hierarchy/skin/blend behavior and camera math.

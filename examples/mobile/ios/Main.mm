@@ -1,21 +1,22 @@
 #include "ice/input/companion.h"
 #include "ice/net/companion_link.h"
 #include "ice/platform/host.h"
+#include "ice/render/device.h"
 #import <CoreMotion/CoreMotion.h>
 #import <QuartzCore/CAMetalLayer.h>
 #import <UIKit/UIKit.h>
+#include <array>
 #include <chrono>
-#import <metal/metal.h>
 static double networkNow() {
 	return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch())
 	    .count();
 }
 #include "../Common/Demo.h"
 #include <cmath>
+#include <deque>
+#include <fstream>
 #include <map>
 
-static id<MTLDevice>                             device;
-static id<MTLCommandQueue>                       commands;
 static CMMotionManager                          *motion;
 static ice::platform::device_id                  touchDevice = 0, accelDevice = 0, gyroDevice = 0;
 static void                                      updateSensors(bool active);
@@ -33,6 +34,7 @@ static NSMapTable<NSNumber *, UIView *>         *companionViews;
 @property(nonatomic, strong) UIButton           *share;
 @property(nonatomic, strong) UIButton           *connect;
 @property(nonatomic, strong) UIButton           *tools;
+@property(nonatomic, strong) UIButton           *windowButton;
 @property(nonatomic) BOOL                        toolsVisible;
 @property(nonatomic, strong) UIProgressView     *power;
 @property(nonatomic, strong) UIView             *pad;
@@ -41,6 +43,69 @@ static NSMapTable<NSNumber *, UIView *>         *companionViews;
 - (void)refreshCompanion;
 @end
 struct ProbeClient : ice::platform::host_client {
+	std::unique_ptr<ice::render::device>   gpu;
+	std::unique_ptr<ice::render::pipeline> pipeline;
+	std::map<ice::platform::surface_id, std::unique_ptr<ice::render::presentation_surface>> targets;
+	std::map<ice::platform::surface_id, unsigned> submitted_frames;
+	bool                                          rendering_active = false;
+	std::string                                   renderer_error;
+	std::string                                   diagnostic_path;
+	std::deque<std::string>                       diagnostic_events;
+	void                                          record_renderer_event(std::string event) {
+        if (diagnostic_path.empty())
+            return;
+        diagnostic_events.push_back(event.substr(0, 2048));
+        if (diagnostic_events.size() > 128)
+            diagnostic_events.pop_front();
+        // Opt-in, bounded app-cache diagnostics survive console detach and device sleep.
+        std::ofstream output(diagnostic_path, std::ios::trunc);
+        for (const auto &entry : diagnostic_events)
+            output << entry << '\n';
+	}
+	void report_renderer_error(const std::string &message) {
+		if (message != renderer_error)
+			NSLog(@"ICE renderer error: %s", message.c_str());
+		if (message != renderer_error)
+			record_renderer_event("ERROR " + message);
+		renderer_error = message;
+	}
+	bool initialize_renderer() {
+		if ([NSProcessInfo.processInfo.arguments containsObject:@"--record-render-diagnostics"]) {
+			NSString *cache =
+			    NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES)
+			        .firstObject;
+			diagnostic_path =
+			    [cache stringByAppendingPathComponent:@"ice-render-diagnostics.txt"].UTF8String;
+		}
+		auto created = ice::render::device::create(ice::render::backend_kind::metal);
+		if (!created) {
+			report_renderer_error(created.error().message);
+			return false;
+		}
+		ice::io::resource_resolver resolver;
+		ice::io::resource_uri      directory;
+		std::string                error;
+		std::string                root = NSBundle.mainBundle.resourcePath.UTF8String;
+		if (!ice::io::resource_uri::from_path(root + "/", directory, error) ||
+		    !resolver.mount("shaders://mobile/", directory.string(), error)) {
+			report_renderer_error(error);
+			return false;
+		}
+		auto prepared =
+		    (*created)->prepare_pipeline(resolver, {"shaders://mobile/companion.metal",
+		                                            "companion_vertex", "companion_fragment"});
+		if (!prepared) {
+			report_renderer_error(prepared.error().message);
+			return false;
+		}
+		pipeline = std::move(*prepared);
+		gpu      = std::move(*created);
+		NSLog(@"ICE shared renderer ready: %s; shaders://mobile/companion.metal",
+		      gpu->name().c_str());
+		record_renderer_event("READY shared Metal " + gpu->name() +
+		                      " shaders://mobile/companion.metal");
+		return true;
+	}
 	unsigned                      frames = 0, inputs = 0, surfaces = 0;
 	double                        elapsed = 0;
 	ice::input::companion_session companion;
@@ -60,6 +125,18 @@ struct ProbeClient : ice::platform::host_client {
 	}
 	void on_app_state(ice::platform::app_state state) override {
 		NSLog(@"ICE state=%d", (int)state);
+		record_renderer_event("STATE " + std::to_string(static_cast<int>(state)));
+		// Finish foreground submissions on resign-active, before iOS prohibits GPU work in
+		// the background. Do not submit another queue barrier from a later background event.
+		if (rendering_active && state != ice::platform::app_state::active) {
+			for (auto &[identity, target] : targets) {
+				(void)identity;
+				auto result = target->wait_idle();
+				if (!result)
+					report_renderer_error(result.error().message);
+			}
+		}
+		rendering_active = state == ice::platform::app_state::active;
 		if (state != ice::platform::app_state::active) {
 			FinishRecording();
 			companion.deactivate();
@@ -70,13 +147,37 @@ struct ProbeClient : ice::platform::host_client {
 	void on_surface_added(const ice::platform::surface &s) override {
 		++surfaces;
 		NSLog(@"ICE surface added=%llu %dx%d", s.id, s.width, s.height);
+		auto attached = gpu->attach(s);
+		if (!attached) {
+			report_renderer_error(attached.error().message);
+			return;
+		}
+		targets.emplace(s.id, std::move(*attached));
+		submitted_frames.emplace(s.id, 0);
+		record_renderer_event("ATTACH " + std::to_string(s.id));
 	}
 	void on_surface_changed(const ice::platform::surface &s) override {
 		NSLog(@"ICE surface resized=%llu %dx%d", s.id, s.width, s.height);
+		auto target = targets.find(s.id);
+		if (target != targets.end() && !target->second->resize(s.width, s.height))
+			report_renderer_error("Drawable dimensions rejected");
+		record_renderer_event("RESIZE " + std::to_string(s.id) + " " + std::to_string(s.width) +
+		                      "x" + std::to_string(s.height));
 	}
 	void on_surface_removed(const ice::platform::surface &s) override {
 		--surfaces;
 		NSLog(@"ICE surface removed=%llu", s.id);
+		auto target = targets.find(s.id);
+		if (target != targets.end()) {
+			if (rendering_active) {
+				auto result = target->second->wait_idle();
+				if (!result)
+					report_renderer_error(result.error().message);
+			}
+			targets.erase(target);
+			submitted_frames.erase(s.id);
+		}
+		record_renderer_event("DETACH " + std::to_string(s.id));
 	}
 	void on_input(const ice::platform::device_input &e) override {
 		++inputs;
@@ -105,26 +206,39 @@ struct ProbeClient : ice::platform::host_client {
 			companion.set_mode(ice::input::shot_mode::touch);
 	}
 	void on_render(const ice::platform::surface &s) override {
-		CAMetalLayer       *layer    = (__bridge CAMetalLayer *)s.native_handle;
-		id<CAMetalDrawable> drawable = [layer nextDrawable];
-		if (!drawable)
-			return;
-		MTLRenderPassDescriptor *pass        = [MTLRenderPassDescriptor renderPassDescriptor];
-		pass.colorAttachments[0].texture     = drawable.texture;
-		pass.colorAttachments[0].loadAction  = MTLLoadActionClear;
-		pass.colorAttachments[0].storeAction = MTLStoreActionStore;
-		float strength                       = companion.gesture().power();
-		pass.colorAttachments[0].clearColor =
-		    MTLClearColorMake(.035 + .08 * strength, .07 + .2 * strength, .12 + .25 * strength, 1);
 		[(ICEView *)[companionViews objectForKey:@(s.id)] refreshCompanion];
-		id<MTLCommandBuffer>        buffer  = [commands commandBuffer];
-		id<MTLRenderCommandEncoder> encoder = [buffer renderCommandEncoderWithDescriptor:pass];
-		[encoder endEncoding];
-		[buffer presentDrawable:drawable];
-		[buffer commit];
+		auto target = targets.find(s.id);
+		if (target == targets.end())
+			return;
+		std::array<float, 8> values{float(elapsed),
+		                            companion.gesture().power(),
+		                            float(s.width),
+		                            float(s.height),
+		                            companion.gesture().aim(),
+		                            float(companion.gesture().armed()),
+		                            0,
+		                            0};
+		auto result = target->second->draw(*pipeline, std::as_bytes(std::span(values)));
+		if (!result) {
+			report_renderer_error(result.error().message);
+			return;
+		}
+		auto error = gpu->take_error();
+		if (!error.empty())
+			report_renderer_error(error);
+		if (*result != ice::render::frame_status::submitted)
+			return;
 		++frames;
-		if (frames == 1 || frames % 300 == 0)
-			NSLog(@"ICE Metal frame=%u input=%u surfaces=%u", frames, inputs, surfaces);
+		auto &surface_frames = submitted_frames.at(s.id);
+		++surface_frames;
+		if (surface_frames == 1 || surface_frames % 300 == 0) {
+			NSLog(@"ICE shared Metal frame=%u input=%u surfaces=%u size=%dx%d", frames, inputs,
+			      surfaces, s.width, s.height);
+			record_renderer_event(
+			    "FRAME " + std::to_string(surface_frames) + " surface=" + std::to_string(s.id) +
+			    " inputs=" + std::to_string(inputs) + " surfaces=" + std::to_string(surfaces) +
+			    " size=" + std::to_string(s.width) + "x" + std::to_string(s.height));
+		}
 	}
 };
 static ProbeClient                                client;
@@ -239,7 +353,16 @@ static void updateSensors(bool active) {
 	self.calibrate = buttons[2];
 	self.share     = buttons[3];
 	self.connect   = buttons[4];
-	self.tools     = [UIButton buttonWithType:UIButtonTypeSystem];
+	if (UIApplication.sharedApplication.supportsMultipleScenes) {
+		self.windowButton = [UIButton buttonWithType:UIButtonTypeSystem];
+		[self.windowButton setTitle:@"New window" forState:UIControlStateNormal];
+		[self.windowButton addTarget:self
+		                      action:@selector(addScene)
+		            forControlEvents:UIControlEventTouchUpInside];
+		self.windowButton.hidden = YES;
+		[self addSubview:self.windowButton];
+	}
+	self.tools = [UIButton buttonWithType:UIButtonTypeSystem];
 	[self.tools setTitle:@"Tools" forState:UIControlStateNormal];
 	[self.tools addTarget:self
 	               action:@selector(toggleTools)
@@ -273,11 +396,11 @@ static void updateSensors(bool active) {
 	CAMetalLayer *layer = (CAMetalLayer *)self.layer;
 	CGFloat       scale = self.window.screen.scale ?: UIScreen.mainScreen.scale;
 	layer.contentsScale = scale;
-	layer.drawableSize =
+	CGSize drawable_size =
 	    CGSizeMake(self.bounds.size.width * scale, self.bounds.size.height * scale);
 	if (self.surface)
-		host.resize_surface(self.surface, (int)layer.drawableSize.width,
-		                    (int)layer.drawableSize.height, scale);
+		host.resize_surface(self.surface, (int)drawable_size.width, (int)drawable_size.height,
+		                    scale);
 	CGFloat width_ = MIN(720, self.bounds.size.width - 40),
 	        left = (self.bounds.size.width - width_) / 2, top = self.safeAreaInsets.top + 12;
 	BOOL    compact  = self.bounds.size.height < 550;
@@ -288,12 +411,15 @@ static void updateSensors(bool active) {
 	self.status.frame  = CGRectMake(left, top + 38, width_, 30);
 	self.connect.frame = CGRectMake(left, top + controls, width_ * .72, 44);
 	self.connect.backgroundColor = [UIColor colorWithRed:.08 green:.4 blue:.55 alpha:1];
-	self.tools.frame           = CGRectMake(left + width_ * .76, top + controls, width_ * .24, 44);
-	self.mode.frame            = CGRectMake(left, top + controls + 54, width_, 32);
-	NSArray<UIButton *> *items = @[ self.record, self.replay, self.calibrate, self.share ];
+	self.tools.frame = CGRectMake(left + width_ * .76, top + controls, width_ * .24, 44);
+	self.mode.frame  = CGRectMake(left, top + controls + 54, width_, 32);
+	NSMutableArray<UIButton *> *items =
+	    [NSMutableArray arrayWithArray:@[ self.record, self.replay, self.calibrate, self.share ]];
+	if (self.windowButton)
+		[items addObject:self.windowButton];
 	for (NSUInteger i = 0; i < items.count; ++i)
-		items[i].frame =
-		    CGRectMake(left + i * (width_ + 8) / 4, top + controls + 94, (width_ - 24) / 4, 36);
+		items[i].frame = CGRectMake(left + i * (width_ + 8) / items.count, top + controls + 94,
+		                            (width_ - 8 * (items.count - 1)) / items.count, 36);
 	self.shot.frame  = CGRectMake(left, top + shot, width_, 44);
 	self.power.frame = CGRectMake(left, top + power, width_, 8);
 	self.pad.frame =
@@ -360,6 +486,7 @@ static void updateSensors(bool active) {
 	self.toolsVisible = !self.toolsVisible;
 	for (UIView *view in @[ self.mode, self.record, self.replay, self.calibrate, self.share ])
 		view.hidden = !self.toolsVisible;
+	self.windowButton.hidden = !self.toolsVisible;
 	[self.tools setTitle:self.toolsVisible ? @"Done" : @"Tools" forState:UIControlStateNormal];
 	[self setNeedsLayout];
 }
@@ -460,12 +587,11 @@ static void updateSensors(bool active) {
 	[self.window.rootViewController presentViewController:sheet animated:YES completion:nil];
 }
 - (void)addScene {
-	[UIApplication.sharedApplication requestSceneSessionActivation:nil
-	                                                  userActivity:nil
-	                                                       options:nil
-	                                                  errorHandler:^(NSError *error) {
-		                                                NSLog(@"ICE scene request: %@", error);
-	                                                  }];
+	[UIApplication.sharedApplication
+	    activateSceneSessionForRequest:UISceneSessionActivationRequest.request
+	                      errorHandler:^(NSError *error) {
+		                    client.report_renderer_error(error.localizedDescription.UTF8String);
+	                      }];
 }
 - (void)sendTouches:(NSSet<UITouch *> *)touches phase:(ice::platform::input_phase)phase {
 	for (UITouch *touch in touches) {
@@ -507,9 +633,7 @@ static void updateSensors(bool active) {
 	UIViewController *controller = [UIViewController new];
 	ICEView          *view       = [[ICEView alloc] initWithFrame:self.window.bounds];
 	view.multipleTouchEnabled    = YES;
-	CAMetalLayer *layer          = (CAMetalLayer *)view.layer;
-	layer.device                 = device;
-	layer.pixelFormat            = MTLPixelFormatBGRA8Unorm;
+	CAMetalLayer          *layer = (CAMetalLayer *)view.layer;
 	ice::platform::surface surface;
 	surface.api           = ice::platform::surface_api::metal;
 	surface.native_handle = (__bridge void *)layer;
@@ -555,9 +679,7 @@ static void updateSensors(bool active) {
 @end
 @implementation ICEAppDelegate
 - (BOOL)application:(UIApplication *)app didFinishLaunchingWithOptions:(NSDictionary *)options {
-	device   = MTLCreateSystemDefaultDevice();
-	commands = [device newCommandQueue];
-	if (!device || !commands)
+	if (!client.initialize_renderer())
 		return NO;
 	companionViews = [NSMapTable strongToWeakObjectsMapTable];
 	NSString *documents =
