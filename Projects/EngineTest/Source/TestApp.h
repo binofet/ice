@@ -14,6 +14,7 @@ public:
     ICRESULT Init(int argc,char** argv) override;
     ICRESULT Cleanup() override;
     ICRESULT Update() override;
+    ICRESULT UpdateFrame(double seconds);
     ICRESULT Render() override {return RenderFrame(true);}
     ICRESULT RenderFrame(bool present);
     void PresentFrame(){m_pGxDevice->FrameEnd(true);}

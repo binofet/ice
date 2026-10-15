@@ -78,3 +78,10 @@ Longevity comes from documented data formats, reproducible offline builds, backe
 7. Headless simulation/replay sample and an optional original-Xbox profile experiment.
 
 The order may change when a particular experiment is more interesting. Every step should leave a runnable playground.
+
+## Native mobile host
+
+The first callback-driven host and iOS/Android platform probes are implemented. See
+[MOBILE.md](MOBILE.md) for ownership, scheduling, input conventions, builds and the
+remaining renderer/companion work. SkeeBall physics tuning is deferred; OrbitalSalvage
+is the first prototype to deepen for simulation and replay.

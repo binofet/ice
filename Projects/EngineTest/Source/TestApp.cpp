@@ -39,8 +39,9 @@ ICRESULT TestApp::Cleanup(){
     }
     if(m_window){delete m_window;m_window=nullptr;}return IC_OK;
 }
-ICRESULT TestApp::Update(){
-    auto input=icInput::Instance();float dt=icClamp((float)m_time.Elapsed(),0.0f,.1f);
+ICRESULT TestApp::Update(){return UpdateFrame(m_time.Elapsed());}
+ICRESULT TestApp::UpdateFrame(double seconds){
+    auto input=icInput::Instance();float dt=icClamp((float)seconds,0.0f,.1f);
     if(input->IsPressed(ICKEY_ESCAPE))m_window->RequestClose();
     if(input->IsPressed(ICKEY_SPACE))m_paused=!m_paused;
     if(input->IsPressed(ICKEY_R))ReloadScript();
