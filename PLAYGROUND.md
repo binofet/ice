@@ -22,9 +22,9 @@ Make debuggability a feature: resource names and lifetimes, event traces, alloca
 
 Optional modules should be removable. A shader experiment should not require Python, C#, a network stack or an editor. A headless simulation should not create a window or GPU device.
 
-## Metagen: the definition DLL is the schema
+## Metagen: authored schemas and shared consumers
 
-C# declarations and attributes compile into a definition DLL, which is the authoritative schema artifact. Tools load that assembly and reflect over it to discover object definitions and their metadata. This matches the original Metagen idea; no parallel hand-maintained schema is needed.
+C# declarations and attributes compile into a definition DLL, which is authoritative for a C#-authored schema. Python declarations should also be able to author a schema, through an explicit Metagen provider and constrained metadata conventions. Choose one authoritative source per schema type; do not maintain equivalent C# and Python definitions by hand. Separate equivalence fixtures can describe the same test schema to verify the providers. The current implemented proof reads C# assemblies only.
 
 A shared Metagen reader interprets the reflected metadata consistently and exposes consumption interfaces. Emit a neutral manifest only when a real consumer benefits: native builds without .NET, language tools that cannot load managed assemblies, deployment compatibility checks, or small retro targets. Such a manifest is a derived view of a specific DLL, identified by a fingerprint and generator version, not a second source of truth. Compiler integration through [Roslyn](https://learn.microsoft.com/en-us/dotnet/api/microsoft.codeanalysis.iincrementalgenerator) is optional; an ordinary reflection-based generator is a valid first prototype. Use attribute metadata inspection where possible, so reading declarations does not execute gameplay or attribute constructors. Native and managed memory layout still remain separate from serialized and network formats.
 
@@ -47,7 +47,7 @@ Prototype one small schema, such as PaddleSettings, and prove a native round tri
 - C#: authored object definitions and optionally managed gameplay/tools. Define whether a module uses hosted .NET or Native AOT. Native AOT can export explicit C entry points; it does not mean arbitrary managed plugins can be hot-reloaded. [Native AOT interop](https://learn.microsoft.com/en-us/dotnet/core/deploying/native-aot/interop).
 - JavaScript: interactive tools and experiments. Choose and isolate a runtime when the first sample needs one; require jobs, error handling and lifetime ownership to be explicit.
 
-All adapters share the DLL-defined schema semantics and ABI rules, not a universal garbage collector. Each runtime owns its managed objects; native handles mediate references. Unload/reload needs generations and explicit teardown so stale callbacks cannot invoke dead runtimes. None of these runtimes is implemented by the new event foundation.
+All adapters share Metagen schema semantics and ABI rules. C# assemblies and Python definitions are alternative authoring inputs; a universal garbage collector is not required. Each runtime owns its managed objects; native handles mediate references. Unload/reload needs generations and explicit teardown so stale callbacks cannot invoke dead runtimes. None of these runtimes is implemented by the new event foundation.
 
 ## Rendering across eras
 
@@ -67,17 +67,85 @@ An original Xbox target would test allocation discipline, asset conversion and s
 
 Longevity comes from documented data formats, reproducible offline builds, backend isolation, explicit capabilities, readable code and retained reference samples. It cannot guarantee that future toolchains or hardware will behave identically.
 
-## Implementation order
+## Agents and resilient live development
 
-1. Preserve a local native-platform/Airhockey checkpoint. Publish only when explicitly requested.
-2. Window IDs and application event queue; then per-window input, text input and action routing.
-3. Separate presentation surfaces from windows and prove two independent previews.
-4. Native Metal triangle and textured scene; establish the modern render interface from real code.
-5. Match that scene on Vulkan, then D3D12, with backend capture and validation.
-6. Metagen definition-DLL/reflection prototype and generated C ABI; Lua first consumer, then Python, C# and JavaScript examples.
-7. Headless simulation/replay sample and an optional original-Xbox profile experiment.
+Agents are first-class development clients alongside humans, inspectors, and scripts.
+They should inspect and change a running playground, observe the outcome, and keep or
+undo an experiment without restarting the game for each data/script edit. Keep these
+capabilities in an optional development module; ordinary games do not need an agent,
+MCP server, Python, or an always-on network endpoint.
 
-The order may change when a particular experiment is more interesting. Every step should leave a runnable playground.
+Use one typed runtime command service for the inspector, scripts, and agent adapters.
+MCP is an initial adapter, not the engine object model or the internal command protocol.
+A local CLI/IPC client is enough to prove the service before implementing MCP. Current
+engine APIs do not yet expose this service. See the [MCP architecture](https://modelcontextprotocol.io/docs/2026-07-28/learn/architecture)
+for its separation of hosts, clients, and servers.
+
+The initial command surface should support:
+
+- Inspect schemas, stable object handles, scene state, resource URIs, and diagnostics.
+- Submit a batch of typed changes against an expected scene revision; validate the
+  entire batch before applying it at a simulation/frame boundary.
+- Prepare replacement assets/scripts away from the active scene, then swap only on
+  success. Preserve the last working version and explicit compatible state.
+- Pause, step, capture an image, record/replay input, and collect bounded performance
+  measurements so an experiment can be evaluated rather than merely described.
+- Return a change receipt, diagnostics, and an undo record. Undo restores supported
+  engine state; it cannot reverse arbitrary external file/network effects.
+
+No raw pointers cross this boundary. Use generation-checked handles, operation IDs,
+explicit lifetimes, bounded requests/queues, and revision checks to reject stale edits.
+An edit transaction must include staged resource allocation and reversible commit work;
+validation alone is insufficient if applying the edit can fail halfway through.
+Persist authored changes only through an explicit save operation. A schema change that
+requires native regeneration/recompilation is distinct from a live instance-data edit;
+this does not make arbitrary C++ changes reloadable.
+
+Resilience means malformed data, failed compilation, stale references, and ordinary
+script exceptions become diagnostics while the session retains working state. Validate
+inputs, impose script time/memory budgets, and keep recovery snapshots or input logs.
+These measures cannot guarantee an in-process C++ engine never crashes. Use disposable
+worker processes for schema loaders and experimental/native extensions when crash
+containment is required; process separation still needs OS restrictions for a real
+security sandbox. Native execution on the render thread remains part of the engine's
+trusted boundary.
+
+A complete replication stack is not a prerequisite: the first editor/agent client can
+use local IPC. We do need enough schema, reference, serialization, and lifecycle
+semantics to make a small set of mutations safe. Start with one runnable experiment,
+then grow the supported operations from demonstrated needs.
+
+## Implementation order after the standards/GLM milestone
+
+The desktop native backends, mobile controller probes, URI resource search, glTF
+materials/animation/skinning, and standards/GLM migration form the current foundation.
+The new Metal scene renderer, general serialized object runtime, Python schema provider,
+and agent command service below are planned work, not existing features.
+
+1. **Metagen/native data vertical slice.** Extend the C# consumption proof with stable
+   type/field IDs and canonical type/reference/default semantics. Generate native
+   descriptors and serialize one settings object. Add a Python schema provider and
+   compare the two providers with equivalent fixtures. Prove version migration and
+   inline/local/external references on small fixtures, independently of replication.
+2. **A resilient live-editing lab in EngineTest.** Inspect and transactionally edit a
+   running object's settings; reject invalid edits and retain its last working state.
+   Add undo, generation-checked handles, and one reloadable Lua behavior with explicit
+   state transfer. Document which edits require regenerating native code.
+3. **Agent development client.** Expose that same command service through a local MCP
+   adapter. Demonstrate inspect -> edit -> step/replay -> capture/measure -> undo or
+   save without restarting EngineTest. No separate privileged mutation path for agents.
+4. **Window-local input and presentation.** Finish targeted key/pointer/text events,
+   action routing, and two independently interactive previews, using the existing
+   window IDs and host/surface boundaries.
+5. **Modern rendering.** Build the reusable Metal triangle/textured-scene renderer on
+   Mac/iOS, then match its scene on Vulkan and D3D12. Keep OpenGL as the tested reference;
+   validate Windows rendering on real hardware when available.
+6. **Broader experiments.** Extend language bindings, headless simulation/replay,
+   ARKit/ARCore party controllers, and an optional original-Xbox profile as real samples
+   require them. SkeeBall physics tuning remains deferred.
+
+Each milestone should leave a runnable playground. The first live-editing prototype
+needs a narrow, proven data model rather than completion of every future subsystem.
 
 ## Native mobile host
 
