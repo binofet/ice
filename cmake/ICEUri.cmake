@@ -1,0 +1,7 @@
+include_guard(GLOBAL)
+get_filename_component(ICE_URI_ROOT "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
+add_library(ICEUriRuntime STATIC "${ICE_URI_ROOT}/engine/src/io/resource_uri.cpp")
+add_library(ice::uri ALIAS ICEUriRuntime)
+target_include_directories(ICEUriRuntime PUBLIC "${ICE_URI_ROOT}/engine/include")
+target_compile_features(ICEUriRuntime PUBLIC cxx_std_${ICE_CXX_STANDARD})
+ice_strict_target(ICEUriRuntime)

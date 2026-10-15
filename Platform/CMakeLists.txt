@@ -3,7 +3,7 @@ include(${CMAKE_CURRENT_LIST_DIR}/../cmake/ICEMath.cmake)
 add_library(ICEPlatformRuntime STATIC ../engine/src/platform/host.cpp ../engine/src/input/companion.cpp ../engine/src/net/companion_link.cpp ../engine/src/input/companion_room.cpp ../engine/src/util/join_qr.cpp)
 target_include_directories(ICEPlatformRuntime PUBLIC ../engine/include)
 target_link_libraries(ICEPlatformRuntime PUBLIC ice::math)
-target_compile_features(ICEPlatformRuntime PUBLIC cxx_std_20)
+target_compile_features(ICEPlatformRuntime PUBLIC cxx_std_${ICE_CXX_STANDARD})
 set_target_properties(ICEPlatformRuntime PROPERTIES
     POSITION_INDEPENDENT_CODE ON
     XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED NO)

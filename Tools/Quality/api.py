@@ -97,8 +97,15 @@ def scan(record):
                                   "arguments": names})
         if "include" not in path.parts or path.name == "api.h":
             continue  # Native GL declarations follow the platform specification.
-        if cursor.access_specifier in (clang.AccessSpecifier.PRIVATE,
-                                       clang.AccessSpecifier.PROTECTED):
+        owner = cursor
+        hidden = False
+        while owner and owner.kind != clang.CursorKind.TRANSLATION_UNIT:
+            if owner.access_specifier in (clang.AccessSpecifier.PRIVATE,
+                                          clang.AccessSpecifier.PROTECTED):
+                hidden = True
+                break
+            owner = owner.semantic_parent
+        if hidden:
             continue
         parent = cursor.semantic_parent
         if cursor.kind == clang.CursorKind.VAR_DECL and parent.kind not in (

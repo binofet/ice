@@ -24,11 +24,19 @@ Optional modules should be removable. A shader experiment should not require Pyt
 
 ## Metagen: authored schemas and shared consumers
 
-C# declarations and attributes compile into a definition DLL, which is authoritative for a C#-authored schema. Python declarations should also be able to author a schema, through an explicit Metagen provider and constrained metadata conventions. Choose one authoritative source per schema type; do not maintain equivalent C# and Python definitions by hand. Separate equivalence fixtures can describe the same test schema to verify the providers. The current implemented proof reads C# assemblies only.
+C# declarations and attributes compile into a definition DLL, which is authoritative for a C#-authored schema. Python declarations should also be able to author a schema, through an explicit Metagen provider and constrained metadata conventions. Choose one authoritative source per schema type; do not maintain equivalent C# and Python definitions by hand. Separate equivalence fixtures can describe the same test schema to verify the providers. The current scalar proof reads C# assemblies and passive Python declarations, and routes both through the consumption SDK. See [Tools/Metagen/README.md](Tools/Metagen/README.md).
 
 A shared Metagen reader interprets the reflected metadata consistently and exposes consumption interfaces. Emit a neutral manifest only when a real consumer benefits: native builds without .NET, language tools that cannot load managed assemblies, deployment compatibility checks, or small retro targets. Such a manifest is a derived view of a specific DLL, identified by a fingerprint and generator version, not a second source of truth. Compiler integration through [Roslyn](https://learn.microsoft.com/en-us/dotnet/api/microsoft.codeanalysis.iincrementalgenerator) is optional; an ordinary reflection-based generator is a valid first prototype. Use attribute metadata inspection where possible, so reading declarations does not execute gameplay or attribute constructors. Native and managed memory layout still remain separate from serialized and network formats.
 
 Metagen itself is a reusable consumption SDK, not an engine-specific file generator. A reflected model offers source identity, types, members, relationships, attribute values and diagnostics through queryable interfaces. Consumers need not repeat reflection logic or know how another consumer works.
+
+**Public Metagen project (planned).** Once references, containers, inheritance and the
+format contract are functioning with useful examples, extract Metagen into its own
+repository and publish it. Keep its consumption SDK, providers, generators and test
+corpus independent of ICE now; ICE will become a versioned consumer. Prepare licensing,
+standalone build/test instructions, C#/Python authoring examples and C++/Rust consumers
+before release. Extraction and publication are future milestones, not authorized actions
+to create a repository or publish this working tree today.
 
 A possible API shape is `IMetaSource` -> `IMetaType` -> `IMetaMember`, with metadata values and relationships available at each level. Consumer libraries can query this model or use a visitor; they do not need to implement a single mandatory emitter interface. One can draw an infographic, another emit plain text or INI, another generate language bindings, another derive shader layouts. Source loading, metadata interpretation, output rendering and target-specific policy remain separate responsibilities. The model need not erase unknown attributes or force every definition to inherit an ICE object base class.
 
@@ -115,37 +123,146 @@ use local IPC. We do need enough schema, reference, serialization, and lifecycle
 semantics to make a small set of mutations safe. Start with one runnable experiment,
 then grow the supported operations from demonstrated needs.
 
+## Ignition: the interactive playground
+
+**Ignition** becomes the primary development application after the current Metagen/data
+milestone. Keep EngineTest as a regression fixture; new live development belongs in
+Ignition. Its first experience is deliberately small: start a native window/GPU surface
+quickly, show a procedural GPU logo, and arrive at a usable prompt. Expensive schema,
+asset and language services initialize asynchronously and report readiness without
+holding the first presented frame hostage.
+
+The opening is a mathematical GPU animation, with selectable **1, 2, 3 and 5 second**
+versions for comparison. Generate the image from code and shader math; timing must be
+based on elapsed time rather than frame count. Support skipping it and a reduced-motion
+option. Benchmark cold start separately from animation duration: a long logo must not
+conceal a slow startup. Keep the initial shader small enough to compile quickly; a more
+elaborate warm-up can prepare pipeline variants while it runs.
+
+The next view is black with luminous green text, using a restrained shader treatment
+inspired by a 1980s display. During the first **30 seconds after entering the terminal**,
+a fading ghost/flicker effect suggests something arriving in the machine. It then settles
+into a simple, stable prompt. Text must stay legible, the cursor and typed input must stay
+responsive, and effects can be disabled. Use actual text-input events with Unicode/IME
+support rather than synthesizing text from physical key codes.
+
+Human input and connected AI clients share one typed command service: discover
+capabilities, inspect, prepare a change, activate at a safe boundary, observe and undo.
+The terminal is a client of this service; MCP is another adapter. Show connected clients,
+operation progress, diagnostics, ownership and revision conflicts. An agent may issue a
+long-running operation without blocking presentation or stealing human input. Start with
+local connections; explicitly configured project capabilities govern file/network/code
+access. A GPU device, compiler, language runtime or network request can fail independently
+without invalidating the last working scene.
+
+**iOS and Android are first-class Ignition hosts from the start**, alongside desktop.
+The shared document/command/session model must not depend on a desktop terminal, mouse,
+filesystem layout or window singleton. Native presentation, touch/pen, text/IME, voice,
+motion/camera, permissions, background/foreground transitions, memory pressure and surface
+loss are host capabilities with explicit lifecycle rules. Mobile can run a local scene,
+control a remote one, or present a remote simulation through an independently negotiated
+view. Preserve responsive local input and a clear connection/recovery state.
+
+**VR and AR are first-class host profiles too**, with **Quest 3** as the first available
+XR hardware target. Model tracked views/poses, action input, hands/controllers, spatial
+UI, session focus/visibility and frame scheduling explicitly. Presentation can have multiple
+views and projection/layer requirements; it must not assume one camera feeding one flat
+window. The same command/session service powers a spatial prompt, local immersive scene
+or remote simulation. A capability-based XR adapter should share the renderer/asset model
+while exposing device-specific features. Establish comfort controls and frame-time budgets
+in the first sample, and test pause/resume, tracking loss and reconnection on the user's
+Quest 3. AR composition, scene understanding and passthrough are opt-in capabilities to
+prove on each device, not assumptions made by every game. Keep a desktop preview useful
+for development without treating it as XR hardware validation.
+
+The first **Ignition XR scene** is an intentionally anachronistic workspace: an old
+typewriter, a ribbon microphone and a desk under flickering candlelight, connected to an
+immense computer somewhere beyond the room. Direct typing animates the keys; AI replies
+appear on the paper; voice enters through the microphone. Experiments can grow from the
+desk into the surrounding space. The candle is a lighting/material experiment, while the
+typewriter/paper is a spatial view of the same command transcript as the green terminal.
+Keep the document/session contract shared, let the user choose input/presentation, and
+make ambient flicker independently adjustable. Begin with authored procedural objects;
+record provenance for any imported models, textures or audio.
+
+**Watch is an optional companion target in the design.** The motivating demonstration
+is a person on stage wearing only a watch: speak an idea, connect to a workstation or
+supercomputer running the simulation, and see the result on a stage display. The watch
+client sends intent through the same session/command protocol, reports progress and
+provides confirmation/cancel/undo controls. Compute, rendering, speech recognition and
+agent orchestration may be remote capabilities; do not require a full engine renderer or
+language runtime on the watch. Account for reconnects, latency, tiny displays, battery and
+background limits. Separate simulation authority, controller and presentation endpoints
+so this scenario does not require the watch to relay rendered frames. Device support
+and transport details need later hardware proofs; no new watch deployment is part of
+the current data milestone.
+
+Build scenes from primitives, procedural geometry and generative 2D/3D shaders first.
+Asset downloads are a deliberate URI-provider capability, not an invisible side effect
+of scene loading. Preserve source URL, creator, license/SPDX or license text, attribution,
+retrieval time and content hash alongside every downloaded asset, including derivatives.
+Missing/unclear permission is a reported import issue. Cache by content identity and retain
+an offline path. Record the generator/version/seed/inputs for procedural assets as well.
+
+The public command surface should eventually reach each supported programmable stage:
+shader sources and compilation diagnostics, reflected bindings, geometry, materials,
+passes/render targets, draw/dispatch, synchronization, presentation, capture and timing.
+Expose backend capabilities and extensions rather than pretending OpenGL, Metal, Vulkan
+and D3D12 have identical stages. Grow a runnable example for each technique as the backend
+supports it, with required features and expected output documented.
+
+Once the prompt and MCP adapter work, test them with exploratory agents that receive
+**only public documentation and tool discovery**, without source access or private
+implementation hints. Have them build examples, report missing capabilities and reproducible
+failures, and keep operation receipts/captures. These trials measure usability of the
+public interface; do not repair a trial by giving the agent an undocumented mutation path.
+
+Scripts provide rapid experimentation. Promote useful, performance-critical behavior to
+native C++ or the appropriate platform/GPU implementation when profiling justifies it.
+Preserve the same schema/command contract and comparison fixtures so promotion can be
+measured without changing authored meaning. Generated code is a consumer, not a special
+privileged way around lifecycle and validation rules.
+
 ## Implementation order after the standards/GLM milestone
 
 The desktop native backends, mobile controller probes, URI resource search, glTF
 materials/animation/skinning, and standards/GLM migration form the current foundation.
-The new Metal scene renderer, general serialized object runtime, Python schema provider,
-and agent command service below are planned work, not existing features.
+CMake-selectable C++20/C++23, C#/Python schema proofs, native/RTTR/Rust consumers and
+headless transactional data labs extend it. Native graph preparation/activation is now
+implemented independently of graphics; gameplay/GPU resource activation and the shared
+command service still need their own contracts. See [Tools/Metagen/README.md](Tools/Metagen/README.md).
 
-1. **Metagen/native data vertical slice.** Extend the C# consumption proof with stable
-   type/field IDs and canonical type/reference/default semantics. Generate native
-   descriptors and serialize one settings object. Add a Python schema provider and
-   compare the two providers with equivalent fixtures. Prove version migration and
-   inline/local/external references on small fixtures, independently of replication.
-2. **A resilient live-editing lab in EngineTest.** Inspect and transactionally edit a
-   running object's settings; reject invalid edits and retain its last working state.
-   Add undo, generation-checked handles, and one reloadable Lua behavior with explicit
-   state transfer. Document which edits require regenerating native code.
-3. **Agent development client.** Expose that same command service through a local MCP
-   adapter. Demonstrate inspect -> edit -> step/replay -> capture/measure -> undo or
-   save without restarting EngineTest. No separate privileged mutation path for agents.
-4. **Window-local input and presentation.** Finish targeted key/pointer/text events,
-   action routing, and two independently interactive previews, using the existing
-   window IDs and host/surface boundaries.
-5. **Modern rendering.** Build the reusable Metal triangle/textured-scene renderer on
-   Mac/iOS, then match its scene on Vulkan and D3D12. Keep OpenGL as the tested reference;
-   validate Windows rendering on real hardware when available.
-6. **Broader experiments.** Extend language bindings, headless simulation/replay,
-   ARKit/ARCore party controllers, and an optional original-Xbox profile as real samples
-   require them. SkeeBall physics tuning remains deferred.
+1. **Metagen/native data foundation.** Complete the current review/validation and push.
+   The scalar runtime and rich Python/C++ graph conformance now cover enums, recursive
+   containers, inline/local/external references and opt-in prototypes/merge operations.
+   Native snapshots support revision-checked activation, checked handles and undo.
+   Continue richer adapters, cooked binary benchmarks and native JSON/XML/codec consumers
+   from real needs; the generic Metagen SDK remains independent. See
+   [Tools/Metagen/DATA_MODEL.md](Tools/Metagen/DATA_MODEL.md).
+2. **Ignition boot and prompt.** Establish shared desktop/iOS/Android host and session
+   boundaries, an XR profile targeting Quest 3, and an optional watch remote client. Add the native application, procedural GPU logo
+   variants and the timed green terminal. Establish text input, command history,
+   diagnostics, resize/fullscreen and an inspectable readiness model. EngineTest remains
+   a regression fixture and receives no new interactive development surface.
+3. **Resilient live development in Ignition.** Connect detached data preparation and
+   revision-checked publication to the host boundary; inspect, replace and undo a scene.
+   Add one reloadable Lua behavior with explicit state transfer and a procedural art
+   experiment. Document edits that require native regeneration/recompilation.
+4. **Agent development clients.** Expose the same command service through local MCP.
+   Demonstrate discover -> inspect -> edit -> step/replay -> capture/measure -> undo/save
+   without restarting. Run the docs-only agent trials and turn their limitations into
+   reproducible examples and interface improvements.
+5. **Window-local input and modern rendering.** Finish targeted text/key/pointer events,
+   action routing and two independent previews. Build reusable Metal rendering on Mac/iOS,
+   then matching Vulkan and D3D12 examples. Keep OpenGL as the tested reference and expose
+   capabilities throughout. Validate Windows rendering on hardware when available.
+6. **Broader experiments and extraction.** Extend language bindings, headless replay,
+   ARKit/ARCore party controllers and optional retro targets as samples require them.
+   Extract/publish Metagen after standalone packaging, licensing and CI review.
+   SkeeBall physics tuning remains deferred.
 
-Each milestone should leave a runnable playground. The first live-editing prototype
-needs a narrow, proven data model rather than completion of every future subsystem.
+Each milestone leaves a runnable playground. Ignition should drive the next requirements
+through actual experiments rather than waiting for every future subsystem to be finished.
 
 ## Native mobile host
 

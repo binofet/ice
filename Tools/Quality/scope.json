@@ -27,7 +27,18 @@
     "tests/scene_render_gl.cpp",
     "engine/include/ice/math/types.h",
     "engine/include/ice/math/common_math.h",
-    "tests/math.cpp"
+    "tests/math.cpp",
+    "engine/include/ice/meta/schema.h",
+    "engine/src/meta/schema.cpp",
+    "tests/meta_runtime.cpp",
+    "engine/include/ice/core/expected.h",
+    "engine/include/ice/data/document.h",
+    "engine/src/data/internal.h",
+    "engine/src/data/binary.cpp",
+    "engine/src/data/schema.cpp",
+    "engine/src/data/graph.cpp",
+    "engine/src/data/activation.cpp",
+    "tests/data_graph.cpp"
   ],
   "lint": [
     "engine/src/io/resource_uri.cpp",
@@ -37,6 +48,13 @@
     "tests/gltf_asset.cpp",
     "tests/resource_uri.cpp",
     "tests/scene_animation.cpp",
-    "tests/math.cpp"
+    "tests/math.cpp",
+    "engine/src/meta/schema.cpp",
+    "tests/meta_runtime.cpp",
+    "engine/src/data/binary.cpp",
+    "engine/src/data/schema.cpp",
+    "engine/src/data/graph.cpp",
+    "engine/src/data/activation.cpp",
+    "tests/data_graph.cpp"
   ]
 }

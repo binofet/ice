@@ -1,0 +1,3 @@
+# Standalone portable-data example codecs; not a core SDK or engine dependency.
+# MIT; upstream Rust compression implementations packaged as platform wheels.
+cramjam==2.13.0

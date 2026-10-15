@@ -3,14 +3,15 @@
   "configurePresets": [
     {
       "name": "desktop-debug",
-      "displayName": "Desktop Debug (C++20)",
+      "displayName": "Desktop Debug (C++23)",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/desktop-debug",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
         "BUILD_TESTING": "ON",
-        "ICE_WARNINGS_AS_ERRORS": "ON"
+        "ICE_WARNINGS_AS_ERRORS": "ON",
+        "ICE_CXX_STANDARD": "23"
       }
     },
     {
@@ -28,6 +29,15 @@
       "cacheVariables": {
         "ICE_ENABLE_SANITIZERS": "ON"
       }
+    },
+    {
+      "name": "desktop-cxx20",
+      "inherits": "desktop-debug",
+      "displayName": "Desktop Debug (C++20)",
+      "binaryDir": "${sourceDir}/build/desktop-cxx20",
+      "cacheVariables": {
+        "ICE_CXX_STANDARD": "20"
+      }
     }
   ],
   "buildPresets": [
@@ -42,6 +52,10 @@
     {
       "name": "desktop-sanitize",
       "configurePreset": "desktop-sanitize"
+    },
+    {
+      "name": "desktop-cxx20",
+      "configurePreset": "desktop-cxx20"
     }
   ],
   "testPresets": [
@@ -62,6 +76,13 @@
     {
       "name": "desktop-sanitize",
       "configurePreset": "desktop-sanitize",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "desktop-cxx20",
+      "configurePreset": "desktop-cxx20",
       "output": {
         "outputOnFailure": true
       }

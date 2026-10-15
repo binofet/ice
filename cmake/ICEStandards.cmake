@@ -1,12 +1,33 @@
 include_guard(GLOBAL)
 
 # Shared by the desktop project and the independently configured mobile project.
-set(CMAKE_CXX_STANDARD 20)
+set(ICE_CXX_STANDARD "23" CACHE STRING "ICE language level (20 or 23)")
+set_property(CACHE ICE_CXX_STANDARD PROPERTY STRINGS 20 23)
+if(NOT ICE_CXX_STANDARD MATCHES "^(20|23)$")
+    message(FATAL_ERROR "ICE_CXX_STANDARD must be 20 or 23")
+endif()
+set(CMAKE_CXX_STANDARD ${ICE_CXX_STANDARD})
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
-set(CMAKE_OBJCXX_STANDARD 20)
+set(CMAKE_OBJCXX_STANDARD ${ICE_CXX_STANDARD})
 set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
 set(CMAKE_OBJCXX_EXTENSIONS OFF)
+
+# NDK r26's prerelease Clang accepts C++23 as c++2b but rejects the final spelling.
+# Keep the language level at 23; select the accepted spelling without enabling GNU extensions.
+if(ICE_CXX_STANDARD STREQUAL "23" AND ANDROID AND CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    include(CheckCXXCompilerFlag)
+    set(CMAKE_CXX_STANDARD 20)
+    check_cxx_compiler_flag("-std=c++23" ICE_ANDROID_CPP23_FINAL_SPELLING)
+    if(NOT ICE_ANDROID_CPP23_FINAL_SPELLING)
+        check_cxx_compiler_flag("-std=c++2b" ICE_ANDROID_CPP23_DRAFT_SPELLING)
+        if(NOT ICE_ANDROID_CPP23_DRAFT_SPELLING)
+            message(FATAL_ERROR "The Android compiler cannot select C++23 mode")
+        endif()
+        set(CMAKE_CXX23_STANDARD_COMPILE_OPTION "-std=c++2b")
+    endif()
+    set(CMAKE_CXX_STANDARD 23)
+endif()
 
 option(ICE_WARNINGS_AS_ERRORS "Treat warnings as errors in adopted first-party targets" ON)
 option(ICE_ENABLE_SANITIZERS "Instrument adopted targets with Address/UndefinedBehaviorSanitizer" OFF)

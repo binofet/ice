@@ -1,7 +1,13 @@
 # ICE coding standard
 
-ICE targets C++20 and Objective-C++20 through CMake. The engine API may change
-without compatibility aliases during this migration.
+ICE supports C++20 and C++23 (default), with matching Objective-C++ modes through CMake.
+Select `-DICE_CXX_STANDARD=20` or `23`, or use the `desktop-cxx20` preset. Other values
+are configuration errors. The engine API may change without compatibility aliases.
+C++23 does not provide standard
+reflection: a Metagen consumer defines portable data semantics and optional RTTR adapters supply
+native runtime reflection for the current proof. New standard-library features need
+an actual compile/test on supported toolchains, not just an accepted language flag.
+NDK r26 selects C++23 with its supported `-std=c++2b` spelling; GNU extensions remain off.
 
 ## Names and directories
 
@@ -48,9 +54,14 @@ types rather than defining parallel matrix representations. See `MATH.md` for
 storage, quaternion, and camera conventions. Third-party code retains
 its upstream conventions and is excluded from first-party formatting.
 
+Use `ice::expected` for checked result values. The pinned public-domain
+TartanLlama/expected implementation gives both language modes the same API, including
+SDK standard libraries that don't provide `std::expected`. Its include path propagates
+through `ice::expected` / `ice::meta`; do not add compatibility names to `std`.
+
 ## Validation
 
-Use the desktop CMake presets for C++20 builds. Quality tools are pinned in
+Use the desktop CMake presets for either supported language mode. Quality tools are pinned in
 `Tools/Quality/requirements.txt`; run `Tools/Quality/check.py` for the configured
 formatting and analysis scope. Build and test on a case-sensitive filesystem
 when moving directories or changing include paths. Review the complete migration
