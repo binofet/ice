@@ -36,7 +36,7 @@ directory. Run on each platform to inspect conditional APIs; a successful Mac
 audit does not cover the Win32 or X11 branches. Comments still require human
 review for accuracy and usefulness.
 
-On Apple hosts, the auditor queries the configured compiler for its SDK, libc++ and
+On Apple hosts, the auditor and analyzer query the configured compiler for SDK, libc++ and
 framework defaults. This also handles CMake configurations which omit an explicit
 sysroot and rely on the `/usr/bin/c++` driver. Keep that compiler/SDK available when
 auditing its database; libclang's builtin resource selection remains separate from

@@ -9,6 +9,7 @@ import re
 import shutil
 import subprocess
 import sys
+from compiler_context import system_arguments
 
 ROOT = Path(__file__).resolve().parents[2]
 VERSION = "18.1.8"
@@ -89,13 +90,14 @@ def main():
         files = sorted(set(files + [ROOT / p for p in scope["lint"]]))
     files = [p for p in files if p.suffix in {".cpp", ".cc", ".c", ".mm", ".m"}]
     records = json.loads(database.read_text())
-    compiled = {(Path(r["directory"]) / r["file"]).resolve() for r in records}
+    compiled = {(Path(r["directory"]) / r["file"]).resolve(): r for r in records}
     missing = [p.relative_to(ROOT).as_posix() for p in files if p not in compiled]
     if missing:
         raise RuntimeError("No compile command for: " + ", ".join(missing))
     failed = 0
     for path in files:
-        failed += subprocess.run([executable, "-p", str(build), str(path)], cwd=ROOT).returncode != 0
+        defaults = ["--extra-arg=" + argument for argument in system_arguments(compiled[path])]
+        failed += subprocess.run([executable, "-p", str(build), *defaults, str(path)], cwd=ROOT).returncode != 0
     print(f"Analysis: {len(files)} translation units; {failed} failed", flush=True)
     return int(failed != 0)
 
