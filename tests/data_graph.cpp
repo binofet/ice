@@ -79,11 +79,13 @@ int check_value_growth() {
 	static_assert(std::is_nothrow_move_assignable_v<value::storage>);
 	CHECK(std::holds_alternative<std::monostate>(value{}.data));
 	value::sequence values;
-	for (std::uint64_t index = 0; index < 128; ++index)
-		values.push_back(
-		    value{value::record{{"id", value{index}},
-		                        {"label", value{std::string("player")}},
-		                        {"nested", value{value::record{{"enabled", value{true}}}}}}});
+	for (std::uint64_t index = 0; index < 128; ++index) {
+		auto &fields = values.emplace_back().data.emplace<value::record>();
+		fields["id"].data.emplace<std::uint64_t>(index);
+		fields["label"].data.emplace<std::string>("player");
+		auto &nested = fields["nested"].data.emplace<value::record>();
+		nested["enabled"].data.emplace<bool>(true);
+	}
 	// Growing recursive vector storage must invoke each active alternative's move.
 	// Byte relocation leaves map nodes pointing to sentinels in the old allocation.
 	auto copied = values;
@@ -114,7 +116,7 @@ int check_value_growth() {
 	CHECK(std::holds_alternative<std::monostate>(assigned.data));
 	value::sequence empty_records;
 	for (unsigned index = 0; index < 32; ++index)
-		empty_records.push_back(value{value::record{}});
+		empty_records.emplace_back().data.emplace<value::record>();
 	empty_records.reserve(empty_records.capacity() + 1);
 	for (const auto &item : empty_records)
 		CHECK(record(item).begin() == record(item).end());

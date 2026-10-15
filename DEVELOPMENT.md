@@ -1,8 +1,9 @@
 # Repository and release workflow
 
-ICE keeps its existing `master` default branch. The validated cleanup was merged and
-pushed at `249485d`; renderer development continues on `feature/render-parity`. Metagen
-and Ignition use `main`. No branch rename is needed.
+ICE keeps its existing `master` default branch. The cleanup baseline was merged at
+`249485d`; renderer/native milestones pass through reviewed feature branches such as
+`feature/render-parity` before merging. Metagen and Ignition use `main`. No branch
+rename is needed.
 
 ## Default and feature branches
 
