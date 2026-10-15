@@ -96,7 +96,7 @@ behavior, real GPU performance or device-specific driver correctness.
 ## Next milestones
 
 1. Companion gestures, touch fallback and recorded intent replay are implemented
-   in [COMPANION.md](COMPANION.md). Next: paired local networking and desktop delivery.
+   in [COMPANION.md](COMPANION.md). Paired IPv4 local networking and SkeeBall delivery are implemented; next: discovery and simpler joining.
 2. Platform-owned asset/user-data paths, process-death restoration and host migration
    for the other samples. Desktop keyboard/mouse remains the compatibility singleton;
    it has not yet been migrated to the new device stream.
@@ -125,7 +125,7 @@ engine development, but the full legacy game stack is not yet mobile-compatible.
   sensor events, portrait/landscape resize, background/resume and a replacement
   native surface (ID 1 retired, ID 2 attached) observed. Software output captured.
 
-The probes are diagnostic apps. Companion pairing/networking and full game rendering
+The probes provide local controller pairing. Full game rendering
 are not part of this milestone.
 
 ## watchOS input companion

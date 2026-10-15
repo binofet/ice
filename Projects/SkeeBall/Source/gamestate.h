@@ -54,6 +54,7 @@ public:
     void OnPop(void);
 
     int GameMode;
+    bool ReadyForShot() const { return bWaiting && !bInPlay && m_curBall>0 && m_curBall<=MAX_BALLS; }
     bool ShotInFlight() const { return bInPlay; }
 
 

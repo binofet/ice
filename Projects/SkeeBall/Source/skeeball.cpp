@@ -1,5 +1,7 @@
 
 #include "skeeball.h"
+#include <chrono>
+#include <random>
 
 #include "Core/GXDevice/icGXDeviceGL.h"
 #if 1
@@ -326,6 +328,7 @@ ICRESULT SkeeBall::Init(int argc, char* args[])
     m_GameTime.Elapsed();
 
     m_font.Initialize("Arial",24,m_Content->GetDevice());
+    m_pairFont.Initialize("Arial",48,m_Content->GetDevice());
 
     playing = true;
 
@@ -801,8 +804,13 @@ ICRESULT SkeeBall::Update(void)
     res = m_pGxDevice->Update();
 
 
-    // update the game
-    res |= m_StateMachine.Update(elapsed);
+    if(pInput->IsPressed(ICKEY_F2))ToggleCompanion();
+    const double now=std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    Companion.AcceptShots(CompanionFocused && m_StateMachine.PeekState()==&m_GameState && m_GameState.ReadyForShot());
+    Companion.Poll(now);
+    if(CompanionPanel && Companion.Status()==icCompanionLink::State::Connected)CompanionPanel=false;
+    // Pause the game while the dedicated pairing screen is visible.
+    if(!CompanionPanel)res |= m_StateMachine.Update(elapsed);
 
 #ifdef WIIMOTE
     if (m_Settings.bWiiMote)
@@ -879,7 +887,8 @@ ICRESULT SkeeBall::RenderFrame(bool present)
     m_pGxDevice->FrameBegin();
 
     // render the game state
-    res = m_StateMachine.Render();
+    if(!CompanionPanel)res = m_StateMachine.Render();
+    else{glPushAttrib(GL_COLOR_BUFFER_BIT|GL_ENABLE_BIT);glDisable(GL_SCISSOR_TEST);glClearColor(.025f,.045f,.07f,1);glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);glPopAttrib();}
 
     m_pGxDevice->SetProjection(m_pGxDevice->GetOrtho());
     icMatrix44 temp;
@@ -907,6 +916,19 @@ ICRESULT SkeeBall::RenderFrame(bool present)
     }
 #endif
 
+    if(CompanionPanel){
+        int width,height;m_pMainWin->GetFramebufferSize(&width,&height);int x=width/10;
+        m_font.Print(icVector2Int(x,height*8/10),icColor::WHITE,"CONNECT YOUR PHONE");
+        m_font.Print(icVector2Int(x,height*7/10),icColor::WHITE,"Open ICE Companion and tap Connect");
+        m_font.Print(icVector2Int(x,height*6/10),icColor::WHITE,"Desktop address");
+        std::string address=CompanionAddresses.substr(0,CompanionAddresses.find(" / "));
+        m_pairFont.Print(icVector2Int(x,height*5/10),icColor::WHITE,address.c_str());
+        char port[64],code[32];std::snprintf(port,sizeof(port),"Port     %u",Companion.Port());std::snprintf(code,sizeof(code),"%06u",CompanionCode);
+        m_font.Print(icVector2Int(x,height*4/10),icColor::WHITE,port);
+        m_font.Print(icVector2Int(x,height*3/10),icColor::WHITE,"Pairing code");
+        m_pairFont.Print(icVector2Int(x,height*2/10),icColor::WHITE,code);
+        m_font.Print(icVector2Int(x,height/10),icColor::WHITE,"Same Wi-Fi network. F2 to cancel.");
+    }else m_font.Print(icVector2Int(12,18),icColor::WHITE,CompanionCode?"Phone controller connected  |  F2 to disconnect":"F2: connect your phone");
     if(present)PresentFrame();
     return IC_OK;
 }// END FUNCTION Render(void)
@@ -1009,3 +1031,8 @@ void SkeeBall::ProcessSettings(void)
 
     }
 }// END FUNCTION ProcessSettings(void)
+void SkeeBall::ToggleCompanion(){
+    if(CompanionCode){Companion.Close();CompanionCode=0;CompanionPanel=false;return;}
+    std::random_device random;unsigned code=100000+random()%900000;
+    if(Companion.Listen(0,code)){CompanionCode=code;CompanionPanel=true;CompanionAddresses=icCompanionLink::LocalAddresses();icPrintf("Companion %s port=%u code=%06u",CompanionAddresses.c_str(),Companion.Port(),code);}
+}

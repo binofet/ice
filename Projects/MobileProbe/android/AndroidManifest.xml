@@ -1,4 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="org.ice.mobileprobe" android:versionCode="1" android:versionName="0.1">
+<uses-permission android:name="android.permission.INTERNET"/>
 <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="34"/>
 <uses-feature android:name="android.hardware.sensor.accelerometer" android:required="false"/>
 <uses-feature android:name="android.hardware.sensor.gyroscope" android:required="false"/>

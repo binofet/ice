@@ -25,6 +25,7 @@
 #include "settings_menu.h"
 #include "settings.h"
 #include "last_game.h"
+#include "Network/icCompanionLink.h"
 
 #ifdef WIIMOTE
 #include "wiimote.h"
@@ -92,6 +93,12 @@ public:
         return m_StateMachine;
     };
 
+    icCompanionLink Companion;
+    unsigned CompanionCode=0;
+    bool CompanionFocused=true;
+    bool CompanionPanel=false;
+    std::string CompanionAddresses;
+    void ToggleCompanion();
     GameState           m_GameState;        //! Main game state
     MainMenu            m_MainMenu;         //! Main menu state
     SettingsMenu        m_SettingsMenu;     //! Settings menu state
@@ -124,6 +131,7 @@ private:
     icTimer             m_GameTime;         //! The time keeper
 
     icFontGL            m_font;
+    icFontGL            m_pairFont;
 
     icWindow*           m_pMainWin;         //! Main window
 

@@ -1,6 +1,7 @@
 //////////////////////////////////////////////////////////////////////////////
 // LOCAL INCLUDES
 #include "gamestate.h"
+#include <chrono>
 
 #include "skeeball.h"
 
@@ -423,6 +424,14 @@ ICRESULT GameState::Update(const float fDeltaTime, bool *bFinished)
         }
     }
 
+    icShotIntent remoteShot;
+    const double companionNow=std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    bool remote=ball && ReadyForShot() && gApp.Companion.TakeShot(remoteShot,companionNow);
+    if(remote){
+        icVector3 position(-31.047312f+(remoteShot.aim+1)*.5f*(37.262222f+31.047312f),-23.20f,140.0f);
+        ball->SetPos(position);m_fDy=remoteShot.power*1000.0f;
+        ldown=false;m_bLastLMB=true;
+    }
     if (input->IsPressed(ICKEY_ESCAPE))
     {
         m_bRenderTopOnly = false;
@@ -446,6 +455,7 @@ ICRESULT GameState::Update(const float fDeltaTime, bool *bFinished)
 
         ball->m_body->activate(true);
         ball->m_body->applyImpulse(force,btVector3(0.0,0.0,0.0));
+        if(remote)icPrintf("Companion launched SkeeBall aim=%.3f power=%.3f",remoteShot.aim,remoteShot.power);
 
         m_fPlayTimer = 0.0f;
         bInPlay = true;

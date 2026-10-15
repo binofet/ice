@@ -1,11 +1,14 @@
 # Companion controller milestone
 
-The native mobile probes now contain a local companion controller lab. They use the
+The native mobile probes now contain a companion controller with optional local desktop delivery. They use the
 same `icCompanionSession` / `icShotGesture` C++ implementation on iOS, Android and
 desktop. The existing bundle/package identifiers are retained so installed probes
 upgrade in place. App labels now say **ICE Companion**.
 
 ## Controls
+
+The default screen emphasizes Connect and the shot pad. Open **Tools** for motion
+selection, calibration, recording, replay and sharing.
 
 - **Touch drag:** begin in the lower pad, drag upward, then release. Horizontal
   position sets aim; upward distance sets power. Taps and cancelled touches do not fire.
@@ -21,8 +24,7 @@ upgrade in place. App labels now say **ICE Companion**.
 
 First launch supplies a clearly labelled two-shot demo take. It is not user input and
 is not saved until explicitly shared. Recording replaces it. The dotted guide is an
-intent preview, not SkeeBall physics. Every shot is local: no pairing, network delivery
-or desktop game control is implemented in this milestone.
+intent preview, not SkeeBall physics. Replay remains local. Live gestures can drive the desktop SkeeBall game after pairing.
 
 Calibration requires at least 20 stationary acceleration samples spanning 250 ms,
 plausible gravity magnitude and low variation/rotation. Samples use SI units and
@@ -123,8 +125,7 @@ A unique bundle ID may be needed for your team. Automatic provisioning can regis
 the selected device and create development signing assets in that team.
 
 Without a team, the existing build commands remain unsigned and simulator-friendly.
-Signed deployment is implemented but cannot be validated until the account, Developer
-Mode and development signing assets are available on this Mac.
+Signed deployment was verified on the iPhone and iPad below.
 
 ### First physical deployment — 2026-10-14
 
@@ -166,3 +167,64 @@ app transfer then failed when the connection dropped (IXRemoteErrorDomain 6 /
 CoreDevice transport timeout). Charging the unlocked Watch near the USB-connected
 iPhone did not resolve the repeated failure. No physical Watch launch is claimed.
 A successful build does not validate wrist gestures on hardware.
+
+
+## Local desktop pairing — 2026-10-14
+
+In SkeeBall press **F2** (or launch with `--companion`). A dedicated screen pauses
+the game and displays an IPv4 address, port, and fresh six-digit pairing code on
+separate readable lines. On the phone/tablet tap **Connect**, enter those values,
+and allow Local Network access if iOS asks. If the permission prompt interrupts
+pairing, tap Connect again. The pairing screen dismisses when connected; start a
+match from the desktop menu if needed. F2 disconnects and closes the listener.
+No port is opened until explicitly enabled. Choose an address on the same LAN;
+this first transport uses IPv4 and manual pairing, without discovery or QR codes.
+
+`icCompanionLink` lives in `ICEPlatformRuntime`. It uses nonblocking native UDP
+sockets on macOS/iOS, Linux/Android, and Windows. A fixed 40-byte network-order
+packet checks magic, version and shot-intent capability before a nonce/session
+handshake. Aim/power use bounded 1/10000 quantization, never native object layouts.
+One peer owns a session; its session ID identifies the remote input source.
+Pairing attempts are rate-limited. The six-digit code is local pairing convenience,
+not an encrypted or Internet-facing authentication protocol.
+
+Each live shot has a sequence number; duplicates retain the original accepted or
+rejected result. There is at most one pending client shot and one queued host shot.
+Client retries and queued host actions expire after 350 ms. An unacknowledged shot
+may already have arrived; acknowledgement confirms receipt, not a scoring outcome.
+Idle peers expire after three seconds. App inactivity closes the mobile connection
+and clears pending intent. A host polling gap over one second invalidates its peer
+before draining packets. Reconnecting establishes a fresh session and cannot replay
+an old session's launch. The retry limit is not a synchronized network-wide age bound.
+Replay never sends shots. SkeeBall rejects input in menus, on focus loss, while paused,
+or while a ball is in flight; rejected inputs are not saved for a future ball.
+
+### Verification and diagnostics
+
+Mac and spacegoo Linux pass eight CTest suites, including real UDP packet-loss tests
+that drop acknowledgements and duplicate shots. Windows cross-compiles and links;
+Windows runtime testing remains unavailable. iOS simulator live touch reached the
+Mac receiver, while connected replay produced no network shots. A debug Android
+native transport fixture reached the same receiver. That fixture is explicitly
+synthetic, not a physical gesture test. A network fixture also triggered a real
+SkeeBall Bullet impulse on macOS. The dedicated pairing screen was checked using
+the game's framebuffer capture (`--pairing-smoke output.ppm`).
+
+For a standalone receiver:
+
+```sh
+build/macos/ice_companion_host --port 47519 --code 726418 --shots 1 --timeout 120
+```
+
+It prints the pairing details and received shots as JSON. `--send <IPv4> <port>
+<code>` sends a labelled synthetic transport fixture (aim .25 / power .5).
+For debug Android automation, explicitly supply `files/network-smoke.txt` in the
+app's private directory, containing `<IPv4> <port> <code>`. On launch the debug build
+consumes and removes that file, connects and sends one labelled synthetic fixture.
+Normal use and release builds never enable this fixture. `connection.txt` with the
+same fields pre-fills the native numeric pairing panel without auto-connecting.
+
+The revised controller (Tools hidden by default) was signed, installed and launched
+on both the physical iPhone 15 Pro Max and iPad Pro after the networking milestone.
+Hands-on LAN gesture feel still needs user feedback; simulator and synthetic
+transport fixtures are distinguished above from physical device verification.

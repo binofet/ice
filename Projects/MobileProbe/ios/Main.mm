@@ -4,6 +4,9 @@
 #import <CoreMotion/CoreMotion.h>
 #include "Platform/icHost.h"
 #include "Input/icCompanion.h"
+#include "Network/icCompanionLink.h"
+#include <chrono>
+static double networkNow(){return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();}
 #include "../Common/Demo.h"
 #include <map>
 #include <cmath>
@@ -25,6 +28,9 @@ static NSMapTable<NSNumber*,UIView*>* companionViews;
 @property(nonatomic,strong) UIButton* replay;
 @property(nonatomic,strong) UIButton* calibrate;
 @property(nonatomic,strong) UIButton* share;
+@property(nonatomic,strong) UIButton* connect;
+@property(nonatomic,strong) UIButton* tools;
+@property(nonatomic) BOOL toolsVisible;
 @property(nonatomic,strong) UIProgressView* power;
 @property(nonatomic,strong) UIView* pad;
 @property(nonatomic,strong) CAShapeLayer* trajectory;
@@ -34,11 +40,12 @@ static NSMapTable<NSNumber*,UIView*>* companionViews;
 struct ProbeClient : icHostClient {
     unsigned frames=0,inputs=0,surfaces=0;double elapsed=0;
     icCompanionSession companion;
+    icCompanionLink link;
     std::string takePath,message="Drag upward to launch a local test shot.";
     void SaveTake(){if(companion.Take().events.empty())return;message=companion.Take().Save(takePath)?"Take saved. Replay verifies its shots.":"Could not save this take.";}
     void FinishRecording(){if(companion.Recording()){companion.StopRecording();SaveTake();}}
     void OnAppState(icAppState state) override {
-        NSLog(@"ICE state=%d",(int)state);if(state!=icAppState::Active){FinishRecording();companion.Deactivate();}updateSensors(state==icAppState::Active);
+        NSLog(@"ICE state=%d",(int)state);if(state!=icAppState::Active){FinishRecording();companion.Deactivate();link.Close();}updateSensors(state==icAppState::Active);
     }
     void OnSurfaceAdded(const icSurface& s) override {++surfaces;NSLog(@"ICE surface added=%llu %dx%d",s.id,s.width,s.height);}
     void OnSurfaceChanged(const icSurface& s) override {NSLog(@"ICE surface resized=%llu %dx%d",s.id,s.width,s.height);}
@@ -46,10 +53,10 @@ struct ProbeClient : icHostClient {
     void OnInput(const icDeviceInput& e) override {
         ++inputs;bool recording=companion.Recording();auto shots=companion.Shots().size();companion.OnInput(e);
         if(recording&&!companion.Recording())SaveTake();
-        if(companion.Shots().size()>shots){const auto& shot=companion.Shots().back();NSLog(@"ICE companion shot aim=%.3f power=%.3f source=%d",shot.aim,shot.power,(int)shot.source);}
+        if(companion.Shots().size()>shots){const auto& shot=companion.Shots().back();link.SendShot(shot,networkNow());NSLog(@"ICE companion shot aim=%.3f power=%.3f source=%d",shot.aim,shot.power,(int)shot.source);}
     }
     void OnUpdate(double dt) override {
-        elapsed+=dt;bool playing=companion.Replaying();companion.AdvanceReplay(dt);
+        link.Poll(networkNow());elapsed+=dt;bool playing=companion.Replaying();companion.AdvanceReplay(dt);
         if(playing&&!companion.Replaying())NSLog(@"ICE companion replay matched=%d shots=%lu",companion.ReplayMatched(),(unsigned long)companion.Shots().size());
         if(!accelDevice&&!companion.Replaying()&&companion.Gesture().Config().mode==icShotMode::Motion)companion.SetMode(icShotMode::Touch);
     }
@@ -94,7 +101,7 @@ static void updateSensors(bool active){
 - (instancetype)initWithFrame:(CGRect)frame {
     if(!(self=[super initWithFrame:frame]))return nil;
     self.multipleTouchEnabled=YES;
-    self.heading=[UILabel new];self.heading.text=@"ICE / COMPANION LAB";self.heading.font=[UIFont systemFontOfSize:26 weight:UIFontWeightBold];
+    self.heading=[UILabel new];self.heading.text=@"SkeeBall Controller";self.heading.font=[UIFont systemFontOfSize:26 weight:UIFontWeightBold];
     self.status=[UILabel new];self.status.numberOfLines=2;self.status.font=[UIFont systemFontOfSize:14];
     self.shot=[UILabel new];self.shot.numberOfLines=2;self.shot.font=[UIFont monospacedSystemFontOfSize:16 weight:UIFontWeightMedium];
     self.hint=[UILabel new];self.hint.numberOfLines=0;self.hint.textAlignment=NSTextAlignmentCenter;self.hint.font=[UIFont systemFontOfSize:20 weight:UIFontWeightMedium];
@@ -102,15 +109,17 @@ static void updateSensors(bool active){
     self.mode=[[UISegmentedControl alloc] initWithItems:@[@"Touch drag",@"Motion swing"]];self.mode.selectedSegmentIndex=0;
     self.mode.selectedSegmentTintColor=[UIColor colorWithRed:.2 green:.65 blue:.8 alpha:1];
     [self.mode addTarget:self action:@selector(changeMode) forControlEvents:UIControlEventValueChanged];[self addSubview:self.mode];
-    NSArray<NSString*>* titles=@[@"Record",@"Replay",@"Calibrate",@"Share take"];
-    NSArray<NSString*>* actions=@[@"toggleRecording",@"replayTake",@"calibrateMotion",@"shareTake"];
+    NSArray<NSString*>* titles=@[@"Record",@"Replay",@"Calibrate",@"Share take",@"Connect"];
+    NSArray<NSString*>* actions=@[@"toggleRecording",@"replayTake",@"calibrateMotion",@"shareTake",@"connectDesktop"];
     NSMutableArray<UIButton*>* buttons=[NSMutableArray array];
     for(NSUInteger i=0;i<titles.count;++i){UIButton* button=[UIButton buttonWithType:UIButtonTypeSystem];
         [button setTitle:titles[i] forState:UIControlStateNormal];[button setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
         button.backgroundColor=[UIColor colorWithWhite:1 alpha:.12];button.layer.cornerRadius=9;button.titleLabel.font=[UIFont systemFontOfSize:14];
         button.titleLabel.adjustsFontSizeToFitWidth=YES;[button addTarget:self action:NSSelectorFromString(actions[i]) forControlEvents:UIControlEventTouchUpInside];[self addSubview:button];[buttons addObject:button];
     }
-    self.record=buttons[0];self.replay=buttons[1];self.calibrate=buttons[2];self.share=buttons[3];
+    self.record=buttons[0];self.replay=buttons[1];self.calibrate=buttons[2];self.share=buttons[3];self.connect=buttons[4];
+    self.tools=[UIButton buttonWithType:UIButtonTypeSystem];[self.tools setTitle:@"Tools" forState:UIControlStateNormal];[self.tools addTarget:self action:@selector(toggleTools) forControlEvents:UIControlEventTouchUpInside];[self addSubview:self.tools];
+    for(UIView* view in @[self.mode,self.record,self.replay,self.calibrate,self.share])view.hidden=YES;
     self.power=[UIProgressView new];self.power.progressTintColor=[UIColor colorWithRed:.25 green:.9 blue:.7 alpha:1];[self addSubview:self.power];
     self.pad=[UIView new];self.pad.userInteractionEnabled=NO;self.pad.backgroundColor=[UIColor colorWithWhite:1 alpha:.045];self.pad.layer.cornerRadius=24;
     self.trajectory=[CAShapeLayer layer];self.trajectory.strokeColor=[UIColor colorWithRed:.25 green:.9 blue:.7 alpha:.45].CGColor;self.trajectory.fillColor=UIColor.clearColor.CGColor;self.trajectory.lineWidth=2;self.trajectory.lineDashPattern=@[@5,@7];[self.pad.layer addSublayer:self.trajectory];
@@ -123,11 +132,13 @@ static void updateSensors(bool active){
     layer.contentsScale=scale;layer.drawableSize=CGSizeMake(self.bounds.size.width*scale,self.bounds.size.height*scale);
     if(self.surface)host.ResizeSurface(self.surface,(int)layer.drawableSize.width,(int)layer.drawableSize.height,scale);
     CGFloat width=MIN(720,self.bounds.size.width-40),left=(self.bounds.size.width-width)/2,top=self.safeAreaInsets.top+12;
-    BOOL compact=self.bounds.size.height<550;CGFloat modes=compact?60:100,buttons=compact?102:146,shot=compact?150:198,power=compact?198:260,pad=compact?220:288;
-    self.heading.font=[UIFont systemFontOfSize:MIN(26,width/15) weight:UIFontWeightBold];self.heading.frame=CGRectMake(left,top,width,34);self.status.frame=CGRectMake(left,top+36,width,compact?20:52);
-    self.mode.frame=CGRectMake(left,top+modes,width,32);
-    NSArray<UIButton*>* items=@[self.record,self.replay,self.calibrate,self.share];for(NSUInteger i=0;i<items.count;++i)items[i].frame=CGRectMake(left+i*(width+8)/4,top+buttons,(width-24)/4,40);
-    self.shot.frame=CGRectMake(left,top+shot,width,48);self.power.frame=CGRectMake(left,top+power,width,8);
+    BOOL compact=self.bounds.size.height<550;
+    CGFloat controls=compact?76:90,extra=self.toolsVisible?92:0,shot=controls+58+extra,power=shot+50,pad=power+26;
+    self.heading.font=[UIFont systemFontOfSize:MIN(26,width/15) weight:UIFontWeightBold];self.heading.frame=CGRectMake(left,top,width,34);self.status.frame=CGRectMake(left,top+38,width,30);
+    self.connect.frame=CGRectMake(left,top+controls,width*.72,44);self.connect.backgroundColor=[UIColor colorWithRed:.08 green:.4 blue:.55 alpha:1];self.tools.frame=CGRectMake(left+width*.76,top+controls,width*.24,44);
+    self.mode.frame=CGRectMake(left,top+controls+54,width,32);
+    NSArray<UIButton*>* items=@[self.record,self.replay,self.calibrate,self.share];for(NSUInteger i=0;i<items.count;++i)items[i].frame=CGRectMake(left+i*(width+8)/4,top+controls+94,(width-24)/4,36);
+    self.shot.frame=CGRectMake(left,top+shot,width,44);self.power.frame=CGRectMake(left,top+power,width,8);
     self.pad.frame=CGRectMake(left,top+pad,width,MAX(60,self.bounds.size.height-self.safeAreaInsets.bottom-24-top-pad));
     self.hint.frame=CGRectInset(self.pad.frame,20,12);
 }
@@ -137,19 +148,41 @@ static void updateSensors(bool active){
     self.calibrate.enabled=accelDevice&&!replaying;self.replay.enabled=!c.Take().events.empty()&&!replaying;self.share.enabled=!c.Take().events.empty()&&!c.Recording();
     [self.record setTitle:c.Recording()?@"Stop & save":@"Record" forState:UIControlStateNormal];self.record.enabled=!replaying;
     self.power.progress=gesture.Power();
-    NSString* state=c.Recording()?@"RECORDING":replaying?@"REPLAYING":c.ReplayMatched()?@"REPLAY MATCHED":@"LOCAL TEST / NOT CONNECTED";
-    self.status.text=[NSString stringWithFormat:@"%@%@\n%s",state,c.Recording()?[NSString stringWithFormat:@" · %lu samples",(unsigned long)c.Take().events.size()]:@"",client.message.c_str()];
-    if(c.Shots().empty())self.shot.text=@"No shot yet. Aim across the pad; power grows as you drag up.";
-    else{const auto& s=c.Shots().back();self.shot.text=[NSString stringWithFormat:@"SHOT %lu   AIM %+.0f%%   POWER %.0f%%\n%@",(unsigned long)c.Shots().size(),s.aim*100,s.power*100,s.source==icShotMode::Touch?@"Touch intent":@"Motion intent"];}
-    self.hint.text=gesture.Config().mode==icShotMode::Touch?@"DRAG UP TO ROLL\n\nRelease to launch\nHorizontal position sets aim":gesture.Config().calibrated?@"HOLD · SWING · RELEASE\n\nHold a finger here, swing forward,\nthen release to launch":@"CALIBRATE FIRST\n\nHold the device still, then tap Calibrate.\nMotion needs real device sensors.";
+    [self.connect setTitle:client.link.Status()==icCompanionLink::State::Connected?@"Disconnect":@"Connect" forState:UIControlStateNormal];
+    self.status.text=[NSString stringWithUTF8String:client.link.Message().c_str()];
+    if(c.Recording())self.status.text=[@"Recording · " stringByAppendingString:self.status.text];
+    if(c.Shots().empty())self.shot.text=@"Aim left or right. Drag up and release.";
+    else{const auto& s=c.Shots().back();self.shot.text=[NSString stringWithFormat:@"Power %.0f%%   Aim %+.0f%%",s.power*100,s.aim*100];}
+    self.hint.text=gesture.Config().mode==icShotMode::Touch?@"DRAG UP\n\nRelease to roll":gesture.Config().calibrated?@"HOLD · SWING · RELEASE\n\nHold a finger here, swing forward,\nthen release to launch":@"CALIBRATE FIRST\n\nHold the device still, then tap Calibrate.\nMotion needs real device sensors.";
     float aim=gesture.Aim(),strength=gesture.Power();if(!gesture.Armed()&&!c.Shots().empty()){aim=c.Shots().back().aim;strength=c.Shots().back().power;}
     CGFloat w=self.pad.bounds.size.width,h=self.pad.bounds.size.height;CGPoint start=CGPointMake(w*.5,h*.9),end=CGPointMake(w*(.5+aim*.4),h*(.9-strength*.75));
     UIBezierPath* path=[UIBezierPath bezierPath];[path moveToPoint:start];[path addQuadCurveToPoint:end controlPoint:CGPointMake(start.x,(start.y+end.y)*.5)];[CATransaction begin];[CATransaction setDisableActions:YES];self.trajectory.path=path.CGPath;
     self.marker.path=[UIBezierPath bezierPathWithOvalInRect:CGRectMake(end.x-7,end.y-7,14,14)].CGPath;[CATransaction commit];
     if(gesture.Armed())self.hint.text=[NSString stringWithFormat:@"POWER %.0f%%\nAIM %+.0f%%\n\nRelease to launch",gesture.Power()*100,gesture.Aim()*100];
 }
+- (void)toggleTools {
+    self.toolsVisible=!self.toolsVisible;
+    for(UIView* view in @[self.mode,self.record,self.replay,self.calibrate,self.share])view.hidden=!self.toolsVisible;
+    [self.tools setTitle:self.toolsVisible?@"Done":@"Tools" forState:UIControlStateNormal];[self setNeedsLayout];
+}
+- (void)connectDesktop {
+    if(client.link.Status()==icCompanionLink::State::Connected||client.link.Status()==icCompanionLink::State::Pairing){client.link.Close();return;}
+    client.companion.Suspend();
+    UIAlertController* alert=[UIAlertController alertControllerWithTitle:@"Connect to SkeeBall" message:@"Press F2 in the desktop game. Enter one displayed IPv4 address, its port, and the six-digit pairing code." preferredStyle:UIAlertControllerStyleAlert];
+    [alert addTextFieldWithConfigurationHandler:^(UITextField* field){field.placeholder=@"Desktop IPv4 address";field.keyboardType=UIKeyboardTypeDecimalPad;field.text=[NSUserDefaults.standardUserDefaults stringForKey:@"ICECompanionAddress"];field.accessibilityIdentifier=@"desktop-address";}];
+    [alert addTextFieldWithConfigurationHandler:^(UITextField* field){field.placeholder=@"Port";field.keyboardType=UIKeyboardTypeNumberPad;field.text=[NSUserDefaults.standardUserDefaults stringForKey:@"ICECompanionPort"];field.accessibilityIdentifier=@"desktop-port";}];
+    [alert addTextFieldWithConfigurationHandler:^(UITextField* field){field.placeholder=@"Six-digit pairing code";field.keyboardType=UIKeyboardTypeNumberPad;field.accessibilityIdentifier=@"pairing-code";}];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Connect" style:UIAlertActionStyleDefault handler:^(UIAlertAction*){
+        NSString* address=alert.textFields[0].text;NSInteger port=alert.textFields[1].text.integerValue;NSString* code=alert.textFields[2].text;
+        if(port<1||port>65535||code.length!=6){client.message="Enter a port from 1 to 65535 and a six-digit code.";return;}
+        [NSUserDefaults.standardUserDefaults setObject:address forKey:@"ICECompanionAddress"];[NSUserDefaults.standardUserDefaults setObject:alert.textFields[1].text forKey:@"ICECompanionPort"];
+        client.link.Connect(address.UTF8String,(unsigned short)port,(unsigned)code.integerValue,networkNow());client.message="Allow Local Network access if asked. Replay stays local.";
+    }]];
+    [self.window.rootViewController presentViewController:alert animated:YES completion:nil];
+}
 - (void)changeMode {client.FinishRecording();client.companion.SetMode(self.mode.selectedSegmentIndex?icShotMode::Motion:icShotMode::Touch);}
-- (void)toggleRecording {if(client.companion.Recording())client.FinishRecording();else{client.companion.StartRecording();client.message="Recording raw input. Shots remain local.";}}
+- (void)toggleRecording {if(client.companion.Recording())client.FinishRecording();else{client.companion.StartRecording();client.message="Recording raw input. Live shots go to a connected desktop.";}}
 - (void)replayTake {client.FinishRecording();if(client.companion.StartReplay())client.message="Live input paused during replay.";}
 - (void)calibrateMotion {
     client.FinishRecording();auto result=client.companion.Calibrate();NSLog(@"ICE companion calibration=%d",(int)result);

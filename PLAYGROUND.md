@@ -90,5 +90,28 @@ is the first prototype to deepen for simulation and replay.
 
 The native mobile hosts now share calibrated shot gestures, touch fallback, bounded
 recordings and deterministic replay. A desktop replay tool consumes the same exported
-takes. See [COMPANION.md](COMPANION.md). Local pairing and delivery are next; SkeeBall
+takes. See [COMPANION.md](COMPANION.md). Local pairing and SkeeBall delivery are implemented; SkeeBall
 physics tuning remains deferred.
+
+
+### Party-game direction
+
+Keep an authoritative game host, controller inputs and presentation surfaces
+separable. A future mobile host could run a whole game and present on an external
+screen, while additional players join with browser controllers via a QR/link.
+Start with touch and permission-based motion input over a WebSocket/WebRTC adapter;
+the current native UDP socket is not directly accessible to a browser. Host/join
+lifecycle, multiple players, reconnects and readable onboarding come first.
+
+A native ARKit/ARCore controller can then supply tracked pose and tracking quality.
+For SkeeBall, calibrate a launch plane and direction relative to the room, estimate
+release velocity in that shared space, and gate throws on tracking quality. Treat
+this as a measured experiment: visual-inertial tracking does not guarantee perfect
+ball trajectories, especially under fast movement or poor lighting. Keep intent
+mapping and recorded traces so physical accuracy and game feel can be compared.
+
+Full-screen presentation, a better game camera and readable player feedback should
+precede publication. Phone hosting requires completing the mobile game renderer;
+current mobile apps are controllers. Prototype external display/mirroring first,
+measure display latency, and evaluate dedicated Cast/TV receivers as a separate
+presentation backend. This is a roadmap, not a claim these features already exist.
