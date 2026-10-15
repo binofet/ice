@@ -30,13 +30,12 @@ A shared Metagen reader interprets the reflected metadata consistently and expos
 
 Metagen itself is a reusable consumption SDK, not an engine-specific file generator. A reflected model offers source identity, types, members, relationships, attribute values and diagnostics through queryable interfaces. Consumers need not repeat reflection logic or know how another consumer works.
 
-**Public Metagen project (planned).** Once references, containers, inheritance and the
-format contract are functioning with useful examples, extract Metagen into its own
-repository and publish it. Keep its consumption SDK, providers, generators and test
-corpus independent of ICE now; ICE will become a versioned consumer. Prepare licensing,
-standalone build/test instructions, C#/Python authoring examples and C++/Rust consumers
-before release. Extraction and publication are future milestones, not authorized actions
-to create a repository or publish this working tree today.
+**Independent Metagen project.** The toolkit now lives in a separate private repository,
+pinned by ICE as a Git submodule at `Tools/Metagen`. Its generic core and portable examples
+build/test without ICE. ICE's native consumers and generated caches live in
+[Tools/MetagenIntegration](Tools/MetagenIntegration/README.md). Public release remains a
+separate decision after licensing, packaging, documentation and independent CI standards
+are met. See [DEVELOPMENT.md](DEVELOPMENT.md) for the dependency and branch strategy.
 
 A possible API shape is `IMetaSource` -> `IMetaType` -> `IMetaMember`, with metadata values and relationships available at each level. Consumer libraries can query this model or use a visitor; they do not need to implement a single mandatory emitter interface. One can draw an infographic, another emit plain text or INI, another generate language bindings, another derive shader layouts. Source loading, metadata interpretation, output rendering and target-specific policy remain separate responsibilities. The model need not erase unknown attributes or force every definition to inherit an ICE object base class.
 
@@ -68,6 +67,36 @@ Implement Metal first on this Mac, Vulkan next on spacegoo, and D3D12 with Windo
 Keep backend-specific shaders available for experiments. Shared material shaders can acquire an offline compilation path after two real backends demonstrate the requirements. For Apple targets, native Metal stays the first choice for this learning project; Vulkan portability layers are a separate experiment. [Khronos documents the additional layer needed for Vulkan on Apple platforms](https://github.khronos.org/Vulkan-Site/guide/latest/windowing_audio_input.html).
 
 Define profiles rather than a universal lowest common denominator: legacy/fixed-function, portable programmable rendering, and modern compute/advanced rendering. A scene declares requirements. The asset pipeline can produce simpler variants; unsupported features report useful errors rather than silently changing the image.
+
+## Runtime renderer replacement
+
+Runtime backend switching is an explicit design goal for the rebuilt renderer. Retain
+CPU-side asset identity, resource descriptions and supported shader variants independently
+of a device. Prepare the replacement device, surfaces, pipelines and uploads while the
+current scene remains active; expose progress and capability failures as diagnostics.
+At a host boundary, quiesce submissions, finish the old device's in-flight work, switch
+validated bindings/presentation and advance resource-handle generations. Keep simulation,
+script state and the session alive. Some native surfaces may need recreation; describe
+that transition rather than treating a swapchain as a permanent window-owned object.
+
+Device loss/recovery is a related path with different guarantees: the old device may no
+longer be usable while preparing a replacement. Keep enough retained descriptions to
+rebuild resources and report unrecoverable loss. A backend switch may temporarily double
+resource residency; enforce an explicit preparation budget and allow a deliberate paused
+replacement when overlap is impossible. A prepared candidate must satisfy the scene's
+required capabilities before publication.
+
+Runtime module loading/unloading is optional and follows the lifetime model, rather than
+reusing the old renderer DLL machinery. A versioned function table/C ABI can expose
+backend modules without exporting C++ container/vtable layout. Do not unload a module
+until its callbacks, worker jobs, function pointers, device resources and GPU submissions
+are gone. Retain modules when safe unloading cannot be proven. Malformed data/shader errors
+can be recoverable; arbitrary in-process native corruption cannot be promised recoverable.
+Use disposable workers where crash containment is actually required.
+
+Remove abandoned fixed-function and old backend APIs instead of carrying compatibility
+layers into the modern interface. Metal, Vulkan and D3D12 should be driven by the same
+resource/command/lifetime tests, with backend capabilities and extensions explicit.
 
 ## Retro targets as experiments
 
@@ -130,7 +159,7 @@ repository outside ICE. Keep EngineTest as an ICE regression fixture. ICE owns r
 platform, rendering, data, language and command APIs; Ignition owns its experience,
 prompts, scenes, agent orchestration and product assets. Begin with an explicit local
 ICE checkout dependency, then pin tested revisions as the consumer boundary settles.
-Metagen's separate public-repository extraction remains its own milestone.
+Metagen's later public release remains its own milestone.
 
 Desktop, iOS/Android and VR/AR are first-class host profiles. The shared session and
 command model must support independent controller, simulation and presentation endpoints,
@@ -173,7 +202,7 @@ command service still need their own contracts. See [Tools/Metagen/README.md](To
    capabilities throughout. Validate Windows rendering on hardware when available.
 6. **Broader experiments and extraction.** Extend language bindings, headless replay,
    ARKit/ARCore party controllers and optional retro targets as samples require them.
-   Extract/publish Metagen after standalone packaging, licensing and CI review.
+   Publish Metagen after standalone packaging, licensing and CI release review.
    SkeeBall physics tuning remains deferred.
 
 Each milestone leaves a runnable playground. Ignition should drive the next requirements
