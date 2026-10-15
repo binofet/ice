@@ -123,105 +123,21 @@ use local IPC. We do need enough schema, reference, serialization, and lifecycle
 semantics to make a small set of mutations safe. Start with one runnable experiment,
 then grow the supported operations from demonstrated needs.
 
-## Ignition: the interactive playground
+## Ignition as an external application
 
-**Ignition** becomes the primary development application after the current Metagen/data
-milestone. Keep EngineTest as a regression fixture; new live development belongs in
-Ignition. Its first experience is deliberately small: start a native window/GPU surface
-quickly, show a procedural GPU logo, and arrive at a usable prompt. Expensive schema,
-asset and language services initialize asynchronously and report readiness without
-holding the first presented frame hostage.
+Ignition becomes the primary interactive development application in a separate private
+repository outside ICE. Keep EngineTest as an ICE regression fixture. ICE owns reusable
+platform, rendering, data, language and command APIs; Ignition owns its experience,
+prompts, scenes, agent orchestration and product assets. Begin with an explicit local
+ICE checkout dependency, then pin tested revisions as the consumer boundary settles.
+Metagen's separate public-repository extraction remains its own milestone.
 
-The opening is a mathematical GPU animation, with selectable **1, 2, 3 and 5 second**
-versions for comparison. Generate the image from code and shader math; timing must be
-based on elapsed time rather than frame count. Support skipping it and a reduced-motion
-option. Benchmark cold start separately from animation duration: a long logo must not
-conceal a slow startup. Keep the initial shader small enough to compile quickly; a more
-elaborate warm-up can prepare pipeline variants while it runs.
-
-The next view is black with luminous green text, using a restrained shader treatment
-inspired by a 1980s display. During the first **30 seconds after entering the terminal**,
-a fading ghost/flicker effect suggests something arriving in the machine. It then settles
-into a simple, stable prompt. Text must stay legible, the cursor and typed input must stay
-responsive, and effects can be disabled. Use actual text-input events with Unicode/IME
-support rather than synthesizing text from physical key codes.
-
-Human input and connected AI clients share one typed command service: discover
-capabilities, inspect, prepare a change, activate at a safe boundary, observe and undo.
-The terminal is a client of this service; MCP is another adapter. Show connected clients,
-operation progress, diagnostics, ownership and revision conflicts. An agent may issue a
-long-running operation without blocking presentation or stealing human input. Start with
-local connections; explicitly configured project capabilities govern file/network/code
-access. A GPU device, compiler, language runtime or network request can fail independently
-without invalidating the last working scene.
-
-**iOS and Android are first-class Ignition hosts from the start**, alongside desktop.
-The shared document/command/session model must not depend on a desktop terminal, mouse,
-filesystem layout or window singleton. Native presentation, touch/pen, text/IME, voice,
-motion/camera, permissions, background/foreground transitions, memory pressure and surface
-loss are host capabilities with explicit lifecycle rules. Mobile can run a local scene,
-control a remote one, or present a remote simulation through an independently negotiated
-view. Preserve responsive local input and a clear connection/recovery state.
-
-**VR and AR are first-class host profiles too**, with **Quest 3** as the first available
-XR hardware target. Model tracked views/poses, action input, hands/controllers, spatial
-UI, session focus/visibility and frame scheduling explicitly. Presentation can have multiple
-views and projection/layer requirements; it must not assume one camera feeding one flat
-window. The same command/session service powers a spatial prompt, local immersive scene
-or remote simulation. A capability-based XR adapter should share the renderer/asset model
-while exposing device-specific features. Establish comfort controls and frame-time budgets
-in the first sample, and test pause/resume, tracking loss and reconnection on the user's
-Quest 3. AR composition, scene understanding and passthrough are opt-in capabilities to
-prove on each device, not assumptions made by every game. Keep a desktop preview useful
-for development without treating it as XR hardware validation.
-
-The first **Ignition XR scene** is an intentionally anachronistic workspace: an old
-typewriter, a ribbon microphone and a desk under flickering candlelight, connected to an
-immense computer somewhere beyond the room. Direct typing animates the keys; AI replies
-appear on the paper; voice enters through the microphone. Experiments can grow from the
-desk into the surrounding space. The candle is a lighting/material experiment, while the
-typewriter/paper is a spatial view of the same command transcript as the green terminal.
-Keep the document/session contract shared, let the user choose input/presentation, and
-make ambient flicker independently adjustable. Begin with authored procedural objects;
-record provenance for any imported models, textures or audio.
-
-**Watch is an optional companion target in the design.** The motivating demonstration
-is a person on stage wearing only a watch: speak an idea, connect to a workstation or
-supercomputer running the simulation, and see the result on a stage display. The watch
-client sends intent through the same session/command protocol, reports progress and
-provides confirmation/cancel/undo controls. Compute, rendering, speech recognition and
-agent orchestration may be remote capabilities; do not require a full engine renderer or
-language runtime on the watch. Account for reconnects, latency, tiny displays, battery and
-background limits. Separate simulation authority, controller and presentation endpoints
-so this scenario does not require the watch to relay rendered frames. Device support
-and transport details need later hardware proofs; no new watch deployment is part of
-the current data milestone.
-
-Build scenes from primitives, procedural geometry and generative 2D/3D shaders first.
-Asset downloads are a deliberate URI-provider capability, not an invisible side effect
-of scene loading. Preserve source URL, creator, license/SPDX or license text, attribution,
-retrieval time and content hash alongside every downloaded asset, including derivatives.
-Missing/unclear permission is a reported import issue. Cache by content identity and retain
-an offline path. Record the generator/version/seed/inputs for procedural assets as well.
-
-The public command surface should eventually reach each supported programmable stage:
-shader sources and compilation diagnostics, reflected bindings, geometry, materials,
-passes/render targets, draw/dispatch, synchronization, presentation, capture and timing.
-Expose backend capabilities and extensions rather than pretending OpenGL, Metal, Vulkan
-and D3D12 have identical stages. Grow a runnable example for each technique as the backend
-supports it, with required features and expected output documented.
-
-Once the prompt and MCP adapter work, test them with exploratory agents that receive
-**only public documentation and tool discovery**, without source access or private
-implementation hints. Have them build examples, report missing capabilities and reproducible
-failures, and keep operation receipts/captures. These trials measure usability of the
-public interface; do not repair a trial by giving the agent an undocumented mutation path.
-
-Scripts provide rapid experimentation. Promote useful, performance-critical behavior to
-native C++ or the appropriate platform/GPU implementation when profiling justifies it.
-Preserve the same schema/command contract and comparison fixtures so promotion can be
-measured without changing authored meaning. Generated code is a consumer, not a special
-privileged way around lifecycle and validation rules.
+Desktop, iOS/Android and VR/AR are first-class host profiles. The shared session and
+command model must support independent controller, simulation and presentation endpoints,
+including an optional watch remote client. XR needs tracked views/poses, actions, spatial
+UI and session/frame lifecycle rather than a single flat window assumption. Quest 3 is
+the first available XR hardware target; native device proofs remain follow-up work.
+The detailed Ignition experience and implementation plan live in its private repository.
 
 ## Implementation order after the standards/GLM milestone
 
@@ -232,18 +148,17 @@ headless transactional data labs extend it. Native graph preparation/activation 
 implemented independently of graphics; gameplay/GPU resource activation and the shared
 command service still need their own contracts. See [Tools/Metagen/README.md](Tools/Metagen/README.md).
 
-1. **Metagen/native data foundation.** Complete the current review/validation and push.
+1. **Metagen/native data foundation (validated and pushed).**
    The scalar runtime and rich Python/C++ graph conformance now cover enums, recursive
    containers, inline/local/external references and opt-in prototypes/merge operations.
    Native snapshots support revision-checked activation, checked handles and undo.
    Continue richer adapters, cooked binary benchmarks and native JSON/XML/codec consumers
    from real needs; the generic Metagen SDK remains independent. See
    [Tools/Metagen/DATA_MODEL.md](Tools/Metagen/DATA_MODEL.md).
-2. **Ignition boot and prompt.** Establish shared desktop/iOS/Android host and session
-   boundaries, an XR profile targeting Quest 3, and an optional watch remote client. Add the native application, procedural GPU logo
-   variants and the timed green terminal. Establish text input, command history,
-   diagnostics, resize/fullscreen and an inspectable readiness model. EngineTest remains
-   a regression fixture and receives no new interactive development surface.
+2. **External Ignition consumer.** Build the private application against ICE, establishing
+   shared desktop/iOS/Android and XR host/session boundaries, text input, command history,
+   diagnostics, presentation lifecycle and an inspectable readiness model. EngineTest
+   remains a regression fixture and receives no new interactive development surface.
 3. **Resilient live development in Ignition.** Connect detached data preparation and
    revision-checked publication to the host boundary; inspect, replace and undo a scene.
    Add one reloadable Lua behavior with explicit state transfer and a procedural art
