@@ -61,7 +61,9 @@ function(ice_require_jolt)
     set(INTERPROCEDURAL_OPTIMIZATION OFF)
     set(ENABLE_ALL_WARNINGS OFF)
     set(ENABLE_INSTALL OFF)
-    set(CPP_RTTI_ENABLED OFF)
+    # UBSan's vptr checks in the ICE wrapper need matching upstream typeinfo.
+    # Keep those checks intact in instrumented builds; normal builds omit RTTI.
+    set(CPP_RTTI_ENABLED ${ICE_ENABLE_SANITIZERS})
     set(CPP_EXCEPTIONS_ENABLED OFF)
     set(USE_STATIC_MSVC_RUNTIME_LIBRARY OFF)
     set(FLOATING_POINT_EXCEPTIONS_ENABLED OFF)
