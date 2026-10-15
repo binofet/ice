@@ -1,4 +1,5 @@
 #include "ice/render/device.h"
+#include "batch_validation.h"
 #include <atomic>
 #include <limits>
 #include <set>
@@ -40,11 +41,21 @@ struct device::implementation {
 };
 struct pipeline::implementation {
 	std::shared_ptr<const int> token;
+	pipeline_options           options;
 #ifdef ICE_RENDER_METAL
 	std::unique_ptr<metal::pipeline> metal;
 #endif
 #ifdef ICE_RENDER_OPENGL
 	std::unique_ptr<gl::pipeline> opengl;
+#endif
+};
+struct mesh::implementation {
+	std::shared_ptr<const int> token;
+#ifdef ICE_RENDER_METAL
+	std::unique_ptr<metal::mesh> metal;
+#endif
+#ifdef ICE_RENDER_OPENGL
+	std::unique_ptr<gl::mesh> opengl;
 #endif
 };
 struct texture::implementation {
@@ -67,12 +78,62 @@ struct presentation_surface::implementation {
 	std::unique_ptr<gl::presentation_surface> opengl;
 #endif
 };
+namespace detail {
+struct batch_access {
+	static ice::expected<void, diagnostic> validate(const std::shared_ptr<const int> &token,
+	                                                const frame_batch                &batch) {
+		auto shape = validate_batch_shape(batch);
+		if (!shape)
+			return shape;
+		for (const auto &item : batch.draws) {
+			const auto &prepared = *item.pipeline->implementation_;
+			if (prepared.token != token ||
+			    (item.geometry && item.geometry->implementation_->token != token) ||
+			    (item.sampled_image && item.sampled_image->implementation_->token != token))
+				return failure("Frame contains a foreign pipeline, mesh or sampled image");
+			if ((prepared.options.vertices == vertex_layout::position_normal) !=
+			    bool(item.geometry))
+				return failure("Indexed pipelines require a mesh; procedural pipelines reject one");
+		}
+		return {};
+	}
+#ifdef ICE_RENDER_METAL
+	static std::vector<metal::draw_item> metal_items(const frame_batch &batch) {
+		std::vector<metal::draw_item> result;
+		result.reserve(batch.draws.size());
+		for (const auto &item : batch.draws)
+			result.push_back(
+			    {item.pipeline->implementation_->metal.get(),
+			     item.geometry ? item.geometry->implementation_->metal.get() : nullptr,
+			     item.uniforms,
+			     item.sampled_image ? item.sampled_image->implementation_->metal.get() : nullptr});
+		return result;
+	}
+#endif
+#ifdef ICE_RENDER_OPENGL
+	static std::vector<gl::draw_item> gl_items(const frame_batch &batch) {
+		std::vector<gl::draw_item> result;
+		result.reserve(batch.draws.size());
+		for (const auto &item : batch.draws)
+			result.push_back(
+			    {item.pipeline->implementation_->opengl.get(),
+			     item.geometry ? item.geometry->implementation_->opengl.get() : nullptr,
+			     item.uniforms,
+			     item.sampled_image ? item.sampled_image->implementation_->opengl.get() : nullptr});
+		return result;
+	}
+#endif
+};
+} // namespace detail
 device::device(std::unique_ptr<implementation> implementation)
     : implementation_(std::move(implementation)) {}
 device::~device() = default;
 pipeline::pipeline(std::unique_ptr<implementation> implementation)
     : implementation_(std::move(implementation)) {}
 pipeline::~pipeline() = default;
+mesh::mesh(std::unique_ptr<implementation> implementation)
+    : implementation_(std::move(implementation)) {}
+mesh::~mesh() = default;
 texture::texture(std::unique_ptr<implementation> implementation)
     : implementation_(std::move(implementation)) {}
 texture::~texture() = default;
@@ -150,21 +211,25 @@ std::string device::take_error() {
 	return {};
 }
 ice::expected<std::unique_ptr<pipeline>, diagnostic>
-device::prepare_pipeline(const ice::io::resource_resolver &resolver, const shader_source &source) {
+device::prepare_pipeline(const ice::io::resource_resolver &resolver, const shader_source &source,
+                         pipeline_options options) {
 	auto snapshot = shader_snapshot::read(resolver, source.uri);
 	if (!snapshot)
 		return ice::unexpected(snapshot.error());
-	return prepare_pipeline(*snapshot, source.vertex_entry, source.fragment_entry);
+	return prepare_pipeline(*snapshot, source.vertex_entry, source.fragment_entry, options);
 }
 ice::expected<std::unique_ptr<pipeline>, diagnostic>
 device::prepare_pipeline(const shader_snapshot &source, const std::string &vertex_entry,
-                         const std::string &fragment_entry) {
-	auto result   = std::make_unique<pipeline::implementation>();
-	result->token = implementation_->token;
+                         const std::string &fragment_entry, pipeline_options options) {
+	if (!detail::valid_options(options))
+		return failure("Invalid vertex layout or depth-write without depth-test");
+	auto result     = std::make_unique<pipeline::implementation>();
+	result->token   = implementation_->token;
+	result->options = options;
 #ifdef ICE_RENDER_METAL
 	if (implementation_->metal) {
 		auto native =
-		    implementation_->metal->prepare_pipeline(source, vertex_entry, fragment_entry);
+		    implementation_->metal->prepare_pipeline(source, vertex_entry, fragment_entry, options);
 		if (!native)
 			return ice::unexpected(native.error());
 		result->metal = std::move(*native);
@@ -172,8 +237,8 @@ device::prepare_pipeline(const shader_snapshot &source, const std::string &verte
 #endif
 #ifdef ICE_RENDER_OPENGL
 	if (implementation_->opengl) {
-		auto native =
-		    implementation_->opengl->prepare_pipeline(source, vertex_entry, fragment_entry);
+		auto native = implementation_->opengl->prepare_pipeline(source, vertex_entry,
+		                                                        fragment_entry, options);
 		if (!native)
 			return ice::unexpected(native.error());
 		result->opengl = std::move(*native);
@@ -182,6 +247,32 @@ device::prepare_pipeline(const shader_snapshot &source, const std::string &verte
 	// The unique owner moves into tl::expected; analyzer 18 loses that ownership path.
 	// NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks)
 	return std::unique_ptr<pipeline>(new pipeline(std::move(result)));
+}
+ice::expected<std::unique_ptr<mesh>, diagnostic> device::create_mesh(const mesh_data &description) {
+	auto valid = detail::validate_mesh_data(description);
+	if (!valid)
+		return ice::unexpected(valid.error());
+	auto result   = std::make_unique<mesh::implementation>();
+	result->token = implementation_->token;
+#ifdef ICE_RENDER_METAL
+	if (implementation_->metal) {
+		auto native = implementation_->metal->create_mesh(description);
+		if (!native)
+			return ice::unexpected(native.error());
+		result->metal = std::move(*native);
+	}
+#endif
+#ifdef ICE_RENDER_OPENGL
+	if (implementation_->opengl) {
+		auto native = implementation_->opengl->create_mesh(description);
+		if (!native)
+			return ice::unexpected(native.error());
+		result->opengl = std::move(*native);
+	}
+#endif
+	// Ownership transfers into tl::expected rather than escaping as a raw allocation.
+	// NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks)
+	return std::unique_ptr<mesh>(new mesh(std::move(result)));
 }
 ice::expected<std::unique_ptr<texture>, diagnostic> device::create_texture(const image &pixels) {
 	auto result   = std::make_unique<texture::implementation>();
@@ -258,21 +349,25 @@ ice::expected<image, diagnostic> device::render_offscreen(const pipeline &pipeli
                                                           int                        height,
                                                           std::span<const std::byte> uniforms,
                                                           const texture *sampled_image) {
-	if (sampled_image && implementation_->token != sampled_image->implementation_->token)
-		return failure("Foreign-device texture");
-	if (implementation_->token != pipeline.implementation_->token)
-		return failure("Foreign-device pipeline");
+	const draw_item item{&pipeline, nullptr, uniforms, sampled_image};
+	return render_offscreen(frame_batch{std::span(&item, 1)}, width, height);
+}
+ice::expected<image, diagnostic> device::render_offscreen(const frame_batch &batch, int width,
+                                                          int height) {
+	auto valid = detail::batch_access::validate(implementation_->token, batch);
+	if (!valid)
+		return ice::unexpected(valid.error());
 #ifdef ICE_RENDER_METAL
-	if (implementation_->metal)
-		return implementation_->metal->render_offscreen(
-		    *pipeline.implementation_->metal, width, height, uniforms,
-		    sampled_image ? sampled_image->implementation_->metal.get() : nullptr);
+	if (implementation_->metal) {
+		auto items = detail::batch_access::metal_items(batch);
+		return implementation_->metal->render_offscreen({items, batch.clear_color}, width, height);
+	}
 #endif
 #ifdef ICE_RENDER_OPENGL
-	if (implementation_->opengl)
-		return implementation_->opengl->render_offscreen(
-		    *pipeline.implementation_->opengl, width, height, uniforms,
-		    sampled_image ? sampled_image->implementation_->opengl.get() : nullptr);
+	if (implementation_->opengl) {
+		auto items = detail::batch_access::gl_items(batch);
+		return implementation_->opengl->render_offscreen({items, batch.clear_color}, width, height);
+	}
 #endif
 	return failure("Graphics backend unavailable");
 }
@@ -290,21 +385,24 @@ bool presentation_surface::resize(int width, int height) {
 ice::expected<frame_status, diagnostic>
 presentation_surface::draw(const pipeline &pipeline, std::span<const std::byte> uniforms,
                            const texture *sampled_image) {
-	if (sampled_image && implementation_->token != sampled_image->implementation_->token)
-		return failure("Foreign-device texture");
-	if (implementation_->token != pipeline.implementation_->token)
-		return failure("Foreign-device pipeline");
+	const draw_item item{&pipeline, nullptr, uniforms, sampled_image};
+	return draw_batch(frame_batch{std::span(&item, 1)});
+}
+ice::expected<frame_status, diagnostic> presentation_surface::draw_batch(const frame_batch &batch) {
+	auto valid = detail::batch_access::validate(implementation_->token, batch);
+	if (!valid)
+		return ice::unexpected(valid.error());
 #ifdef ICE_RENDER_METAL
-	if (implementation_->metal)
-		return implementation_->metal->draw(
-		    *pipeline.implementation_->metal, uniforms,
-		    sampled_image ? sampled_image->implementation_->metal.get() : nullptr);
+	if (implementation_->metal) {
+		auto items = detail::batch_access::metal_items(batch);
+		return implementation_->metal->draw_batch({items, batch.clear_color});
+	}
 #endif
 #ifdef ICE_RENDER_OPENGL
-	if (implementation_->opengl)
-		return implementation_->opengl->draw(
-		    *pipeline.implementation_->opengl, uniforms,
-		    sampled_image ? sampled_image->implementation_->opengl.get() : nullptr);
+	if (implementation_->opengl) {
+		auto items = detail::batch_access::gl_items(batch);
+		return implementation_->opengl->draw_batch({items, batch.clear_color});
+	}
 #endif
 	return failure("Graphics backend unavailable");
 }

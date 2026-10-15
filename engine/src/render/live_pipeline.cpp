@@ -24,7 +24,8 @@ live_pipeline &live_pipeline::operator=(live_pipeline &&other) noexcept = defaul
 ice::expected<void, diagnostic>
 live_pipeline::prepare(device &gpu, const shader_snapshot &source, const std::string &vertex_entry,
                        const std::string &fragment_entry, std::uint64_t expected_revision,
-                       std::span<const std::byte> uniforms, const texture *sampled_image) {
+                       std::span<const std::byte> uniforms, const texture *sampled_image,
+                       pipeline_options options, const mesh *probe_mesh) {
 	if (!implementation_)
 		implementation_ = std::make_unique<implementation>();
 	auto &state = *implementation_;
@@ -32,10 +33,11 @@ live_pipeline::prepare(device &gpu, const shader_snapshot &source, const std::st
 		return failure("Stale pipeline revision during preparation");
 	if (state.active && state.active->device_identity != gpu.identity())
 		return failure("Pipeline holder belongs to another logical device");
-	auto candidate = gpu.prepare_pipeline(source, vertex_entry, fragment_entry);
+	auto candidate = gpu.prepare_pipeline(source, vertex_entry, fragment_entry, options);
 	if (!candidate)
 		return ice::unexpected(candidate.error());
-	auto probe = gpu.render_offscreen(**candidate, 63, 31, uniforms, sampled_image);
+	const draw_item item{candidate->get(), probe_mesh, uniforms, sampled_image};
+	auto            probe = gpu.render_offscreen(frame_batch{std::span(&item, 1)}, 63, 31);
 	if (!probe)
 		return ice::unexpected(probe.error());
 	auto prepared = std::make_unique<prepared_state>(

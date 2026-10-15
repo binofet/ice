@@ -1,4 +1,5 @@
 #include "ice/render/gl/device.h"
+#include "../batch_validation.h"
 #include "api.h"
 #include "ice/core/utf8.h"
 #include <algorithm>
@@ -27,9 +28,23 @@ struct pipeline::implementation {
 	GLuint                                program       = 0;
 	std::size_t                           uniform_bytes = 0;
 	bool                                  samples_image = false;
+	pipeline_options                      options;
 	~implementation() {
 		if (program && state->context->make_current())
 			state->api.DeleteProgram(program);
+	}
+};
+struct mesh::implementation {
+	std::shared_ptr<detail::device_state> state;
+	GLuint                                vertices = 0, indices = 0;
+	GLsizei                               index_count = 0;
+	~implementation() {
+		if (state->context->make_current()) {
+			if (vertices)
+				state->api.DeleteBuffers(1, &vertices);
+			if (indices)
+				state->api.DeleteBuffers(1, &indices);
+		}
 	}
 };
 struct texture::implementation {
@@ -156,34 +171,91 @@ ice::expected<GLuint, diagnostic> upload_texture(detail::device_state &state, co
 	}
 	return name;
 }
-void encode(detail::functions &api, GLuint program, GLuint vao, GLuint buffer, int width,
-            int height, std::span<const std::byte> uniforms, GLuint sampled_image) {
-	api.Viewport(0, 0, width, height);
-	api.Disable(GL_DEPTH_TEST);
-	api.Disable(GL_BLEND);
-	api.Disable(GL_CULL_FACE);
-	api.Disable(GL_SCISSOR_TEST);
-	api.Disable(GL_FRAMEBUFFER_SRGB);
-	api.ClearColor(0, 0, 0, 1);
-	api.Clear(GL_COLOR_BUFFER_BIT);
-	api.UseProgram(program);
-	api.BindVertexArray(vao);
-	api.ActiveTexture(GL_TEXTURE0);
-	api.BindTexture(GL_TEXTURE_2D, sampled_image);
-	if (!uniforms.empty()) {
-		// Orphaning gives the driver permission to retain bytes referenced by prior draws.
-		// Each surface owns its own UBO; independent contexts never race shared uniform bytes.
-		api.BindBuffer(GL_UNIFORM_BUFFER, buffer);
-		api.BufferData(GL_UNIFORM_BUFFER, GLsizeiptr(uniforms.size()), uniforms.data(),
-		               GL_STREAM_DRAW);
-		api.BindBufferBase(GL_UNIFORM_BUFFER, 0, buffer);
-	}
-	api.DrawArrays(GL_TRIANGLES, 0, 3);
-}
 } // namespace
+struct detail::batch_access {
+	static ice::expected<void, diagnostic> validate(const std::shared_ptr<device_state> &state,
+	                                                const frame_batch                   &batch) {
+		auto shape = ice::render::detail::validate_batch_shape(batch);
+		if (!shape)
+			return shape;
+		for (const auto &item : batch.draws) {
+			const auto &prepared = *item.pipeline->implementation_;
+			if (!valid_draw(state, prepared.state, item.uniforms, prepared.uniform_bytes) ||
+			    (item.geometry && item.geometry->implementation_->state != state) ||
+			    (item.sampled_image && item.sampled_image->implementation_->state != state))
+				return failure("Foreign frame resource or invalid uniform byte count");
+			if ((prepared.options.vertices == vertex_layout::position_normal) !=
+			    bool(item.geometry))
+				return failure("Indexed pipelines require a mesh; procedural pipelines reject one");
+			if (prepared.samples_image && !item.sampled_image)
+				return failure("Frame pipeline requires a sampled image");
+		}
+		return {};
+	}
+	static void encode(functions &api, const frame_batch &batch, GLuint vao, GLuint buffer,
+	                   int width, int height) {
+		api.Viewport(0, 0, width, height);
+		api.Disable(GL_CULL_FACE);
+		api.Disable(GL_SCISSOR_TEST);
+		api.Disable(GL_FRAMEBUFFER_SRGB);
+		// A preceding overlay may have disabled depth writes. Clear with writes enabled.
+		api.DepthMask(GL_TRUE);
+		api.ClearDepth(1.0);
+		api.ClearColor(batch.clear_color[0], batch.clear_color[1], batch.clear_color[2],
+		               batch.clear_color[3]);
+		api.Clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		api.BindVertexArray(vao);
+		for (const auto &item : batch.draws) {
+			const auto &prepared = *item.pipeline->implementation_;
+			api.UseProgram(prepared.program);
+			if (prepared.options.depth_test) {
+				api.Enable(GL_DEPTH_TEST);
+				api.DepthFunc(GL_LESS);
+			} else
+				api.Disable(GL_DEPTH_TEST);
+			api.DepthMask(prepared.options.depth_write ? GL_TRUE : GL_FALSE);
+			if (prepared.options.alpha_blend) {
+				api.Enable(GL_BLEND);
+				api.BlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+			} else
+				api.Disable(GL_BLEND);
+			api.ActiveTexture(GL_TEXTURE0);
+			api.BindTexture(GL_TEXTURE_2D,
+			                item.sampled_image ? item.sampled_image->implementation_->name : 0);
+			if (!item.uniforms.empty()) {
+				// Orphan per draw; preceding commands keep the bytes referenced by their UBO
+				// storage.
+				api.BindBuffer(GL_UNIFORM_BUFFER, buffer);
+				api.BufferData(GL_UNIFORM_BUFFER, GLsizeiptr(item.uniforms.size()),
+				               item.uniforms.data(), GL_STREAM_DRAW);
+				api.BindBufferBase(GL_UNIFORM_BUFFER, 0, buffer);
+			}
+			if (item.geometry) {
+				const auto &geometry = *item.geometry->implementation_;
+				api.BindBuffer(GL_ARRAY_BUFFER, geometry.vertices);
+				api.EnableVertexAttribArray(0);
+				api.EnableVertexAttribArray(1);
+				api.VertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(mesh_vertex), nullptr);
+				api.VertexAttribPointer(
+				    1, 3, GL_FLOAT, GL_FALSE, sizeof(mesh_vertex),
+				    reinterpret_cast<const void *>(offsetof(mesh_vertex, normal)));
+				api.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, geometry.indices);
+				api.DrawElements(GL_TRIANGLES, geometry.index_count, GL_UNSIGNED_INT, nullptr);
+			} else {
+				api.DisableVertexAttribArray(0);
+				api.DisableVertexAttribArray(1);
+				api.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+				api.DrawArrays(GL_TRIANGLES, 0, 3);
+			}
+		}
+	}
+};
 pipeline::pipeline(std::unique_ptr<implementation> implementation)
     : implementation_(std::move(implementation)) {}
 pipeline::~pipeline() = default;
+mesh::mesh(std::unique_ptr<implementation> implementation)
+    : implementation_(std::move(implementation)) {}
+mesh::~mesh() = default;
 texture::texture(std::unique_ptr<implementation> implementation)
     : implementation_(std::move(implementation)) {}
 texture::~texture() = default;
@@ -237,17 +309,46 @@ std::string device::name() const {
 	       (version ? version : "unknown version");
 }
 std::string device::take_error() { return std::exchange(state_->error, {}); }
+ice::expected<std::unique_ptr<mesh>, diagnostic> device::create_mesh(const mesh_data &description) {
+	auto valid = ice::render::detail::validate_mesh_data(description);
+	if (!valid)
+		return ice::unexpected(valid.error());
+	if (!state_->context->make_current())
+		return failure("Cannot activate OpenGL mesh upload context");
+	auto data   = std::make_unique<mesh::implementation>();
+	data->state = state_;
+	auto &api   = state_->api;
+	api.GenBuffers(1, &data->vertices);
+	api.GenBuffers(1, &data->indices);
+	api.BindBuffer(GL_ARRAY_BUFFER, data->vertices);
+	api.BufferData(GL_ARRAY_BUFFER, GLsizeiptr(description.vertices.size() * sizeof(mesh_vertex)),
+	               description.vertices.data(), GL_STATIC_DRAW);
+	// Buffer storage is untyped; upload indices without mutating any context-local VAO binding.
+	api.BindBuffer(GL_ARRAY_BUFFER, data->indices);
+	api.BufferData(GL_ARRAY_BUFFER, GLsizeiptr(description.indices.size() * sizeof(std::uint32_t)),
+	               description.indices.data(), GL_STATIC_DRAW);
+	api.Finish();
+	if (auto error = check(*state_); !error.empty())
+		return failure(error);
+	data->index_count = GLsizei(description.indices.size());
+	// Ownership transfers through tl::expected.
+	// NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks)
+	return std::unique_ptr<mesh>(new mesh(std::move(data)));
+}
 ice::expected<std::unique_ptr<pipeline>, diagnostic>
 device::prepare_pipeline(const ice::io::resource_resolver &resolver, const std::string &uri,
-                         const std::string &vertex_entry, const std::string &fragment_entry) {
+                         const std::string &vertex_entry, const std::string &fragment_entry,
+                         pipeline_options options) {
 	auto snapshot = shader_snapshot::read(resolver, uri);
 	if (!snapshot)
 		return ice::unexpected(snapshot.error());
-	return prepare_pipeline(*snapshot, vertex_entry, fragment_entry);
+	return prepare_pipeline(*snapshot, vertex_entry, fragment_entry, options);
 }
 ice::expected<std::unique_ptr<pipeline>, diagnostic>
 device::prepare_pipeline(const shader_snapshot &snapshot, const std::string &vertex_entry,
-                         const std::string &fragment_entry) {
+                         const std::string &fragment_entry, pipeline_options options) {
+	if (!ice::render::detail::valid_options(options))
+		return failure("Invalid vertex layout or depth-write without depth-test");
 	const auto &uri = snapshot.uri();
 	std::string source(snapshot.source());
 	if (!ice::core::valid_utf8_text(source, 1024 * 1024) || source.empty() ||
@@ -266,6 +367,7 @@ device::prepare_pipeline(const shader_snapshot &snapshot, const std::string &ver
 	}
 	auto prepared     = std::make_unique<pipeline::implementation>();
 	prepared->state   = state_;
+	prepared->options = options;
 	prepared->program = api.CreateProgram();
 	if (!prepared->program) {
 		api.DeleteShader(*vertex);
@@ -295,17 +397,25 @@ device::prepare_pipeline(const shader_snapshot &snapshot, const std::string &ver
 	if (attribute_name_bytes < 0 || attribute_name_bytes > 65536)
 		return failure(uri + ": invalid attribute reflection name bounds");
 	std::vector<char> attribute_name(std::max(attribute_name_bytes, 1));
+	bool              position_attribute = false;
 	for (GLint index = 0; index < attributes; ++index) {
 		GLsizei length = 0;
 		GLint   size   = 0;
 		GLenum  type   = 0;
 		api.GetActiveAttrib(prepared->program, GLuint(index), GLsizei(attribute_name.size()),
 		                    &length, &size, &type, attribute_name.data());
-		if (!std::string_view(attribute_name.data()).starts_with("gl_") &&
-		    api.GetAttribLocation(prepared->program, attribute_name.data()) >= 0)
-			return failure(
-			    uri + ": initial pipelines support procedural vertices without vertex attributes");
+		if (std::string_view(attribute_name.data()).starts_with("gl_"))
+			continue;
+		auto location = api.GetAttribLocation(prepared->program, attribute_name.data());
+		if (location < 0)
+			continue;
+		if (options.vertices != vertex_layout::position_normal || type != GL_FLOAT_VEC3 ||
+		    size != 1 || location > 1)
+			return failure(uri + ": vertex inputs must match float3 position0/normal1");
+		position_attribute |= location == 0;
 	}
+	if (options.vertices == vertex_layout::position_normal && !position_attribute)
+		return failure(uri + ": indexed pipelines require an active float3 position at location0");
 	GLint uniform_name_bytes = 0;
 	api.GetProgramiv(prepared->program, GL_ACTIVE_UNIFORM_MAX_LENGTH, &uniform_name_bytes);
 	if (uniform_name_bytes < 0 || uniform_name_bytes > 65536)
@@ -400,21 +510,21 @@ bool presentation_surface::resize(int width, int height) {
 ice::expected<frame_status, diagnostic>
 presentation_surface::draw(const pipeline &pipeline, std::span<const std::byte> uniforms,
                            const texture *sampled_image) {
-	auto &data     = *implementation_;
-	auto &prepared = *pipeline.implementation_;
-	if (!valid_draw(data.state, prepared.state, uniforms, prepared.uniform_bytes))
-		return failure("Foreign pipeline or invalid uniform byte count");
-	if (sampled_image && sampled_image->implementation_->state != data.state)
-		return failure("Foreign sampled texture");
-	if (prepared.samples_image && !sampled_image)
-		return failure("Pipeline requires a sampled texture");
+	const draw_item item{&pipeline, nullptr, uniforms, sampled_image};
+	return draw_batch(frame_batch{std::span(&item, 1)});
+}
+ice::expected<frame_status, diagnostic> presentation_surface::draw_batch(const frame_batch &batch) {
+	auto &data  = *implementation_;
+	auto  valid = detail::batch_access::validate(data.state, batch);
+	if (!valid)
+		return ice::unexpected(valid.error());
 	if (!data.width || !data.height)
 		return frame_status::unavailable;
 	if (!data.context->make_current())
 		return failure("Cannot activate OpenGL presentation context");
 	data.state->api.BindFramebuffer(GL_FRAMEBUFFER, 0);
-	encode(data.state->api, prepared.program, data.vao, data.uniforms, data.width, data.height,
-	       uniforms, sampled_image ? sampled_image->implementation_->name : 0);
+	detail::batch_access::encode(data.state->api, batch, data.vao, data.uniforms, data.width,
+	                             data.height);
 	if (auto error = check(*data.state); !error.empty())
 		return failure(error);
 	if (!data.context->present())
@@ -435,26 +545,30 @@ ice::expected<image, diagnostic> device::render_offscreen(const pipeline &pipeli
                                                           int                        height,
                                                           std::span<const std::byte> uniforms,
                                                           const texture *sampled_image) {
-	auto &prepared = *pipeline.implementation_;
-	if (width < 1 || height < 1 || width > 4096 || height > 4096 ||
-	    !valid_draw(state_, prepared.state, uniforms, prepared.uniform_bytes))
-		return failure("Invalid capture dimensions, foreign pipeline or uniform byte count");
-	if (sampled_image && sampled_image->implementation_->state != state_)
-		return failure("Foreign sampled texture");
-	if (prepared.samples_image && !sampled_image)
-		return failure("Pipeline requires a sampled texture");
+	const draw_item item{&pipeline, nullptr, uniforms, sampled_image};
+	return render_offscreen(frame_batch{std::span(&item, 1)}, width, height);
+}
+ice::expected<image, diagnostic> device::render_offscreen(const frame_batch &batch, int width,
+                                                          int height) {
+	if (width < 1 || height < 1 || width > 4096 || height > 4096)
+		return failure("Invalid capture dimensions");
+	auto valid = detail::batch_access::validate(state_, batch);
+	if (!valid)
+		return ice::unexpected(valid.error());
 	if (!state_->context->make_current())
 		return failure("Cannot activate OpenGL capture context");
 	auto &api = state_->api;
 	struct target_owner {
 		detail::functions &api;
-		GLuint             texture = 0, framebuffer = 0;
+		GLuint             texture = 0, depth = 0, framebuffer = 0;
 		~target_owner() {
 			api.BindFramebuffer(GL_FRAMEBUFFER, 0);
 			if (framebuffer)
 				api.DeleteFramebuffers(1, &framebuffer);
 			if (texture)
 				api.DeleteTextures(1, &texture);
+			if (depth)
+				api.DeleteTextures(1, &depth);
 		}
 	} target{api};
 	api.GenTextures(1, &target.texture);
@@ -467,10 +581,16 @@ ice::expected<image, diagnostic> device::render_offscreen(const pipeline &pipeli
 	api.BindFramebuffer(GL_FRAMEBUFFER, target.framebuffer);
 	api.FramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, target.texture,
 	                         0);
+	api.GenTextures(1, &target.depth);
+	api.BindTexture(GL_TEXTURE_2D, target.depth);
+	api.TexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, width, height, 0, GL_DEPTH_COMPONENT,
+	               GL_FLOAT, nullptr);
+	api.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	api.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	api.FramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, target.depth, 0);
 	if (api.CheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
 		return failure("OpenGL capture framebuffer is incomplete");
-	encode(api, prepared.program, state_->vao, state_->uniforms, width, height, uniforms,
-	       sampled_image ? sampled_image->implementation_->name : 0);
+	detail::batch_access::encode(api, batch, state_->vao, state_->uniforms, width, height);
 	image result{width, height, std::vector<std::uint8_t>(std::size_t(width) * height * 4)};
 	api.PixelStorei(GL_PACK_ALIGNMENT, 1);
 	api.ReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, result.rgba.data());

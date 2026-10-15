@@ -46,6 +46,8 @@ create_context(std::shared_ptr<native_context>            shared,
 		                                             24,
 		                                             NSOpenGLPFAAlphaSize,
 		                                             8,
+		                                             NSOpenGLPFADepthSize,
+		                                             24,
 		                                             0};
 		result->format = [[NSOpenGLPixelFormat alloc] initWithAttributes:attributes];
 		if (!result->format)

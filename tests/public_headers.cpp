@@ -1,6 +1,7 @@
 #include "ice/data/json.h"
 // Compile supported public APIs together as an external consumer.
 #include "ice/animation/scene_animation.h"
+#include "ice/assets/primitive_mesh.h"
 #include "ice/assets/scene_asset.h"
 #include "ice/commands/service.h"
 #include "ice/core/expected.h"
@@ -11,6 +12,12 @@
 #include "ice/io/resource_uri.h"
 #include "ice/math/types.h"
 #include "ice/meta/schema.h"
+#ifdef ICE_HAS_PHYSICS_2D
+#include "ice/physics/world2d.h"
+#endif
+#ifdef ICE_HAS_PHYSICS_3D
+#include "ice/physics/world3d.h"
+#endif
 #include "ice/net/companion_link.h"
 #include "ice/net/companion_web.h"
 #include "ice/platform/host.h"

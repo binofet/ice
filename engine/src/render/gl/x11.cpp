@@ -98,6 +98,8 @@ create_context(std::shared_ptr<native_context>            shared,
 		                     8,
 		                     GLX_ALPHA_SIZE,
 		                     8,
+		                     GLX_DEPTH_SIZE,
+		                     24,
 		                     GLX_DOUBLEBUFFER,
 		                     True,
 		                     None};

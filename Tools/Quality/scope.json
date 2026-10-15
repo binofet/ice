@@ -1,5 +1,7 @@
 {
   "format": [
+    "engine/src/render/batch_validation.h",
+    "tests/mesh.cpp",
     "engine/include/ice/data/json.h",
     "engine/src/data/json.cpp",
     "tests/data_json.cpp",
@@ -60,9 +62,22 @@
     "engine/src/render/shader_snapshot.cpp",
     "engine/src/render/live_pipeline.cpp",
     "tests/shader_snapshot.cpp",
-    "tests/live_pipeline.cpp"
+    "tests/live_pipeline.cpp",
+    "engine/include/ice/physics/types.h",
+    "engine/include/ice/physics/world2d.h",
+    "engine/include/ice/physics/world3d.h",
+    "engine/src/physics/internal.h",
+    "engine/src/physics/core.cpp",
+    "engine/src/physics/world2d.cpp",
+    "engine/src/physics/world3d.cpp",
+    "engine/include/ice/assets/primitive_mesh.h",
+    "engine/src/assets/primitive_mesh.cpp",
+    "tests/physics2d.cpp",
+    "tests/physics3d.cpp",
+    "tests/primitive_mesh.cpp"
   ],
   "lint": [
+    "tests/mesh.cpp",
     "engine/src/data/json.cpp",
     "tests/data_json.cpp",
     "engine/src/commands/service.cpp",
@@ -90,7 +105,14 @@
     "engine/src/render/shader_snapshot.cpp",
     "engine/src/render/live_pipeline.cpp",
     "tests/shader_snapshot.cpp",
-    "tests/live_pipeline.cpp"
+    "tests/live_pipeline.cpp",
+    "engine/src/physics/core.cpp",
+    "engine/src/physics/world2d.cpp",
+    "engine/src/physics/world3d.cpp",
+    "engine/src/assets/primitive_mesh.cpp",
+    "tests/physics2d.cpp",
+    "tests/physics3d.cpp",
+    "tests/primitive_mesh.cpp"
   ],
   "lint_platform": {
     "Darwin": [

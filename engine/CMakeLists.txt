@@ -3,12 +3,13 @@ include(../cmake/ICEMath.cmake)
 
 # CPU ingestion/animation/camera do not create a device or require native presentation.
 add_library(ICEAssetRuntime STATIC
+    src/assets/primitive_mesh.cpp
     src/animation/scene_animation.cpp
     src/assets/scene_asset.cpp
     src/assets/gltf_readers.cpp
     src/render/scene_camera.cpp)
 add_library(ice::assets ALIAS ICEAssetRuntime)
-target_link_libraries(ICEAssetRuntime PUBLIC ice::math ice::uri)
+target_link_libraries(ICEAssetRuntime PUBLIC ice::math ice::uri ice::expected)
 target_include_directories(ICEAssetRuntime PUBLIC include)
 target_include_directories(ICEAssetRuntime SYSTEM PRIVATE 3rdparty)
 ice_strict_target(ICEAssetRuntime)
@@ -20,6 +21,23 @@ include(../cmake/ICEMeta.cmake)
 add_library(ICEEngine INTERFACE)
 add_library(ice::engine ALIAS ICEEngine)
 target_link_libraries(ICEEngine INTERFACE ice::platform ice::assets ice::meta ice::data)
+# Standard playground builds include both physics engines; tiny/watch hosts can omit them.
+set(physics_default ON)
+if(CMAKE_SYSTEM_NAME STREQUAL "watchOS")
+    set(physics_default OFF)
+endif()
+option(ICE_BUILD_PHYSICS_2D "Build the Box2D fixed-step simulation module" ${physics_default})
+option(ICE_BUILD_PHYSICS_3D "Build the Jolt fixed-step simulation module" ${physics_default})
+if(ICE_BUILD_PHYSICS_2D)
+    include(../cmake/ICEPhysics2D.cmake)
+    target_link_libraries(ICEEngine INTERFACE ice::physics2d)
+    target_compile_definitions(ICEEngine INTERFACE ICE_HAS_PHYSICS_2D=1)
+endif()
+if(ICE_BUILD_PHYSICS_3D)
+    include(../cmake/ICEPhysics3D.cmake)
+    target_link_libraries(ICEEngine INTERFACE ice::physics3d)
+    target_compile_definitions(ICEEngine INTERFACE ICE_HAS_PHYSICS_3D=1)
+endif()
 option(ICE_BUILD_COMMANDS "Build the optional headless command/session service" ON)
 if(ICE_BUILD_COMMANDS)
     include(../cmake/ICECommands.cmake)

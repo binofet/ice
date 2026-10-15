@@ -77,6 +77,7 @@ create_context(std::shared_ptr<native_context>            shared,
 	pixels.iPixelType = PFD_TYPE_RGBA;
 	pixels.cColorBits = 24;
 	pixels.cAlphaBits = 8;
+	pixels.cDepthBits = 24;
 	result->format    = parent ? parent->format : ChoosePixelFormat(result->drawable, &pixels);
 	if (!result->format || !SetPixelFormat(result->drawable, result->format, &pixels))
 		return ice::unexpected(std::string("WGL pixel format selection failed"));

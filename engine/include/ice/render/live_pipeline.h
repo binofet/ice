@@ -29,13 +29,15 @@ public:
 	live_pipeline &operator=(live_pipeline &&other) noexcept;
 	/// Compile exact snapshot bytes and synchronously render a detached 63x31 probe with
 	/// current uniforms/image. Reject stale revision or a foreign logical device first.
+	/// Indexed options require a same-device probe_mesh; procedural options reject one.
 	/// Success replaces only the staged candidate; failure preserves all existing owners.
 	/// The caller maintains compatible bindings through activation and later draws; probing
 	/// validates supported binding counts/byte sizes, not semantic shader-buffer layout.
 	ice::expected<void, diagnostic>
 	prepare(device &gpu, const shader_snapshot &source, const std::string &vertex_entry,
 	        const std::string &fragment_entry, std::uint64_t expected_revision,
-	        std::span<const std::byte> uniforms = {}, const texture *sampled_image = nullptr);
+	        std::span<const std::byte> uniforms = {}, const texture *sampled_image = nullptr,
+	        pipeline_options options = {}, const mesh *probe_mesh = nullptr);
 	/// Publish staged work at an explicit frame boundary, rejecting stale revision/device.
 	/// Retain the prior active pipeline for one undo; success returns the new monotonic revision.
 	ice::expected<std::uint64_t, diagnostic> activate(device &gpu, std::uint64_t expected_revision);

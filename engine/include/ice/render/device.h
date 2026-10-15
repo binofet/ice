@@ -8,15 +8,19 @@
 #include <memory>
 #include <span>
 namespace ice::render {
+namespace detail {
+/// Private batch resource access, with no native layout exposed to clients.
+struct batch_access;
+} // namespace detail
 /// Explicit backend selection. Availability depends on the host/build; failures are diagnostics.
 enum class backend_kind { metal, opengl };
-/// A backend-specific URI library and its procedural vertex/fragment entry names.
+/// A backend-specific URI library and its explicit vertex/fragment entry names.
 /// Authored shader packages may retain one variant per backend; no implicit source translation
 /// occurs.
 struct shader_source {
 	/// Library identity resolved through configured handlers/mounts.
 	std::string uri;
-	/// Procedural vertex entry, with no vertex-buffer inputs in this first slice.
+	/// Vertex entry; pipeline_options selects procedural or fixed position/normal inputs.
 	std::string vertex_entry;
 	/// Fragment entry; optional buffer(0)/std140 bytes and sampled image zero are reflected.
 	std::string fragment_entry;
@@ -30,8 +34,26 @@ public:
 private:
 	struct implementation;
 	explicit pipeline(std::unique_ptr<implementation> implementation);
+	friend struct detail::batch_access;
 	pipeline(const pipeline &other)                                  = delete;
 	pipeline                       &operator=(const pipeline &other) = delete;
+	std::unique_ptr<implementation> implementation_;
+	friend class device;
+	friend class presentation_surface;
+};
+/// Immutable device-owned indexed position/normal triangle list, uploaded from a CPU description.
+/// Keep the CPU description separately for recreation on another logical device.
+class mesh {
+public:
+	/// Release vertex/index storage; submitted native commands retain referenced resources.
+	~mesh();
+
+private:
+	struct implementation;
+	explicit mesh(std::unique_ptr<implementation> implementation);
+	friend struct detail::batch_access;
+	mesh(const mesh &other)                                      = delete;
+	mesh                           &operator=(const mesh &other) = delete;
 	std::unique_ptr<implementation> implementation_;
 	friend class device;
 	friend class presentation_surface;
@@ -48,18 +70,42 @@ public:
 private:
 	struct implementation;
 	explicit texture(std::unique_ptr<implementation> implementation);
+	friend struct detail::batch_access;
 	texture(const texture &other)                                   = delete;
 	texture                        &operator=(const texture &other) = delete;
 	std::unique_ptr<implementation> implementation_;
 	friend class device;
 	friend class presentation_surface;
 };
-/// Explicit presentation owner, independent of the native window and simulation. UI/render thread
-/// only; drain before a backend handoff, then destroy before the native endpoint is retired.
+/// One borrowed draw, consumed synchronously. Indexed pipelines require geometry; procedural
+/// pipelines require null geometry. Each uniform block is copied before this call returns.
+struct draw_item {
+	/// Prepared pipeline from the receiving logical device; never null.
+	const class pipeline *pipeline = nullptr;
+	/// Immutable triangle list, or null for the existing three-vertex procedural draw.
+	const mesh *geometry = nullptr;
+	/// At most 4096 bytes, satisfying the pipeline's reflected uniform contract.
+	std::span<const std::byte> uniforms;
+	/// Optional image from the same device; required if the pipeline samples texture zero.
+	const texture *sampled_image = nullptr;
+};
+/// Ordered one-pass batch, clearing color/depth exactly once before any draw.
+/// Up to 4096 draws and four MiB of aggregate uniform bytes. Invalid items reject the whole batch
+/// before modifying a target. Empty batches only clear. Blend/depth state belongs to each pipeline.
+struct frame_batch {
+	/// Borrowed draw/resource descriptions, valid throughout synchronous encoding/submission.
+	std::span<const draw_item> draws;
+	/// Finite normalized RGBA clear value; each component is in [0,1].
+	std::array<float, 4> clear_color{0, 0, 0, 1};
+};
+/// Explicit presentation owner; ordered indexed/procedural draws share one color/depth pass.
+/// UI/render thread only. Drain before a backend handoff; destroy before retiring its endpoint.
 class presentation_surface {
 public:
 	/// Detach this presentation owner; call wait_idle before switching its native endpoint.
 	~presentation_surface();
+	/// Validate the entire batch, then submit it with one color/depth clear and ordered draws.
+	ice::expected<frame_status, diagnostic> draw_batch(const frame_batch &batch);
 	/// Set drawable pixels; zero suspends rendering. False rejects out-of-range dimensions.
 	bool resize(int width, int height);
 	/// Submit a procedural three-vertex draw; copy at most 4096 uniform bytes to binding zero.
@@ -79,9 +125,9 @@ private:
 	std::unique_ptr<implementation> implementation_;
 	friend class device;
 };
-/// Small portable procedural-rendering slice backed by independent native implementations.
+/// Bounded indexed/procedural rendering backed by independent native implementations.
 /// Owns no application/session/window. Preserve authored state outside it for reconstruction.
-/// This is not yet a complete mesh/texture/compute API. All operations belong on the UI/render
+/// This is not yet a complete vertex-format/material/compute API. All operations use the UI/render
 /// thread; GPU preparation is synchronous and can later be scheduled outside the active scene.
 class device {
 public:
@@ -89,6 +135,12 @@ public:
 	static ice::expected<std::unique_ptr<device>, diagnostic> create(backend_kind backend);
 	/// Release this owner; pipelines/surfaces retain their native device lifetime independently.
 	~device();
+	/// Upload a validated immutable position/normal triangle list without retaining CPU aliases.
+	ice::expected<std::unique_ptr<mesh>, diagnostic> create_mesh(const mesh_data &description);
+	/// Synchronously capture an ordered indexed/procedural batch as top-row-first RGBA8.
+	/// Dimensions are in [1,4096]. The whole batch is validated before touching its target.
+	ice::expected<image, diagnostic> render_offscreen(const frame_batch &batch, int width,
+	                                                  int height);
 	/// Identify this device's backend without querying the native driver.
 	backend_kind backend() const;
 	/// Process-local logical identity, independent of the physical GPU and never reused.
@@ -97,11 +149,12 @@ public:
 	std::string name() const;
 	/// Prepare a detached library/pipeline without replacing an existing pipeline on failure.
 	ice::expected<std::unique_ptr<pipeline>, diagnostic>
-	prepare_pipeline(const ice::io::resource_resolver &resolver, const shader_source &source);
+	prepare_pipeline(const ice::io::resource_resolver &resolver, const shader_source &source,
+	                 pipeline_options options = {});
 	/// Prepare exactly the retained source bytes without consulting a URI handler again.
 	ice::expected<std::unique_ptr<pipeline>, diagnostic>
 	prepare_pipeline(const shader_snapshot &source, const std::string &vertex_entry,
-	                 const std::string &fragment_entry);
+	                 const std::string &fragment_entry, pipeline_options options = {});
 	/// Upload one tightly packed RGBA8 image with dimensions in [1,4096].
 	/// Sampling is linear/clamped without mipmaps; bind as texture(0)/sampler2D unit zero in either
 	/// shader stage.

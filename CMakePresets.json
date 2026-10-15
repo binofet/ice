@@ -50,6 +50,16 @@
         "ICE_BUILD_COMPANION": "OFF",
         "ICE_BUILD_TOOLS": "OFF"
       }
+    },
+    {
+      "name": "headless-tiny",
+      "inherits": "headless-debug",
+      "displayName": "Minimal headless core (no physics downloads)",
+      "binaryDir": "${sourceDir}/build/headless-tiny",
+      "cacheVariables": {
+        "ICE_BUILD_PHYSICS_2D": "OFF",
+        "ICE_BUILD_PHYSICS_3D": "OFF"
+      }
     }
   ],
   "buildPresets": [
@@ -72,6 +82,10 @@
     {
       "name": "headless-debug",
       "configurePreset": "headless-debug"
+    },
+    {
+      "name": "headless-tiny",
+      "configurePreset": "headless-tiny"
     }
   ],
   "testPresets": [
@@ -106,6 +120,13 @@
     {
       "name": "headless-debug",
       "configurePreset": "headless-debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "headless-tiny",
+      "configurePreset": "headless-tiny",
       "output": {
         "outputOnFailure": true
       }

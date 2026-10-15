@@ -1,0 +1,11 @@
+include_guard(GLOBAL)
+include("${CMAKE_CURRENT_LIST_DIR}/ICEPhysicsCore.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/ICEPhysicsDependencies.cmake")
+ice_require_jolt()
+add_library(ICEPhysics3D STATIC "${ICE_PHYSICS_ROOT}/engine/src/physics/world3d.cpp")
+add_library(ice::physics3d ALIAS ICEPhysics3D)
+target_link_libraries(ICEPhysics3D PUBLIC ice::physics_core PRIVATE Jolt)
+# Backend headers are implementation details and use their upstream warning policy.
+get_target_property(ICE_JOLT_INCLUDES Jolt INTERFACE_INCLUDE_DIRECTORIES)
+target_include_directories(ICEPhysics3D SYSTEM PRIVATE ${ICE_JOLT_INCLUDES})
+ice_strict_target(ICEPhysics3D)

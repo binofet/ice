@@ -1,0 +1,10 @@
+include_guard(GLOBAL)
+include(${CMAKE_CURRENT_LIST_DIR}/ICEPhysicsCore.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/ICEPhysicsDependencies.cmake)
+ice_require_box2d()
+
+add_library(ICEPhysics2D STATIC "${ICE_PHYSICS_ROOT}/engine/src/physics/world2d.cpp")
+add_library(ice::physics2d ALIAS ICEPhysics2D)
+target_include_directories(ICEPhysics2D SYSTEM PRIVATE $<TARGET_PROPERTY:box2d,INTERFACE_INCLUDE_DIRECTORIES>)
+target_link_libraries(ICEPhysics2D PUBLIC ice::physics_core ice::math PRIVATE box2d)
+ice_strict_target(ICEPhysics2D)

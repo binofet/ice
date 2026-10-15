@@ -3,60 +3,69 @@
 #include <GL/glcorearb.h>
 namespace ice::render::gl::detail {
 struct functions {
-	PFNGLGETSTRINGPROC               GetString               = nullptr;
-	PFNGLGETINTEGERVPROC             GetIntegerv             = nullptr;
-	PFNGLGETERRORPROC                GetError                = nullptr;
-	PFNGLGENVERTEXARRAYSPROC         GenVertexArrays         = nullptr;
-	PFNGLBINDVERTEXARRAYPROC         BindVertexArray         = nullptr;
-	PFNGLDELETEVERTEXARRAYSPROC      DeleteVertexArrays      = nullptr;
-	PFNGLGENBUFFERSPROC              GenBuffers              = nullptr;
-	PFNGLBINDBUFFERPROC              BindBuffer              = nullptr;
-	PFNGLBUFFERDATAPROC              BufferData              = nullptr;
-	PFNGLBINDBUFFERBASEPROC          BindBufferBase          = nullptr;
-	PFNGLDELETEBUFFERSPROC           DeleteBuffers           = nullptr;
-	PFNGLCREATESHADERPROC            CreateShader            = nullptr;
-	PFNGLSHADERSOURCEPROC            ShaderSource            = nullptr;
-	PFNGLCOMPILESHADERPROC           CompileShader           = nullptr;
-	PFNGLGETSHADERIVPROC             GetShaderiv             = nullptr;
-	PFNGLGETSHADERINFOLOGPROC        GetShaderInfoLog        = nullptr;
-	PFNGLDELETESHADERPROC            DeleteShader            = nullptr;
-	PFNGLCREATEPROGRAMPROC           CreateProgram           = nullptr;
-	PFNGLATTACHSHADERPROC            AttachShader            = nullptr;
-	PFNGLLINKPROGRAMPROC             LinkProgram             = nullptr;
-	PFNGLGETPROGRAMIVPROC            GetProgramiv            = nullptr;
-	PFNGLGETACTIVEATTRIBPROC         GetActiveAttrib         = nullptr;
-	PFNGLGETATTRIBLOCATIONPROC       GetAttribLocation       = nullptr;
-	PFNGLGETPROGRAMINFOLOGPROC       GetProgramInfoLog       = nullptr;
-	PFNGLDELETEPROGRAMPROC           DeleteProgram           = nullptr;
-	PFNGLUSEPROGRAMPROC              UseProgram              = nullptr;
-	PFNGLGETACTIVEUNIFORMBLOCKIVPROC GetActiveUniformBlockiv = nullptr;
-	PFNGLUNIFORMBLOCKBINDINGPROC     UniformBlockBinding     = nullptr;
-	PFNGLGETACTIVEUNIFORMSIVPROC     GetActiveUniformsiv     = nullptr;
-	PFNGLGETACTIVEUNIFORMPROC        GetActiveUniform        = nullptr;
-	PFNGLGETUNIFORMLOCATIONPROC      GetUniformLocation      = nullptr;
-	PFNGLGETUNIFORMIVPROC            GetUniformiv            = nullptr;
-	PFNGLUNIFORM1IPROC               Uniform1i               = nullptr;
-	PFNGLACTIVETEXTUREPROC           ActiveTexture           = nullptr;
-	PFNGLGENTEXTURESPROC             GenTextures             = nullptr;
-	PFNGLBINDTEXTUREPROC             BindTexture             = nullptr;
-	PFNGLTEXIMAGE2DPROC              TexImage2D              = nullptr;
-	PFNGLTEXPARAMETERIPROC           TexParameteri           = nullptr;
-	PFNGLDELETETEXTURESPROC          DeleteTextures          = nullptr;
-	PFNGLGENFRAMEBUFFERSPROC         GenFramebuffers         = nullptr;
-	PFNGLBINDFRAMEBUFFERPROC         BindFramebuffer         = nullptr;
-	PFNGLFRAMEBUFFERTEXTURE2DPROC    FramebufferTexture2D    = nullptr;
-	PFNGLCHECKFRAMEBUFFERSTATUSPROC  CheckFramebufferStatus  = nullptr;
-	PFNGLDELETEFRAMEBUFFERSPROC      DeleteFramebuffers      = nullptr;
-	PFNGLVIEWPORTPROC                Viewport                = nullptr;
-	PFNGLCLEARCOLORPROC              ClearColor              = nullptr;
-	PFNGLCLEARPROC                   Clear                   = nullptr;
-	PFNGLDRAWARRAYSPROC              DrawArrays              = nullptr;
-	PFNGLPIXELSTOREIPROC             PixelStorei             = nullptr;
-	PFNGLREADPIXELSPROC              ReadPixels              = nullptr;
-	PFNGLDISABLEPROC                 Disable                 = nullptr;
-	PFNGLFINISHPROC                  Finish                  = nullptr;
-	PFNGLFLUSHPROC                   Flush                   = nullptr;
-	bool                             load(native_context &context, std::string &error) {
+	PFNGLENABLEPROC                   Enable                   = nullptr;
+	PFNGLDEPTHMASKPROC                DepthMask                = nullptr;
+	PFNGLDEPTHFUNCPROC                DepthFunc                = nullptr;
+	PFNGLCLEARDEPTHPROC               ClearDepth               = nullptr;
+	PFNGLBLENDFUNCPROC                BlendFunc                = nullptr;
+	PFNGLDRAWELEMENTSPROC             DrawElements             = nullptr;
+	PFNGLENABLEVERTEXATTRIBARRAYPROC  EnableVertexAttribArray  = nullptr;
+	PFNGLDISABLEVERTEXATTRIBARRAYPROC DisableVertexAttribArray = nullptr;
+	PFNGLVERTEXATTRIBPOINTERPROC      VertexAttribPointer      = nullptr;
+	PFNGLGETSTRINGPROC                GetString                = nullptr;
+	PFNGLGETINTEGERVPROC              GetIntegerv              = nullptr;
+	PFNGLGETERRORPROC                 GetError                 = nullptr;
+	PFNGLGENVERTEXARRAYSPROC          GenVertexArrays          = nullptr;
+	PFNGLBINDVERTEXARRAYPROC          BindVertexArray          = nullptr;
+	PFNGLDELETEVERTEXARRAYSPROC       DeleteVertexArrays       = nullptr;
+	PFNGLGENBUFFERSPROC               GenBuffers               = nullptr;
+	PFNGLBINDBUFFERPROC               BindBuffer               = nullptr;
+	PFNGLBUFFERDATAPROC               BufferData               = nullptr;
+	PFNGLBINDBUFFERBASEPROC           BindBufferBase           = nullptr;
+	PFNGLDELETEBUFFERSPROC            DeleteBuffers            = nullptr;
+	PFNGLCREATESHADERPROC             CreateShader             = nullptr;
+	PFNGLSHADERSOURCEPROC             ShaderSource             = nullptr;
+	PFNGLCOMPILESHADERPROC            CompileShader            = nullptr;
+	PFNGLGETSHADERIVPROC              GetShaderiv              = nullptr;
+	PFNGLGETSHADERINFOLOGPROC         GetShaderInfoLog         = nullptr;
+	PFNGLDELETESHADERPROC             DeleteShader             = nullptr;
+	PFNGLCREATEPROGRAMPROC            CreateProgram            = nullptr;
+	PFNGLATTACHSHADERPROC             AttachShader             = nullptr;
+	PFNGLLINKPROGRAMPROC              LinkProgram              = nullptr;
+	PFNGLGETPROGRAMIVPROC             GetProgramiv             = nullptr;
+	PFNGLGETACTIVEATTRIBPROC          GetActiveAttrib          = nullptr;
+	PFNGLGETATTRIBLOCATIONPROC        GetAttribLocation        = nullptr;
+	PFNGLGETPROGRAMINFOLOGPROC        GetProgramInfoLog        = nullptr;
+	PFNGLDELETEPROGRAMPROC            DeleteProgram            = nullptr;
+	PFNGLUSEPROGRAMPROC               UseProgram               = nullptr;
+	PFNGLGETACTIVEUNIFORMBLOCKIVPROC  GetActiveUniformBlockiv  = nullptr;
+	PFNGLUNIFORMBLOCKBINDINGPROC      UniformBlockBinding      = nullptr;
+	PFNGLGETACTIVEUNIFORMSIVPROC      GetActiveUniformsiv      = nullptr;
+	PFNGLGETACTIVEUNIFORMPROC         GetActiveUniform         = nullptr;
+	PFNGLGETUNIFORMLOCATIONPROC       GetUniformLocation       = nullptr;
+	PFNGLGETUNIFORMIVPROC             GetUniformiv             = nullptr;
+	PFNGLUNIFORM1IPROC                Uniform1i                = nullptr;
+	PFNGLACTIVETEXTUREPROC            ActiveTexture            = nullptr;
+	PFNGLGENTEXTURESPROC              GenTextures              = nullptr;
+	PFNGLBINDTEXTUREPROC              BindTexture              = nullptr;
+	PFNGLTEXIMAGE2DPROC               TexImage2D               = nullptr;
+	PFNGLTEXPARAMETERIPROC            TexParameteri            = nullptr;
+	PFNGLDELETETEXTURESPROC           DeleteTextures           = nullptr;
+	PFNGLGENFRAMEBUFFERSPROC          GenFramebuffers          = nullptr;
+	PFNGLBINDFRAMEBUFFERPROC          BindFramebuffer          = nullptr;
+	PFNGLFRAMEBUFFERTEXTURE2DPROC     FramebufferTexture2D     = nullptr;
+	PFNGLCHECKFRAMEBUFFERSTATUSPROC   CheckFramebufferStatus   = nullptr;
+	PFNGLDELETEFRAMEBUFFERSPROC       DeleteFramebuffers       = nullptr;
+	PFNGLVIEWPORTPROC                 Viewport                 = nullptr;
+	PFNGLCLEARCOLORPROC               ClearColor               = nullptr;
+	PFNGLCLEARPROC                    Clear                    = nullptr;
+	PFNGLDRAWARRAYSPROC               DrawArrays               = nullptr;
+	PFNGLPIXELSTOREIPROC              PixelStorei              = nullptr;
+	PFNGLREADPIXELSPROC               ReadPixels               = nullptr;
+	PFNGLDISABLEPROC                  Disable                  = nullptr;
+	PFNGLFINISHPROC                   Finish                   = nullptr;
+	PFNGLFLUSHPROC                    Flush                    = nullptr;
+	bool                              load(native_context &context, std::string &error) {
         GetString = reinterpret_cast<PFNGLGETSTRINGPROC>(context.resolve("glGetString"));
         if (!GetString) {
             error = "Missing OpenGL entry point glGetString";
@@ -345,6 +354,54 @@ struct functions {
         Flush = reinterpret_cast<PFNGLFLUSHPROC>(context.resolve("glFlush"));
         if (!Flush) {
             error = "Missing OpenGL entry point glFlush";
+            return false;
+        }
+        Enable = reinterpret_cast<PFNGLENABLEPROC>(context.resolve("glEnable"));
+        if (!Enable) {
+            error = "Missing OpenGL entry point glEnable";
+            return false;
+        }
+        DepthMask = reinterpret_cast<PFNGLDEPTHMASKPROC>(context.resolve("glDepthMask"));
+        if (!DepthMask) {
+            error = "Missing OpenGL entry point glDepthMask";
+            return false;
+        }
+        DepthFunc = reinterpret_cast<PFNGLDEPTHFUNCPROC>(context.resolve("glDepthFunc"));
+        if (!DepthFunc) {
+            error = "Missing OpenGL entry point glDepthFunc";
+            return false;
+        }
+        ClearDepth = reinterpret_cast<PFNGLCLEARDEPTHPROC>(context.resolve("glClearDepth"));
+        if (!ClearDepth) {
+            error = "Missing OpenGL entry point glClearDepth";
+            return false;
+        }
+        BlendFunc = reinterpret_cast<PFNGLBLENDFUNCPROC>(context.resolve("glBlendFunc"));
+        if (!BlendFunc) {
+            error = "Missing OpenGL entry point glBlendFunc";
+            return false;
+        }
+        DrawElements = reinterpret_cast<PFNGLDRAWELEMENTSPROC>(context.resolve("glDrawElements"));
+        if (!DrawElements) {
+            error = "Missing OpenGL entry point glDrawElements";
+            return false;
+        }
+        EnableVertexAttribArray = reinterpret_cast<PFNGLENABLEVERTEXATTRIBARRAYPROC>(
+            context.resolve("glEnableVertexAttribArray"));
+        if (!EnableVertexAttribArray) {
+            error = "Missing OpenGL entry point glEnableVertexAttribArray";
+            return false;
+        }
+        DisableVertexAttribArray = reinterpret_cast<PFNGLDISABLEVERTEXATTRIBARRAYPROC>(
+            context.resolve("glDisableVertexAttribArray"));
+        if (!DisableVertexAttribArray) {
+            error = "Missing OpenGL entry point glDisableVertexAttribArray";
+            return false;
+        }
+        VertexAttribPointer = reinterpret_cast<PFNGLVERTEXATTRIBPOINTERPROC>(
+            context.resolve("glVertexAttribPointer"));
+        if (!VertexAttribPointer) {
+            error = "Missing OpenGL entry point glVertexAttribPointer";
             return false;
         }
         return true;

@@ -15,6 +15,8 @@ namespace ice::render::gl {
 namespace detail {
 /// Private shared native device lifetime; no native object layout crosses this API.
 struct device_state;
+/// Private resource validation/encoding access; no native layouts cross the API.
+struct batch_access;
 } // namespace detail
 /// Prepared OpenGL core triangle-list render pipeline. Owns native resources independently of a
 /// surface.
@@ -26,15 +28,31 @@ public:
 private:
 	struct implementation;
 	explicit pipeline(std::unique_ptr<implementation> implementation);
+	friend struct detail::batch_access;
 	pipeline(const pipeline &other)                                  = delete;
 	pipeline                       &operator=(const pipeline &other) = delete;
 	std::unique_ptr<implementation> implementation_;
 	friend class device;
 	friend class presentation_surface;
 };
-/// Owned linear-filtered, clamp-to-edge RGBA8 image, without mipmaps. Creation/update and
-/// destruction run on the device's render thread; native lifetime survives the device wrapper.
-/// Texture coordinate y=0 samples the first uploaded row, matching top-origin shader UVs.
+/// Immutable owned vertex/index buffers, with shared native device lifetime.
+class mesh {
+public:
+	/// Release immutable vertex/index storage, retaining any resources already submitted.
+	~mesh();
+
+private:
+	struct implementation;
+	explicit mesh(std::unique_ptr<implementation> implementation);
+	friend struct detail::batch_access;
+	mesh(const mesh &other)                                      = delete;
+	mesh                           &operator=(const mesh &other) = delete;
+	std::unique_ptr<implementation> implementation_;
+	friend class device;
+	friend class presentation_surface;
+};
+/// Owned linear-filtered, clamp-to-edge RGBA8 image, without mipmaps. Native lifetime survives
+/// the device wrapper. Texture y=0 samples the first uploaded row; updates replace storage.
 class texture {
 public:
 	/// Release the texture; submitted draws retain the native storage they reference.
@@ -47,18 +65,41 @@ public:
 private:
 	struct implementation;
 	explicit texture(std::unique_ptr<implementation> implementation);
+	friend struct detail::batch_access;
 	texture(const texture &other)                                   = delete;
 	texture                        &operator=(const texture &other) = delete;
 	std::unique_ptr<implementation> implementation_;
 	friend class device;
 	friend class presentation_surface;
 };
-/// Native presentation owner. UI/render-thread-only; destroy before the owning view/layer.
-/// Supports procedural triangles, optional buffer(0) uniform bytes and one sampler2D at unit zero.
+/// One borrowed draw, consumed synchronously. Indexed pipelines require geometry; procedural
+/// pipelines require null geometry. Each uniform block is copied before this call returns.
+struct draw_item {
+	/// Prepared pipeline from the receiving logical device; never null.
+	const class pipeline *pipeline = nullptr;
+	/// Immutable triangle list, or null for the existing three-vertex procedural draw.
+	const mesh *geometry = nullptr;
+	/// At most 4096 bytes, satisfying the pipeline's reflected uniform contract.
+	std::span<const std::byte> uniforms;
+	/// Optional image from the same device; required if the pipeline samples texture zero.
+	const texture *sampled_image = nullptr;
+};
+/// Ordered one-pass batch, clearing color/depth exactly once before any draw.
+/// Up to 4096 draws and four MiB of aggregate uniform bytes. Invalid items reject the whole batch
+/// before modifying a target. Empty batches only clear. Blend/depth state belongs to each pipeline.
+struct frame_batch {
+	/// Borrowed draw/resource descriptions, valid throughout synchronous encoding/submission.
+	std::span<const draw_item> draws;
+	/// Finite normalized RGBA clear value; each component is in [0,1].
+	std::array<float, 4> clear_color{0, 0, 0, 1};
+};
+/// Native presentation owner; ordered indexed and procedural draws share one color/depth pass.
 class presentation_surface {
 public:
 	/// Detach the context and drawable after draining submitted work.
 	~presentation_surface();
+	/// Validate the entire batch, then submit it with one color/depth clear and ordered draws.
+	ice::expected<frame_status, diagnostic> draw_batch(const frame_batch &batch);
 	/// Set drawable pixel dimensions in [0,16384]; zero suspends acquisition.
 	bool resize(int width, int height);
 	/// Draw three procedural vertices. Uniform bytes are copied, at most 4096, to buffer(0)
@@ -87,6 +128,12 @@ public:
 	static ice::expected<std::unique_ptr<device>, diagnostic> create();
 	/// Release this owner; surfaces/pipelines retain their shared native device lifetime.
 	~device();
+	/// Upload a validated immutable position/normal triangle list without retaining CPU aliases.
+	ice::expected<std::unique_ptr<mesh>, diagnostic> create_mesh(const mesh_data &description);
+	/// Synchronously capture an ordered indexed/procedural batch as top-row-first RGBA8.
+	/// Dimensions are in [1,4096]. The whole batch is validated before touching its target.
+	ice::expected<image, diagnostic> render_offscreen(const frame_batch &batch, int width,
+	                                                  int height);
 	/// Return the renderer/version reported by the current GL driver.
 	std::string name() const;
 	/// Read a GLSL source library through the URI resolver and prepare the two entry points.
@@ -96,11 +143,12 @@ public:
 	/// after the provider read. Providers remain responsible for their own read/allocation budgets.
 	ice::expected<std::unique_ptr<pipeline>, diagnostic>
 	prepare_pipeline(const ice::io::resource_resolver &resolver, const std::string &uri,
-	                 const std::string &vertex_entry, const std::string &fragment_entry);
+	                 const std::string &vertex_entry, const std::string &fragment_entry,
+	                 pipeline_options options = {});
 	/// Compile the exact immutable snapshot bytes; no provider is consulted again.
 	ice::expected<std::unique_ptr<pipeline>, diagnostic>
 	prepare_pipeline(const shader_snapshot &snapshot, const std::string &vertex_entry,
-	                 const std::string &fragment_entry);
+	                 const std::string &fragment_entry, pipeline_options options = {});
 	/// Upload tightly packed top-row-first RGBA8 pixels. Dimensions must be in [1,4096]
 	/// and the byte count must equal width*height*4. Uses linear filtering and clamp-to-edge.
 	ice::expected<std::unique_ptr<texture>, diagnostic> create_texture(const image &pixels);
