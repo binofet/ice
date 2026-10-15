@@ -16,9 +16,9 @@ cmake -S "$project_root/Projects/MobileProbe" -B "$project_root/build/ios-$platf
  -DICE_MOBILE_BUNDLE_ID="${ICE_BUNDLE_ID:-org.ice.MobileProbe}" -DICE_DEVELOPMENT_TEAM="$team"
 if [ "$signing" = YES ]; then
  if [ -n "${ICE_DEVICE_UDID:-}" ]; then
-  xcodebuild -project "$project_root/build/ios-device/ICEMobileProbe.xcodeproj" -scheme ICEMobileProbe -configuration Debug -allowProvisioningUpdates -allowProvisioningDeviceRegistration -destination "id=$ICE_DEVICE_UDID" CODE_SIGNING_ALLOWED=YES
+  xcodebuild -project "$project_root/build/ios-device/ICEMobileProbe.xcodeproj" -scheme ICEMobileProbe -configuration Debug -allowProvisioningUpdates -allowProvisioningDeviceRegistration -destination "id=$ICE_DEVICE_UDID"
  else
-  xcodebuild -project "$project_root/build/ios-device/ICEMobileProbe.xcodeproj" -scheme ICEMobileProbe -configuration Debug -allowProvisioningUpdates -destination "generic/platform=iOS" CODE_SIGNING_ALLOWED=YES
+  xcodebuild -project "$project_root/build/ios-device/ICEMobileProbe.xcodeproj" -scheme ICEMobileProbe -configuration Debug -allowProvisioningUpdates -destination "generic/platform=iOS"
  fi
 else
  cmake --build "$project_root/build/ios-$platform" --config Debug

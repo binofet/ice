@@ -125,3 +125,12 @@ the selected device and create development signing assets in that team.
 Without a team, the existing build commands remain unsigned and simulator-friendly.
 Signed deployment is implemented but cannot be validated until the account, Developer
 Mode and development signing assets are available on this Mac.
+
+### First physical deployment — 2026-10-14
+
+The signed companion built, installed and launched successfully on an iPhone 15 Pro
+Max over the local Wi-Fi connection. Automatic provisioning used the configured
+Apple development team. Static runtime libraries explicitly disable code signing;
+the app target owns signing. The signed build script preserves those per-target
+settings instead of forcing signing on every target through an xcodebuild override.
+Physical gesture feel and calibration still need hands-on feedback.
