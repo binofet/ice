@@ -2,7 +2,7 @@ project(Engine)
 
 
 file(GLOB_RECURSE ENGINE_SOURCES CONFIGURE_DEPENDS src/*.cpp)
-list(FILTER ENGINE_SOURCES EXCLUDE REGEX "icWindow(OSX|WIN|X11)\\.cpp$|icInput(OSX|WIN|X11)\\.cpp$|icFileWin\\.cpp$|icFontDX9\\.cpp$|icGXDevice(DX9|DX11|GLES|GLES2)\\.cpp$|ic(VertBuffer|IndexBuf|Texture)(DX9|GLES)\\.cpp$|/Platform/|Core/Events/|ObjectModel/|Scripting/")
+list(FILTER ENGINE_SOURCES EXCLUDE REGEX "icWindow(OSX|WIN|X11)\\.cpp$|icInput(OSX|WIN|X11)\\.cpp$|icFileWin\\.cpp$|icFontDX9\\.cpp$|icGXDevice(DX9|DX11|GLES|GLES2)\\.cpp$|ic(VertBuffer|IndexBuf|Texture)(DX9|GLES)\\.cpp$|/Input/icCompanion\\.cpp$|/Platform/|Core/Events/|ObjectModel/|Scripting/")
 file(GLOB LUA_SOURCES CONFIGURE_DEPENDS 3rdparty/Lua/*.c)
 list(FILTER LUA_SOURCES EXCLUDE REGEX "/lua(c)?\\.c$")
 if(APPLE)

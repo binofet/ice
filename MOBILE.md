@@ -59,8 +59,9 @@ xcrun simctl install booted build/ios-simulator/Debug-iphonesimulator/ICEMobileP
 xcrun simctl launch --console-pty booted org.ice.MobileProbe
 ```
 
-Touch changes the clear color. The iPad exposes an “Open another ICE surface” button.
-Rotate, background/resume, and open another iPad scene
+The probe now hosts the [companion controller lab](COMPANION.md). The initial
+new-surface button has been replaced by controller controls; use iPadOS window
+controls to open additional scenes. Rotate, background/resume, and open another scene
 to exercise surface/lifecycle behavior. Physical deployment needs Xcode signing with
 an appropriate development team/profile; unsigned device builds cannot be installed.
 
@@ -94,8 +95,8 @@ behavior, real GPU performance or device-specific driver correctness.
 
 ## Next milestones
 
-1. A companion controller built on these native hosts: calibrated gestures, touch
-   fallback, shot intent and input recording/replay; paired local networking afterward.
+1. Companion gestures, touch fallback and recorded intent replay are implemented
+   in [COMPANION.md](COMPANION.md). Next: paired local networking and desktop delivery.
 2. Platform-owned asset/user-data paths, process-death restoration and host migration
    for the other samples. Desktop keyboard/mouse remains the compatibility singleton;
    it has not yet been migrated to the new device stream.

@@ -85,3 +85,10 @@ The first callback-driven host and iOS/Android platform probes are implemented. 
 [MOBILE.md](MOBILE.md) for ownership, scheduling, input conventions, builds and the
 remaining renderer/companion work. SkeeBall physics tuning is deferred; OrbitalSalvage
 is the first prototype to deepen for simulation and replay.
+
+## Companion input lab
+
+The native mobile hosts now share calibrated shot gestures, touch fallback, bounded
+recordings and deterministic replay. A desktop replay tool consumes the same exported
+takes. See [COMPANION.md](COMPANION.md). Local pairing and delivery are next; SkeeBall
+physics tuning remains deferred.
