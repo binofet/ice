@@ -2,6 +2,8 @@
 #include "ice/core/utf8.h"
 #include <charconv>
 #include <cmath>
+#include <locale>
+#include <sstream>
 #include <type_traits>
 
 namespace ice::data {
@@ -10,6 +12,35 @@ constexpr std::size_t max_bytes = 1024 * 1024;
 struct json_error {
 	diagnostic problem;
 };
+// Xcode 16's libc++ has floating-point to_chars but no floating-point from_chars.
+// Keep the native path when available; the fallback never changes process-global locale.
+template <typename number> bool floating(std::string_view token, number &result) {
+	if constexpr (requires {
+		              std::from_chars(token.data(), token.data() + token.size(), result);
+	              }) {
+		auto parsed = std::from_chars(token.data(), token.data() + token.size(), result);
+		return parsed.ec == std::errc{} && parsed.ptr == token.data() + token.size();
+	} else {
+		std::istringstream input{std::string(token)};
+		input.imbue(std::locale::classic());
+		input >> std::noskipws >> result;
+		// Older libc++ reports ERANGE/failbit for representable subnormals but retains the
+		// correctly rounded nonzero value. Accept only that narrow recovery after consuming the
+		// complete already-validated JSON token. Overflow (infinity or saturated normal max),
+		// total underflow (zero), badbit and partial extraction remain failures.
+		if (!input.eof() || input.bad() ||
+		    (input.fail() && std::fpclassify(result) != FP_SUBNORMAL))
+			return false;
+		// Some implementations silently round an underflow to zero. A zero mantissa,
+		// including a huge nonzero exponent, is still exactly zero and remains valid.
+		if (result == 0) {
+			auto mantissa = token.substr(0, token.find_first_of("eE"));
+			if (mantissa.find_first_of("123456789") != mantissa.npos)
+				return false;
+		}
+		return true;
+	}
+}
 struct reader {
 	std::string_view  input;
 	std::size_t       position = 0, nodes = 0;
@@ -155,7 +186,8 @@ struct reader {
 		};
 		if (real) {
 			double result = 0;
-			convert(result);
+			if (!floating(token, result))
+				fail("JSON number outside its portable range");
 			if (!std::isfinite(result))
 				fail("Nonfinite JSON number");
 			return value{result};

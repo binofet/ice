@@ -1,5 +1,6 @@
 #include "ice/data/json.h"
 #include <bit>
+#include <cmath>
 #include <cstdio>
 #include <limits>
 
@@ -28,6 +29,21 @@ int main() {
 	CHECK(std::get<std::int64_t>(numbers[3].data) == INT64_MIN);
 	CHECK(std::bit_cast<std::uint64_t>(std::get<double>(numbers[6].data)) ==
 	      (std::uint64_t(1) << 63));
+	for (auto real : {"0e9999", "-0e9999", "0e-9999", "-0e-9999", "0.0", "-0.0", "3e-324", "5e-324",
+	                  "-5e-324", "2.225073858507201e-308", "2.2250738585072014e-308",
+	                  "1.7976931348623157e308", "-1.7976931348623157e308"}) {
+		auto number = decode_json(real);
+		CHECK(number && std::holds_alternative<double>(number->data));
+		auto wire = encode_json(*number);
+		CHECK(wire && decode_json(*wire) && *decode_json(*wire) == *number);
+	}
+	auto denormal = decode_json("5e-324");
+	CHECK(denormal &&
+	      std::get<double>(denormal->data) == std::numeric_limits<double>::denorm_min());
+	auto negative_zero = decode_json("-0e9999");
+	CHECK(negative_zero && std::signbit(std::get<double>(negative_zero->data)));
+	auto positive_zero = decode_json("0e-9999");
+	CHECK(positive_zero && !std::signbit(std::get<double>(positive_zero->data)));
 	for (auto invalid : {"",
 	                     " ",
 	                     "[1,]",
@@ -42,6 +58,11 @@ int main() {
 	                     "1e+",
 	                     "1e9999",
 	                     "1e-9999",
+	                     "-1e-9999",
+	                     "2e-324",
+	                     "-2e-324",
+	                     "1.7976931348623159e308",
+	                     "-1.7976931348623159e308",
 	                     "18446744073709551616",
 	                     "-9223372036854775809",
 	                     "true false",
