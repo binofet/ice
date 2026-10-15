@@ -240,11 +240,16 @@ std::string device::take_error() { return std::exchange(state_->error, {}); }
 ice::expected<std::unique_ptr<pipeline>, diagnostic>
 device::prepare_pipeline(const ice::io::resource_resolver &resolver, const std::string &uri,
                          const std::string &vertex_entry, const std::string &fragment_entry) {
-	std::vector<unsigned char> bytes;
-	std::string                diagnostics;
-	if (!resolver.read(uri, bytes, diagnostics))
-		return failure(uri + ": " + diagnostics);
-	std::string source(bytes.begin(), bytes.end());
+	auto snapshot = shader_snapshot::read(resolver, uri);
+	if (!snapshot)
+		return ice::unexpected(snapshot.error());
+	return prepare_pipeline(*snapshot, vertex_entry, fragment_entry);
+}
+ice::expected<std::unique_ptr<pipeline>, diagnostic>
+device::prepare_pipeline(const shader_snapshot &snapshot, const std::string &vertex_entry,
+                         const std::string &fragment_entry) {
+	const auto &uri = snapshot.uri();
+	std::string source(snapshot.source());
 	if (!ice::core::valid_utf8_text(source, 1024 * 1024) || source.empty() ||
 	    !identifier(vertex_entry) || !identifier(fragment_entry))
 		return failure(uri + ": invalid GLSL source or entry point");

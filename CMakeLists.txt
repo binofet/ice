@@ -45,6 +45,18 @@ if(BUILD_TESTING)
     add_library(ice_public_headers OBJECT tests/public_headers.cpp)
     target_link_libraries(ice_public_headers PRIVATE ice::engine)
     ice_strict_target(ice_public_headers)
+    if(TARGET ice::shader_sources)
+        ice_test(ice_shader_snapshot_tests tests/shader_snapshot.cpp ice::shader_sources)
+        add_test(NAME ice_shader_snapshot COMMAND ice_shader_snapshot_tests)
+    endif()
+    if(TARGET ice::render)
+        ice_test(ice_live_pipeline_tests tests/live_pipeline.cpp ice::render)
+        target_compile_definitions(ice_live_pipeline_tests PRIVATE
+            $<$<BOOL:${ICE_BUILD_METAL}>:ICE_TEST_METAL=1>
+            $<$<BOOL:${ICE_BUILD_OPENGL}>:ICE_TEST_OPENGL=1>)
+        set_target_properties(ice_live_pipeline_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+        # Requires a native GPU; run explicitly outside headless CPU CTest.
+    endif()
     if(ICE_BUILD_DESKTOP)
         ice_test(ice_platform_input_tests tests/platform_input.cpp ice::window)
         add_test(NAME ice_platform_input COMMAND ice_platform_input_tests)

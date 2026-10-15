@@ -1,6 +1,7 @@
 include_guard(GLOBAL)
 get_filename_component(ICE_RENDER_ROOT "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
-add_library(ICERenderRuntime STATIC "${ICE_RENDER_ROOT}/engine/src/render/device.cpp")
+add_library(ICERenderRuntime STATIC "${ICE_RENDER_ROOT}/engine/src/render/device.cpp"
+    "${ICE_RENDER_ROOT}/engine/src/render/live_pipeline.cpp")
 add_library(ice::render ALIAS ICERenderRuntime)
 target_include_directories(ICERenderRuntime PUBLIC "${ICE_RENDER_ROOT}/engine/include")
 target_link_libraries(ICERenderRuntime PUBLIC ice::expected ice::uri)

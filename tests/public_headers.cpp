@@ -14,7 +14,9 @@
 #include "ice/platform/host.h"
 #include "ice/platform/platform_events.h"
 #include "ice/render/device.h"
+#include "ice/render/live_pipeline.h"
 #include "ice/render/scene_camera.h"
+#include "ice/render/shader_snapshot.h"
 #ifdef ICE_HAS_METAL
 #include "ice/render/metal/device.h"
 #endif

@@ -184,12 +184,17 @@ std::string device::take_error() {
 ice::expected<std::unique_ptr<pipeline>, diagnostic>
 device::prepare_pipeline(const ice::io::resource_resolver &resolver, const std::string &uri,
                          const std::string &vertex_entry, const std::string &fragment_entry) {
+	auto snapshot = shader_snapshot::read(resolver, uri);
+	if (!snapshot)
+		return ice::unexpected(snapshot.error());
+	return prepare_pipeline(*snapshot, vertex_entry, fragment_entry);
+}
+ice::expected<std::unique_ptr<pipeline>, diagnostic>
+device::prepare_pipeline(const shader_snapshot &snapshot, const std::string &vertex_entry,
+                         const std::string &fragment_entry) {
 	@autoreleasepool {
-		std::vector<unsigned char> bytes;
-		std::string                diagnostics;
-		if (!resolver.read(uri, bytes, diagnostics))
-			return failure(uri + ": " + diagnostics);
-		std::string source(bytes.begin(), bytes.end());
+		const auto &uri = snapshot.uri();
+		std::string source(snapshot.source());
 		if (!ice::core::valid_utf8_text(source, 1024 * 1024) || source.empty() ||
 		    !ice::core::valid_utf8_text(vertex_entry, 128) || vertex_entry.empty() ||
 		    !ice::core::valid_utf8_text(fragment_entry, 128) || fragment_entry.empty())

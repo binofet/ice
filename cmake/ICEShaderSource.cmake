@@ -1,0 +1,8 @@
+include_guard(GLOBAL)
+get_filename_component(ICE_SHADER_ROOT "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
+add_library(ICEShaderSourceRuntime STATIC "${ICE_SHADER_ROOT}/engine/src/render/shader_snapshot.cpp")
+add_library(ice::shader_sources ALIAS ICEShaderSourceRuntime)
+target_include_directories(ICEShaderSourceRuntime PUBLIC "${ICE_SHADER_ROOT}/engine/include")
+target_link_libraries(ICEShaderSourceRuntime PUBLIC ice::expected ice::uri)
+set_target_properties(ICEShaderSourceRuntime PROPERTIES POSITION_INDEPENDENT_CODE ON XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED NO)
+ice_strict_target(ICEShaderSourceRuntime)

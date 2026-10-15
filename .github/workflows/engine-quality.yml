@@ -51,3 +51,4 @@ jobs:
           xvfb-run -a build/ci/bin/ice_window_smoke
           xvfb-run -a build/ci/bin/ice_gl_tests tests/data/gl
           xvfb-run -a build/ci/bin/ice_render_switch_tests tests/data
+          xvfb-run -a build/ci/bin/ice_live_pipeline_tests

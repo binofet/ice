@@ -48,7 +48,13 @@
     "tests/gl.cpp",
     "tests/metal.cpp",
     "tests/render_switch.cpp",
-    "tests/metal_layer.mm"
+    "tests/metal_layer.mm",
+    "engine/include/ice/render/shader_snapshot.h",
+    "engine/include/ice/render/live_pipeline.h",
+    "engine/src/render/shader_snapshot.cpp",
+    "engine/src/render/live_pipeline.cpp",
+    "tests/shader_snapshot.cpp",
+    "tests/live_pipeline.cpp"
   ],
   "lint": [
     "engine/src/io/resource_uri.cpp",
@@ -70,7 +76,11 @@
     "engine/src/render/device.cpp",
     "engine/src/render/gl/device.cpp",
     "tests/gl.cpp",
-    "tests/render_switch.cpp"
+    "tests/render_switch.cpp",
+    "engine/src/render/shader_snapshot.cpp",
+    "engine/src/render/live_pipeline.cpp",
+    "tests/shader_snapshot.cpp",
+    "tests/live_pipeline.cpp"
   ],
   "lint_platform": {
     "Darwin": [

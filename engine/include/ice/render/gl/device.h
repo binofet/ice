@@ -2,6 +2,7 @@
 #include "ice/core/expected.h"
 #include "ice/io/resource_uri.h"
 #include "ice/platform/desktop_window.h"
+#include "ice/render/shader_snapshot.h"
 #include "ice/render/types.h"
 #include <cstddef>
 #include <cstdint>
@@ -96,6 +97,10 @@ public:
 	ice::expected<std::unique_ptr<pipeline>, diagnostic>
 	prepare_pipeline(const ice::io::resource_resolver &resolver, const std::string &uri,
 	                 const std::string &vertex_entry, const std::string &fragment_entry);
+	/// Compile the exact immutable snapshot bytes; no provider is consulted again.
+	ice::expected<std::unique_ptr<pipeline>, diagnostic>
+	prepare_pipeline(const shader_snapshot &snapshot, const std::string &vertex_entry,
+	                 const std::string &fragment_entry);
 	/// Upload tightly packed top-row-first RGBA8 pixels. Dimensions must be in [1,4096]
 	/// and the byte count must equal width*height*4. Uses linear filtering and clamp-to-edge.
 	ice::expected<std::unique_ptr<texture>, diagnostic> create_texture(const image &pixels);

@@ -41,12 +41,16 @@ consumer's validated baseline. Explicitly select the intended child commit and r
 
 ## Linux agent workspace
 
-Spacegoo has a persistent checkout at `~/dev/ice`, initially on
-`feature/linux-validation` at the cleanup baseline. Linux agents work and run builds
+Spacegoo has a persistent checkout at `~/dev/ice` on
+`feature/linux-validation`. Linux agents work and run builds
 directly there. Exchange reviewed commits through Git and preserve each host's local
 branches; review diffs before pushing. Avoid repeated temporary source copies as the
 normal development workflow. The ignored `build/linux-tools/README.md` records the
 native dependency setup and Xvfb/GPU commands; it does not depend on `/tmp` tools.
+Private Ignition has a separate persistent checkout at `~/dev/ignition`. Reviewed
+commits can travel as ordinary Git packs over the owner's existing SSH connection
+into its non-checked-out `mac-reviewed` ref, then fast-forward its validation branch.
+This needs neither loose source copies nor GitHub credentials installed on the host.
 
 ## Versions
 
@@ -121,23 +125,59 @@ Validation recorded so far:
   closing one leaves another responsive. Both device and arm64 simulator builds pass.
   See [MOBILE.md](MOBILE.md) for the hardware checkpoint and opt-in diagnostics.
 
-The renderer checkpoint is committed and published. New native text and sampled-image
-work builds on that baseline; review and validate each coherent checkpoint before pushing.
-Ignition uses an explicit local ICE checkout while these changes are uncommitted;
-update its submodule to the reviewed engine commit before publishing its application
-checkpoint. A first submitted frame log measures submission, not physical display
+The renderer checkpoint is committed and published. Native text and sampled-image
+work builds on that baseline. Ignition pins each published engine checkpoint after
+validation; an explicit local checkout override remains available for joint work.
+A first submitted frame log measures submission, not physical display
 latency or a cold-start benchmark.
 
-## Native input and sampled images — working checkpoint
+## Native input and sampled images — checkpoints `2599509` / `ddfa73e`
 
 The next engine slice adds per-window committed/preedit UTF-8 and interpreted editing,
 with native AppKit/IMM/XIM adapters and bounded cancellation-aware queues. It also adds
 RGBA8 sampled images to both Metal and modern GL, using fresh storage for safe updates.
 Ignition consumes these through its procedural display shader and native font canvases.
 
-Mac C++20/23 builds, CPU regressions, both texture GPU suites and renderer replacements
-are checked separately from native IME interaction. The earlier AppKit23 native delivery
-fixture passed before late-focus/runloop hardening; an unlocked-desktop rerun of the final
-native fixture remains necessary. A locked desktop reports unavailable, not a pass.
-Linux/Xvfb and Windows cross-build results are recorded after the reviewed Git transfer.
-No Windows runtime or hands-on full IME candidate-selection result is implied.
+Validation of these published commits:
+
+- Mac: C++20/23 each pass 15 CTest cases. Both texture GPU suites and eight
+  Metal/OpenGL replacements pass, including orientation, updates, ownership, invalid
+  bindings and continued rendering. Format, public API documentation and targeted
+  analyzer checks pass.
+- Linux/spacegoo: C++20/23 each pass 15 tests, native X11 input and two-window
+  lifecycle fixtures, sampled-image tests and eight OpenGL device replacements under
+  Xvfb/Mesa. The built-in XIM accepts the exercised commits/edit commands; these
+  automated events do not prove interactive candidate selection in a full IME.
+- Windows: complete C++20/23 projects compile/link with MinGW, including the native
+  IMM adapter and texture/replacement targets. No Windows runtime is available.
+- The iOS simulator companion rebuilds against the shared renderer changes.
+- Ignition `24d6419` pins `ddfa73e` and consumes native input and sampled images for
+  its Unicode terminal and procedural combustion opening. Both application tests pass
+  in C++20/23 on Mac; native Metal/OpenGL replacements retain its session.
+
+Native IME interaction is a separate validation scope. The earlier AppKit23 native
+delivery fixture passed before late-focus/runloop hardening; an unlocked-desktop rerun
+of the final native fixture remains necessary. A locked desktop reports unavailable,
+not a pass. No hands-on full IME candidate-selection result is implied.
+
+## Transactional URI shader replacement
+
+`shader_snapshot` reads a canonical requested URI once, validates nonempty UTF-8 source
+up to 1 MiB, and retains the exact bytes and SHA-256. Native Metal and GL compile those
+bytes without reading the provider again. The provider still owns its allocation/read
+budgets; source identity is not a signature or a compiler sandbox.
+
+`live_pipeline` prepares and probes a detached candidate using the caller's actual
+bindings. Explicit activation at a host frame boundary checks the expected revision
+and logical device identity. One prior pipeline supports undo; successful activation
+and undo advance the revision. Invalid source, bindings, stale edits or another device
+preserve the active pipeline. Same-device replacement leaves presentation attached.
+Renderer replacement reconstructs a new holder from retained source and image data.
+
+Mac C++20/23 strict builds, public headers, CPU snapshot/hash/budget cases and actual
+Metal/GL replacement/undo/failure GPU cases pass. The API audit covers 586 declarations
+with no missing documentation or argument issues, and the targeted analyzer scope
+passes. Ignition consumes the owner through `shader reload` / `shader undo`, retains
+authored variants per backend and keeps its window/session through device replacement.
+Compilation/probing remains synchronous on the UI/render thread; asynchronous jobs
+and a shared agent/session command service remain subsequent work.

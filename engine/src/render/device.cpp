@@ -1,4 +1,6 @@
 #include "ice/render/device.h"
+#include <atomic>
+#include <limits>
 #include <set>
 #ifdef ICE_RENDER_METAL
 #include "ice/render/metal/device.h"
@@ -27,7 +29,8 @@ ice::unexpected<diagnostic> failure(const char *message) {
 // through prepared resources, preventing a same-GPU foreign pipeline from slipping into a draw.
 struct device::implementation {
 	backend_kind               kind;
-	std::shared_ptr<const int> token = std::make_shared<const int>(0);
+	std::uint64_t              identity = 0;
+	std::shared_ptr<const int> token    = std::make_shared<const int>(0);
 #ifdef ICE_RENDER_METAL
 	std::unique_ptr<metal::device> metal;
 #endif
@@ -87,10 +90,19 @@ ice::expected<void, diagnostic> texture::update(const image &pixels) {
 presentation_surface::presentation_surface(std::unique_ptr<implementation> implementation)
     : implementation_(std::move(implementation)) {}
 presentation_surface::~presentation_surface() = default;
-backend_kind device::backend() const { return implementation_->kind; }
+backend_kind  device::backend() const { return implementation_->kind; }
+std::uint64_t device::identity() const { return implementation_->identity; }
 ice::expected<std::unique_ptr<device>, diagnostic> device::create(backend_kind backend) {
 	auto result  = std::make_unique<implementation>();
 	result->kind = backend;
+	static std::atomic<std::uint64_t> next_identity{1};
+	auto                              identity = next_identity.load(std::memory_order_relaxed);
+	do {
+		if (identity == std::numeric_limits<std::uint64_t>::max())
+			return failure("Logical graphics device identities exhausted");
+	} while (
+	    !next_identity.compare_exchange_weak(identity, identity + 1, std::memory_order_relaxed));
+	result->identity = identity;
 #ifdef ICE_RENDER_METAL
 	if (backend == backend_kind::metal) {
 		auto native = metal::device::create();
@@ -139,12 +151,20 @@ std::string device::take_error() {
 }
 ice::expected<std::unique_ptr<pipeline>, diagnostic>
 device::prepare_pipeline(const ice::io::resource_resolver &resolver, const shader_source &source) {
+	auto snapshot = shader_snapshot::read(resolver, source.uri);
+	if (!snapshot)
+		return ice::unexpected(snapshot.error());
+	return prepare_pipeline(*snapshot, source.vertex_entry, source.fragment_entry);
+}
+ice::expected<std::unique_ptr<pipeline>, diagnostic>
+device::prepare_pipeline(const shader_snapshot &source, const std::string &vertex_entry,
+                         const std::string &fragment_entry) {
 	auto result   = std::make_unique<pipeline::implementation>();
 	result->token = implementation_->token;
 #ifdef ICE_RENDER_METAL
 	if (implementation_->metal) {
-		auto native = implementation_->metal->prepare_pipeline(
-		    resolver, source.uri, source.vertex_entry, source.fragment_entry);
+		auto native =
+		    implementation_->metal->prepare_pipeline(source, vertex_entry, fragment_entry);
 		if (!native)
 			return ice::unexpected(native.error());
 		result->metal = std::move(*native);
@@ -152,8 +172,8 @@ device::prepare_pipeline(const ice::io::resource_resolver &resolver, const shade
 #endif
 #ifdef ICE_RENDER_OPENGL
 	if (implementation_->opengl) {
-		auto native = implementation_->opengl->prepare_pipeline(
-		    resolver, source.uri, source.vertex_entry, source.fragment_entry);
+		auto native =
+		    implementation_->opengl->prepare_pipeline(source, vertex_entry, fragment_entry);
 		if (!native)
 			return ice::unexpected(native.error());
 		result->opengl = std::move(*native);

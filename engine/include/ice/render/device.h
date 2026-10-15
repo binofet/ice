@@ -3,6 +3,7 @@
 #include "ice/io/resource_uri.h"
 #include "ice/platform/desktop_window.h"
 #include "ice/platform/host.h"
+#include "ice/render/shader_snapshot.h"
 #include "ice/render/types.h"
 #include <memory>
 #include <span>
@@ -90,11 +91,17 @@ public:
 	~device();
 	/// Identify this device's backend without querying the native driver.
 	backend_kind backend() const;
+	/// Process-local logical identity, independent of the physical GPU and never reused.
+	std::uint64_t identity() const;
 	/// Return the driver/device display name for diagnostics.
 	std::string name() const;
 	/// Prepare a detached library/pipeline without replacing an existing pipeline on failure.
 	ice::expected<std::unique_ptr<pipeline>, diagnostic>
 	prepare_pipeline(const ice::io::resource_resolver &resolver, const shader_source &source);
+	/// Prepare exactly the retained source bytes without consulting a URI handler again.
+	ice::expected<std::unique_ptr<pipeline>, diagnostic>
+	prepare_pipeline(const shader_snapshot &source, const std::string &vertex_entry,
+	                 const std::string &fragment_entry);
 	/// Upload one tightly packed RGBA8 image with dimensions in [1,4096].
 	/// Sampling is linear/clamped without mipmaps; bind as texture(0)/sampler2D unit zero in either
 	/// shader stage.
