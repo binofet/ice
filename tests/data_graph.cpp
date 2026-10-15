@@ -72,11 +72,60 @@ value graph_view(const graph_data &input) {
 	return value{value::record{{"root", reference_view(input.root)},
 	                           {"objects", value{std::move(objects)}}}};
 }
+int check_value_growth() {
+	static_assert(std::is_nothrow_move_constructible_v<value>);
+	static_assert(std::is_nothrow_move_assignable_v<value>);
+	static_assert(std::is_nothrow_move_constructible_v<value::storage>);
+	static_assert(std::is_nothrow_move_assignable_v<value::storage>);
+	CHECK(std::holds_alternative<std::monostate>(value{}.data));
+	value::sequence values;
+	for (std::uint64_t index = 0; index < 128; ++index)
+		values.push_back(
+		    value{value::record{{"id", value{index}},
+		                        {"label", value{std::string("player")}},
+		                        {"nested", value{value::record{{"enabled", value{true}}}}}}});
+	// Growing recursive vector storage must invoke each active alternative's move.
+	// Byte relocation leaves map nodes pointing to sentinels in the old allocation.
+	auto copied = values;
+	copied.reserve(copied.capacity() + 1);
+	copied.erase(copied.begin() + 17);
+	copied.insert(copied.begin() + 17, values[17]);
+	for (const auto &item : copied) {
+		unsigned fields = 0, nested_fields = 0;
+		for (const auto &[name, field] : record(item)) {
+			++fields;
+			if (name == "label")
+				CHECK(string(field) == "player");
+			if (name == "nested")
+				for (const auto &[nested_name, nested] : record(field)) {
+					++nested_fields;
+					CHECK(nested_name == "enabled" && std::get<bool>(nested.data));
+				}
+		}
+		CHECK(fields == 3 && nested_fields == 1);
+	}
+	record(copied[0])["label"] = value{std::string("independent")};
+	CHECK(string(record(values[0]).at("label")) == "player");
+	value moved(std::move(copied[0]));
+	value assigned{false};
+	assigned = std::move(moved);
+	CHECK(string(record(assigned).at("label")) == "independent");
+	assigned = value{};
+	CHECK(std::holds_alternative<std::monostate>(assigned.data));
+	value::sequence empty_records;
+	for (unsigned index = 0; index < 32; ++index)
+		empty_records.push_back(value{value::record{}});
+	empty_records.reserve(empty_records.capacity() + 1);
+	for (const auto &item : empty_records)
+		CHECK(record(item).begin() == record(item).end());
+	return 0;
+}
 } // namespace
 
 int main(int count, char **arguments) {
 	try {
 		CHECK(count == 2);
+		CHECK(check_value_growth() == 0);
 		std::filesystem::path fixtures(arguments[1]);
 		auto                  corpus   = load(fixtures / "graph.corpus.mdb");
 		unsigned              accepted = 0, rejected = 0;

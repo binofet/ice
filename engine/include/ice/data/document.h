@@ -10,6 +10,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -37,6 +38,18 @@ struct object_reference {
 };
 /// Fully owned portable data. Recursive containers copy by value, with no mutable shared aliases.
 struct value {
+	/// Construct a null value.
+	value();
+	/// Release the owned active alternative.
+	~value();
+	/// Copy the complete owned tree without mutable aliases.
+	value(const value &other);
+	/// Move an owned tree through its active alternative, never by byte relocation.
+	value(value &&other) noexcept;
+	/// Replace this value with an independent tree copy.
+	value &operator=(const value &other);
+	/// Transfer storage with the active alternative's move assignment.
+	value &operator=(value &&other) noexcept;
 	/// Ordered sequence, or explicit map key/value pairs as dictated by a schema.
 	using sequence = std::vector<value>;
 	/// UTF-8 field/control names; this is not the logical map-container representation.
@@ -44,11 +57,24 @@ struct value {
 	/// Explicit numeric alternatives keep booleans, signed values and unsigned values distinct.
 	using storage = std::variant<std::monostate, bool, std::int64_t, std::uint64_t, double,
 	                             std::string, sequence, record, object_reference>;
+	/// Construct owned scalar/container storage.
+	value(storage input);
 	/// Null is monostate; a missing record key is a separate condition.
 	storage data;
 	/// Compare owned values recursively; references compare addresses without following cycles.
-	bool operator==(const value &other) const = default;
+	bool operator==(const value &other) const;
 };
+// Define every recursive storage operation only after value is complete. Older libc++
+// versions can otherwise cache the incomplete type as byte-relocatable, leaving map
+// nodes pointing at sentinels in released vector storage after a capacity change.
+inline value::value()  = default;
+inline value::~value() = default;
+inline value::value(storage input) : data(std::move(input)) {}
+inline value::value(const value &other) = default;
+inline value::value(value &&other) noexcept : data(std::move(other.data)) {}
+inline value &value::operator=(const value &other)     = default;
+inline value &value::operator=(value &&other) noexcept = default;
+inline bool   value::operator==(const value &other) const { return data == other.data; }
 /// SHA-256 projection identity supplied by a trusted generated catalog/host contract.
 using schema_fingerprint = std::array<std::byte, 32>;
 /// Validate UTF-8, finite numbers and shared depth/node/string/byte bounds; reject runtime refs.

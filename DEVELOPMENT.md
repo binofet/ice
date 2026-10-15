@@ -181,3 +181,26 @@ passes. Ignition consumes the owner through `shader reload` / `shader undo`, ret
 authored variants per backend and keeps its window/session through device replacement.
 Compilation/probing remains synchronous on the UI/render thread; asynchronous jobs
 and a shared agent/session command service remain subsequent work.
+
+Spacegoo C++20/23 each pass all 16 CPU tests, native X11 input, sampled-image GPU
+checks, eight device replacements and the transactional pipeline GPU suite. Complete
+Windows projects cross-link in both modes; runtime validation remains unavailable.
+Ignition `97973f3` also passes both native Linux application tests and shader-command
+runs. Native keys in one live window exercise a broken shader file, retained revision,
+successful repair and undo to the original hash. Its Windows applications/tests
+cross-link in both modes. The shared Metal companion rebuilds for iOS simulator;
+fresh graphics-free C++20/23 builds each pass seven CPU tests.
+
+## Recursive data ownership across standard libraries
+
+Hosted CI exposed a recursive `value` relocation defect with the macOS 15.4 SDK's
+libc++ 19 headers. An incomplete-type trait was cached as permitting byte relocation;
+vector growth then left map nodes pointing at sentinels in released storage. Defining
+all `value` special members only after the class is complete preserves proper owned
+moves, without changing its storage shape or disabling optimizations globally.
+
+A focused growth/copy/insert/erase/move/empty-record regression precedes the graph
+corpus. The older SDK passes optimized C++20/23, Debug C++23 and Address/Undefined
+Behavior Sanitizer C++23 checks after the correction; the newer SDK also passes both
+headless suites. CI now includes a separate Linux headless sanitizer job, lets every
+desktop matrix entry finish independently, and captures native Mac graph crash traces.
