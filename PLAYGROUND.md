@@ -99,8 +99,9 @@ physics tuning remains deferred.
 Keep an authoritative game host, controller inputs and presentation surfaces
 separable. A future mobile host could run a whole game and present on an external
 screen, while additional players join with browser controllers via a QR/link.
-Start with touch and permission-based motion input over a WebSocket/WebRTC adapter;
-the current native UDP socket is not directly accessible to a browser. Host/join
+The first no-install touch controller now uses a small local HTTP bridge into the
+native UDP path. Permission-based browser motion, HTTPS and an eventual
+WebSocket/WebRTC adapter remain future experiments. Host/join
 lifecycle, multiple players, reconnects and readable onboarding come first.
 
 A native ARKit/ARCore controller can then supply tracked pose and tracking quality.

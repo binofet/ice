@@ -26,6 +26,7 @@
 #include "settings.h"
 #include "last_game.h"
 #include "Network/icCompanionLink.h"
+#include "Network/icCompanionWeb.h"
 
 #ifdef WIIMOTE
 #include "wiimote.h"
@@ -94,6 +95,9 @@ public:
     };
 
     icCompanionLink Companion;
+    icCompanionWeb CompanionWeb;
+    bool BrowserPanel=false;
+    void ToggleBrowser();
     unsigned CompanionCode=0;
     bool CompanionFocused=true;
     bool CompanionPanel=false;

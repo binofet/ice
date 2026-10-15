@@ -96,7 +96,7 @@ behavior, real GPU performance or device-specific driver correctness.
 ## Next milestones
 
 1. Companion gestures, touch fallback and recorded intent replay are implemented
-   in [COMPANION.md](COMPANION.md). Paired IPv4 local networking and SkeeBall delivery are implemented; next: discovery and simpler joining.
+   in [COMPANION.md](COMPANION.md). Paired IPv4 local networking and SkeeBall delivery are implemented; a no-install browser touch path is available through desktop F3. Discovery, QR joining and multiplayer remain next.
 2. Platform-owned asset/user-data paths, process-death restoration and host migration
    for the other samples. Desktop keyboard/mouse remains the compatibility singleton;
    it has not yet been migrated to the new device stream.

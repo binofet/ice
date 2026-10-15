@@ -805,8 +805,10 @@ ICRESULT SkeeBall::Update(void)
 
 
     if(pInput->IsPressed(ICKEY_F2))ToggleCompanion();
+    if(pInput->IsPressed(ICKEY_F3))ToggleBrowser();
     const double now=std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
     Companion.AcceptShots(CompanionFocused && m_StateMachine.PeekState()==&m_GameState && m_GameState.ReadyForShot());
+    CompanionWeb.Poll(now);
     Companion.Poll(now);
     if(CompanionPanel && Companion.Status()==icCompanionLink::State::Connected)CompanionPanel=false;
     // Pause the game while the dedicated pairing screen is visible.
@@ -918,6 +920,14 @@ ICRESULT SkeeBall::RenderFrame(bool present)
 
     if(CompanionPanel){
         int width,height;m_pMainWin->GetFramebufferSize(&width,&height);int x=width/10;
+        if(BrowserPanel){
+            std::string address=CompanionAddresses.substr(0,CompanionAddresses.find(" / "));
+            m_pairFont.Print(icVector2Int(x,height*8/10),icColor::WHITE,"JOIN IN YOUR BROWSER");
+            m_font.Print(icVector2Int(x,height*6/10),icColor::WHITE,"On your phone, open:");
+            m_font.Print(icVector2Int(x,height*5/10),icColor::WHITE,CompanionWeb.JoinURL(address).c_str());
+            m_font.Print(icVector2Int(x,height*3/10),icColor::WHITE,"Tap Join game. No app installation needed.");
+            m_font.Print(icVector2Int(x,height/10),icColor::WHITE,"Same Wi-Fi network. F3 to cancel.");
+        }else{
         m_font.Print(icVector2Int(x,height*8/10),icColor::WHITE,"CONNECT YOUR PHONE");
         m_font.Print(icVector2Int(x,height*7/10),icColor::WHITE,"Open ICE Companion and tap Connect");
         m_font.Print(icVector2Int(x,height*6/10),icColor::WHITE,"Desktop address");
@@ -928,7 +938,8 @@ ICRESULT SkeeBall::RenderFrame(bool present)
         m_font.Print(icVector2Int(x,height*3/10),icColor::WHITE,"Pairing code");
         m_pairFont.Print(icVector2Int(x,height*2/10),icColor::WHITE,code);
         m_font.Print(icVector2Int(x,height/10),icColor::WHITE,"Same Wi-Fi network. F2 to cancel.");
-    }else m_font.Print(icVector2Int(12,18),icColor::WHITE,CompanionCode?"Phone controller connected  |  F2 to disconnect":"F2: connect your phone");
+        }
+    }else m_font.Print(icVector2Int(12,18),icColor::WHITE,CompanionCode?"Phone controller connected  |  F2 to disconnect":"F2: phone app   F3: browser controller");
     if(present)PresentFrame();
     return IC_OK;
 }// END FUNCTION Render(void)
@@ -1032,7 +1043,17 @@ void SkeeBall::ProcessSettings(void)
     }
 }// END FUNCTION ProcessSettings(void)
 void SkeeBall::ToggleCompanion(){
-    if(CompanionCode){Companion.Close();CompanionCode=0;CompanionPanel=false;return;}
+    if(CompanionCode){CompanionWeb.Close();BrowserPanel=false;Companion.Close();CompanionCode=0;CompanionPanel=false;return;}
     std::random_device random;unsigned code=100000+random()%900000;
     if(Companion.Listen(0,code)){CompanionCode=code;CompanionPanel=true;CompanionAddresses=icCompanionLink::LocalAddresses();icPrintf("Companion %s port=%u code=%06u",CompanionAddresses.c_str(),Companion.Port(),code);}
+}
+
+void SkeeBall::ToggleBrowser(){
+    if(CompanionWeb.Port()){ToggleCompanion();return;}
+    if(!CompanionCode)ToggleCompanion();
+    if(CompanionCode&&CompanionWeb.Start(Companion.Port(),CompanionCode)){
+        BrowserPanel=CompanionPanel=true;
+        auto address=CompanionAddresses.substr(0,CompanionAddresses.find(" / "));
+        icPrintf("Browser controller: %s",CompanionWeb.JoinURL(address).c_str());
+    }
 }

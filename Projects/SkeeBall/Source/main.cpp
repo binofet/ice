@@ -7,6 +7,7 @@ int main(int argc,char** argv){
     sample::initialize();bool smoke=argc==3&&std::string(argv[1])=="--smoke-test";
     ICRESULT result=app.Init(argc,argv);if(ICEFAIL(result)){icWarning("SkeeBall initialization failed");return 1;}
     for(int i=1;i<argc;++i)if(std::string(argv[i])=="--companion"){app.ToggleCompanion();app.GetStateMachine().PushState(&app.m_GameState);}
+    for(int i=1;i<argc;++i)if(std::string(argv[i])=="--browser-controller"){app.ToggleBrowser();app.GetStateMachine().PushState(&app.m_GameState);}
     bool pairingSmoke=argc==3&&std::string(argv[1])=="--pairing-smoke";
     if(pairingSmoke)app.ToggleCompanion();
     unsigned frame=0;bool launched=false;

@@ -1,0 +1,1 @@
+static const char kCompanionPage[] = R"ICEPAGE(@ICE_WEB_HTML@)ICEPAGE";

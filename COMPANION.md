@@ -226,5 +226,49 @@ same fields pre-fills the native numeric pairing panel without auto-connecting.
 
 The revised controller (Tools hidden by default) was signed, installed and launched
 on both the physical iPhone 15 Pro Max and iPad Pro after the networking milestone.
-Hands-on LAN gesture feel still needs user feedback; simulator and synthetic
-transport fixtures are distinguished above from physical device verification.
+The user confirmed physical phone pairing and live game control worked. SkeeBall
+physics remains deliberately deferred. Simulator and synthetic transport fixtures
+are distinguished above from physical device verification.
+
+
+## No-install browser touch controller — 2026-10-14
+
+Press **F3** in SkeeBall, or launch with `--browser-controller`, to enable the
+optional native HTTP bridge. Open the displayed `http://<LAN-address>:<port>/#<code>`
+on the phone and tap **Join game**. The fragment pre-fills the code; it is exchanged
+for a session cookie on joining. F2 retains the native companion path. The same game
+host accepts only one active controller at a time in this milestone. No camera or
+motion permissions are requested by the browser controller.
+
+`ICECompanionWeb` is a separate optional desktop library. It serves a self-contained
+HTML/CSS/JavaScript page, with no web framework, CDN, account or external service.
+HTTP touch intents feed an ordinary `icCompanionLink` client, so the existing game
+readiness checks, packet validation and duplicate suppression remain authoritative.
+Browser gestures implement the same bounded aim/power intent contract; they are not
+raw recorded native touch samples. Browser power/feel has not been calibrated against
+the native UI. The game must remain focused to accept shots.
+
+The server uses nonblocking native TCP sockets, at most eight connections, bounded
+headers/bodies, one-second request deadlines, and explicit Content-Length framing.
+It closes each HTTP response; chunked requests and ambiguous duplicate headers are
+rejected. Commands require a numeric same-origin Host/Origin and session cookie.
+Cookies are HttpOnly and SameSite=Strict with a distinct name per listener port.
+A new browser cannot displace the current session. Sequence numbers deduplicate
+HTTP commands, and leaving/hiding the page clears its session; two seconds without
+browser status requests also disconnect it. A paused host invalidates its browser
+session before processing buffered requests.
+
+This is an intentionally small local HTTP subset, not a general web server or a
+public Internet service. No TLS is supplied. Browser motion on arbitrary LAN HTTP
+pages is not part of this milestone; native AR and an HTTPS motion-controller path
+remain future work. There is no QR generator, automatic phone browser opening or
+multiplayer lobby yet. Safari was opened on the paired development iPhone through
+`devicectl --payload-url` for the hardware test, not through a product auto-launch API.
+
+Nine CTest suites pass on Mac and Linux. The web suite tests fragmented HTTP requests,
+wrong codes, session ownership, duplicate commands, invalid values, cross-origin
+rejection, ambiguous framing and leave/session invalidation through real sockets.
+Windows cross-compiles; runtime remains unverified. Browser joining and a pointer
+throw were exercised in a real browser. The user then confirmed Safari on their
+physical iPhone worked, and SkeeBall logged two real network-driven ball impulses.
+Game physics tuning remains deferred.

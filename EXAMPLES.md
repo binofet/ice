@@ -33,7 +33,10 @@ The smoke run enters gameplay, charges/releases a shot, and requires it to enter
 
 Runtime resources were recovered from `~/oldev/icu/Projects/SkeeBall/GameFolder`.
 WiiYourself source remains in the project, but its Windows driver is not part of
-these desktop targets. Wii input and phone input are not implemented in this pass.
+these desktop targets. Wii input remains unverified. F2 enables the native phone
+companion; F3 enables a no-install browser touch controller. Both use the same
+validated shot-intent path. See [COMPANION.md](COMPANION.md) for local pairing and
+current limitations. SkeeBall physics tuning remains deferred.
 
 ## New playable prototypes
 
