@@ -105,70 +105,8 @@ ICRESULT GameState::Init(icContentLoader* pContentLoader)
     res |= InitPhysics();
 
 
-    int sizex = gApp.GetSettings().iScreen_x;
-    int sizey = gApp.GetSettings().iScreen_y;
-
-    if (gApp.GetSettings().bFullscreen)
-    {
-        if (sizex == 1920 && sizey == 1080)
-        {
-            res |= m_ScoreFont.Initialize("Arial",48,m_pContent->GetDevice());
-            res |= m_Font.Initialize("Arial",36,m_pContent->GetDevice());
-        }
-        else if (sizex == 1280 && sizey == 720)
-        {
-            res |= m_ScoreFont.Initialize("Arial",40,m_pContent->GetDevice());
-            res |= m_Font.Initialize("Arial",26,m_pContent->GetDevice());
-        }
-        else if (sizex == 1280 && sizey == 800)
-        {
-            res |= m_ScoreFont.Initialize("Arial",40,m_pContent->GetDevice());
-            res |= m_Font.Initialize("Arial",26,m_pContent->GetDevice());
-        }
-        else if (sizex == 1280 && sizey == 1024)
-        {
-            res |= m_ScoreFont.Initialize("Arial",48,m_pContent->GetDevice());
-            res |= m_Font.Initialize("Arial",36,m_pContent->GetDevice());
-        }
-        else if (sizex == 1024 && sizey == 768)
-        {
-            res |= m_ScoreFont.Initialize("Arial",48,m_pContent->GetDevice());
-            res |= m_Font.Initialize("Arial",36,m_pContent->GetDevice());
-        }
-    }
-    else
-    {
-        if (sizex == 1920 && sizey == 1080)
-        {
-            res |= m_ScoreFont.Initialize("Arial",48,m_pContent->GetDevice());
-            res |= m_Font.Initialize("Arial",36,m_pContent->GetDevice());
-        }
-        else if (sizex == 1280 && sizey == 720)
-        {
-            res |= m_ScoreFont.Initialize("Arial",40,m_pContent->GetDevice());
-            res |= m_Font.Initialize("Arial",26,m_pContent->GetDevice());
-        }
-        else if (sizex == 1280 && sizey == 800)
-        {
-            res |= m_ScoreFont.Initialize("Arial",40,m_pContent->GetDevice());
-            res |= m_Font.Initialize("Arial",26,m_pContent->GetDevice());
-        }
-        else if (sizex == 1280 && sizey == 1024)
-        {
-            res |= m_ScoreFont.Initialize("Arial",48,m_pContent->GetDevice());
-            res |= m_Font.Initialize("Arial",36,m_pContent->GetDevice());
-        }
-        else if (sizex == 1024 && sizey == 768)
-        {
-            res |= m_ScoreFont.Initialize("Arial",40,m_pContent->GetDevice());
-            res |= m_Font.Initialize("Arial",26,m_pContent->GetDevice());
-        }
-    }
-
-    //ICRESULT r = m_ScoreFont.Initialize("7 Segment", 36, m_pContent->GetDevice(), false);
-
-    //if (ICEFAIL(r))
-    // //   m_ScoreFont.Initialize("Arial",36,m_pContent->GetDevice(),false);
+    res |= m_ScoreFont.Initialize("Arial",40,m_pContent->GetDevice());
+    res |= m_Font.Initialize("Arial",24,m_pContent->GetDevice());
 
     if (ICEFAIL(m_pContent->Load("Resource/models/ticket_start.icm", &m_pTicketStart)))
         return IC_FAIL_GEN;
@@ -438,7 +376,7 @@ ICRESULT GameState::Update(const float fDeltaTime, bool *bFinished)
     }
     if (input->IsPressed(ICKEY_ESCAPE))
     {
-        m_bRenderTopOnly = false;
+        m_bRenderTopOnly = true;
         icInput::Instance()->ShowCurs();
         gApp.GetStateMachine().PushState(&gApp.m_PauseMenu);
     }
@@ -595,7 +533,7 @@ ICRESULT GameState::Update(const float fDeltaTime, bool *bFinished)
         {
             if (wii_remote.Button.Home())
             {
-                m_bRenderTopOnly = false;
+                m_bRenderTopOnly = true;
                 icInput::Instance()->ShowCurs();
                 gApp.GetStateMachine().PushState(&gApp.m_PauseMenu);
             }
@@ -620,8 +558,11 @@ ICRESULT GameState::Render(void)
     // A quiet stage behind the cabinets, instead of the old empty black void.
     icMatrix44 stage;stage.Identity();pDev->SetProjection(pDev->GetOrtho());pDev->SetViewMatrix(stage);pDev->SetWorldTransform(stage);
     glPushAttrib(GL_ALL_ATTRIB_BITS);glDisable(GL_TEXTURE_2D);glDisable(GL_DEPTH_TEST);glDisable(GL_LIGHTING);glDisable(GL_CULL_FACE);
-    float sw=gApp.GetSettings().iScreen_x,sh=gApp.GetSettings().iScreen_y;
+    int liveWidth,liveHeight;gApp.ui.Size(liveWidth,liveHeight);float sw=liveWidth,sh=liveHeight;
     glBegin(GL_QUADS);glColor3f(.015f,.025f,.035f);glVertex2f(0,0);glVertex2f(sw,0);glColor3f(.055f,.13f,.15f);glVertex2f(sw,sh);glVertex2f(0,sh);glEnd();glPopAttrib();
+    int renderWidth,renderHeight;gApp.ui.Size(renderWidth,renderHeight);
+    if(renderHeight<=0)return IC_OK;
+    icCreatePerspective(40.f*IC_PI/180.f,(icReal)renderWidth/renderHeight,1.f,2000.f,m_MaxCam.GetProjection());
     // set projection and view matrix
     pDev->SetProjection(m_MaxCam.GetProjection());
     pDev->SetViewMatrix(m_MaxCam.GetViewMat());
@@ -655,141 +596,22 @@ ICRESULT GameState::Render(void)
     pDev->SetViewMatrix(m_Transform);
     pDev->SetWorldTransform(m_Transform);
 
-    int x_pos = 0.0f;
-    int y_pos = 0.0f;
-
-    int sizex = gApp.GetSettings().iScreen_x;
-    int sizey = gApp.GetSettings().iScreen_y;
-
-    if (gApp.GetSettings().bFullscreen)
-    {
-        if (sizex == 1920 && sizey == 1080)
-        {
-            x_pos = gApp.GetSettings().iScreen_x * 0.4735f;
-            y_pos = gApp.GetSettings().iScreen_y * 0.847f;
-        }
-        if (sizex == 1280 && sizey == 720)
-        {
-            x_pos = gApp.GetSettings().iScreen_x * 0.5f;
-            y_pos = gApp.GetSettings().iScreen_y * 0.8f;
-        }
-        if (sizex == 1280 && sizey == 800)
-        {
-            x_pos = gApp.GetSettings().iScreen_x * 0.4700f;
-            y_pos = gApp.GetSettings().iScreen_y * 0.8435f;
-        }
-        if (sizex == 1280 && sizey == 1024)
-        {
-            x_pos = gApp.GetSettings().iScreen_x * 0.5f;
-            y_pos = gApp.GetSettings().iScreen_y * 0.8f;
-        }
-        if (sizex == 1024 && sizey == 768)
-        {
-            x_pos = gApp.GetSettings().iScreen_x * 0.5f;
-            y_pos = gApp.GetSettings().iScreen_y * 0.8f;
-        }
+    int width,height;gApp.ui.Size(width,height);
+    if(!gApp.BrowserPanel){
+        gApp.ui.Begin(false);
+        const float x=24,y=height-166;
+        gApp.ui.Rect({x,y,224,142},icColor(4,19,27,238));
+        gApp.ui.Rect({x,y+138,224,4},icColor(92,187,174));
+        gApp.ui.Text(x+18,y+111,"SCORE",true);
+        char score[24];std::snprintf(score,sizeof(score),"%03d",m_i32Score);
+        gApp.ui.Heading(x+18,y+61,score);
+        int balls=m_curBall<0?0:MAX_BALLS-m_curBall+(bWaiting?1:0);
+        char remaining[40];std::snprintf(remaining,sizeof(remaining),"BALLS LEFT   %d",icClamp(balls,0,MAX_BALLS));
+        gApp.ui.Text(x+18,y+20,remaining,true);
+        if(m_bLastLMB){char power[40];std::snprintf(power,sizeof(power),"POWER  %.0f%%",m_fPercent);gApp.ui.Rect({width-228.f,height-76.f,204,52},icColor(4,19,27,238));gApp.ui.Text(width-210.f,height-58.f,power);}
+        gApp.ui.Text(20,50,"Mouse/arrows: aim  |  Hold & release: roll  |  Esc: pause",true);
+        gApp.ui.End();
     }
-    else
-    {
-        if (sizex == 1920 && sizey == 1080)
-        {
-            x_pos = gApp.GetSettings().iScreen_x * 0.4735f;
-            y_pos = gApp.GetSettings().iScreen_y * 0.847f;
-        }
-        if (sizex == 1280 && sizey == 720)
-        {
-            x_pos = gApp.GetSettings().iScreen_x * 0.4700f;
-            y_pos = gApp.GetSettings().iScreen_y * 0.8435f;
-        }
-        if (sizex == 1280 && sizey == 800)
-        {
-            x_pos = gApp.GetSettings().iScreen_x * 0.4690f;
-            y_pos = gApp.GetSettings().iScreen_y * 0.8440f;
-        }
-        if (sizex == 1280 && sizey == 1024)
-        {
-            x_pos = gApp.GetSettings().iScreen_x * 0.4600f;
-            y_pos = gApp.GetSettings().iScreen_y * 0.8449f;
-        }
-        if (sizex == 1024 && sizey == 768)
-        {
-            x_pos = gApp.GetSettings().iScreen_x * 0.4610f;
-            y_pos = gApp.GetSettings().iScreen_y * 0.8435f;
-        }
-    }
-    if(!gApp.BrowserPanel)m_ScoreFont.Printf(icVector2Int(x_pos,y_pos),icColor::BRED, "%03d",m_i32Score);
-
-
-
-    // HACK!@
-    // set the 2d position for the # ball text
-    if (gApp.GetSettings().bFullscreen)
-    {
-        if (sizex == 1920 && sizey == 1080)
-        {
-            x_pos = gApp.GetSettings().iScreen_x * 0.582f;
-            y_pos = gApp.GetSettings().iScreen_y * 0.394f;
-        }
-        else if (sizex == 1280 && sizey == 720)
-        {
-            x_pos = gApp.GetSettings().iScreen_x * 0.582f;
-            y_pos = gApp.GetSettings().iScreen_y * 0.392f;
-        }
-        else if (sizex == 1280 && sizey == 800)
-        {
-            x_pos = gApp.GetSettings().iScreen_x * 0.582f;
-            y_pos = gApp.GetSettings().iScreen_y * 0.392f;
-        }
-        else if (sizex == 1280 && sizey == 1024)
-        {
-            x_pos = gApp.GetSettings().iScreen_x * 0.582f;
-            y_pos = gApp.GetSettings().iScreen_y * 0.392f;
-        }
-        else if (sizex == 1024 && sizey == 768)
-        {
-            x_pos = gApp.GetSettings().iScreen_x * 0.582f;
-            y_pos = gApp.GetSettings().iScreen_y * 0.392f;
-        }
-    }
-    else
-    {
-        if (sizex == 1920 && sizey == 1080)
-        {
-            x_pos = gApp.GetSettings().iScreen_x * 0.582f;
-            y_pos = gApp.GetSettings().iScreen_y * 0.394f;
-        }
-        else if (sizex == 1280 && sizey == 720)
-        {
-            x_pos = gApp.GetSettings().iScreen_x * 0.5818f;
-            y_pos = gApp.GetSettings().iScreen_y * 0.3957f;
-        }
-        else if (sizex == 1280 && sizey == 800)
-        {
-            x_pos = gApp.GetSettings().iScreen_x * 0.5896f;
-            y_pos = gApp.GetSettings().iScreen_y * 0.3946f;
-        }
-        else if (sizex == 1280 && sizey == 1024)
-        {
-            x_pos = gApp.GetSettings().iScreen_x * 0.6139f;
-            y_pos = gApp.GetSettings().iScreen_y * 0.3949f;
-        }
-        else if (sizex == 1024 && sizey == 768)
-        {
-            x_pos = gApp.GetSettings().iScreen_x * 0.6092f;
-            y_pos = gApp.GetSettings().iScreen_y * 0.3935f;
-        }
-    }
-    int balls = (bInPlay || bWaiting) ? MAX_BALLS-m_curBall + 1 : MAX_BALLS-m_curBall;
-    if(!gApp.BrowserPanel)m_Font.Printf(icVector2Int(x_pos,y_pos),icColor::BRED, "%02d",balls);
-    if(!gApp.BrowserPanel)m_Font.Print(icVector2Int(20,55),icColor::WHITE,"Aim: mouse or arrows | Hold Space or left mouse, release to roll | Esc: pause");
-
-    if (m_bLastLMB)
-    {
-        int x_pos = (int)((icReal)gApp.GetSettings().iScreen_x * 0.75f);
-        int y_pos = (int)((icReal)gApp.GetSettings().iScreen_y * 0.85f);
-        m_ScoreFont.Printf(icVector2Int(x_pos,y_pos),icColor::BRED,"POWER - %.0f %%",m_fPercent);
-    }
-   
 
     return res;
 }// END FUNCTION Render(void)

@@ -317,6 +317,7 @@ ICRESULT SkeeBall::Init(int argc, char* args[])
 	}
 
     // push the main menu (TODO, goes to gamestate right now)
+    if(ICEFAIL(res=ui.Init(m_Content)))return res;
     if(ICEFAIL(res=m_GameState.Init(m_Content)))return res;
     if(ICEFAIL(res=m_MainMenu.Init(m_Content)))return res;
     if(ICEFAIL(res=m_SettingsMenu.Init(m_Content)))return res;

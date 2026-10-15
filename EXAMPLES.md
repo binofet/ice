@@ -122,3 +122,25 @@ needed. Run `build/macos/bin/ice_render_gl_tests` in a WindowServer session (or 
 Linux target under Xvfb) to verify pixel occlusion in both submission orders, a
 negative control with depth disabled, and font-overlay state restoration. This
 context-dependent test is separate from headless CTest.
+
+### SkeeBall live surface layout
+
+Title, settings, pause and the solo HUD now use the current drawable dimensions,
+not the saved startup resolution. Mouse hit testing converts client coordinates
+into the same drawing coordinates. The title artwork uses aspect-preserving cover
+cropping; the settings and pause screens use matching opaque arcade panels, avoiding
+legacy transparent atlas widgets and underlying scene bleed. The lane projection
+also updates its aspect ratio on resize and fullscreen changes.
+
+Solo score and balls-left now share a labeled top-left HUD; they no longer float
+over guessed cabinet positions. Balls-left excludes a ball already in flight.
+The ring atlas patch now supplies enamel and point values without painted circular
+rims: the real mesh provides the ring shapes, so projected UVs no longer bend painted
+bands across the walls. Mesh geometry and physics are unchanged.
+
+`SkeeBall --layout-smoke <existing-directory>` captures twelve windowed, compact,
+ultrawide, fullscreen and restored layouts. Synthetic in-process input fixtures check
+resized mouse hit testing, settings back navigation, volume adjustment and an
+in-flight shot surviving pause → settings → back → resume. These checks passed on
+macOS (actual fullscreen surface 3072×1280) and Linux/Xvfb (2560×1080), alongside the
+normal game smoke. Windows cross-compiles; runtime remains unverified.

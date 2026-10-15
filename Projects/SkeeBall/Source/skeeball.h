@@ -12,6 +12,7 @@
 
 #include "Render/Font/icFontGL.h"
 #include "arcade_grade.h"
+#include "arcade_ui.h"
 
 #include "Util/icSettingsFile.h"
 #include "Util/icStateMachine.h"
@@ -109,6 +110,7 @@ public:
     void ToggleCompanion();
     GameState           m_GameState;        //! Main game state
     MainMenu            m_MainMenu;         //! Main menu state
+    ArcadeUI ui;
     SettingsMenu        m_SettingsMenu;     //! Settings menu state
     PauseMenu           m_PauseMenu;        //! Pause menu state
     LastGame            m_LastGame;
