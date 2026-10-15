@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleExecutable</key><string>${MACOSX_BUNDLE_EXECUTABLE_NAME}</string>
+<key>CFBundleIdentifier</key><string>${ICE_MOBILE_BUNDLE_ID}</string>
+<key>CFBundleName</key><string>ICE Watch</string>
+<key>CFBundleDisplayName</key><string>ICE Companion</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+<key>CFBundleVersion</key><string>1</string>
+<key>CFBundleShortVersionString</key><string>0.1</string>
+<key>WKApplication</key><true/>
+<key>WKWatchOnly</key><true/>
+<key>NSMotionUsageDescription</key><string>Use wrist motion to calibrate and control SkeeBall shots.</string>
+</dict></plist>

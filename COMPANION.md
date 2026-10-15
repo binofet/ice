@@ -134,3 +134,31 @@ Apple development team. Static runtime libraries explicitly disable code signing
 the app target owns signing. The signed build script preserves those per-target
 settings instead of forcing signing on every target through an xcodebuild override.
 Physical gesture feel and calibration still need hands-on feedback.
+
+### iPad hardware and watchOS companion — 2026-10-14
+
+The iOS companion was signed, installed and launched on an 11-inch iPad Pro
+(4th generation); the user confirmed the Companion Lab screen on hardware.
+
+`Projects/MobileProbe/watchos` adds a watch-only SwiftUI application around the
+same C++ `icHost` and `icCompanionSession`. It provides an upward-drag shot pad,
+optional calibrated wrist motion, recording to the app's Documents directory,
+and replay (a clearly labelled demo is available when no take exists).
+It is an input/lifecycle companion, with no game renderer or network delivery yet.
+Sensors and ticking stop outside the active scene; suspension cancels gestures
+and invalidates calibration. It requests no workout/background session.
+
+Build with `Projects/MobileProbe/watchos/build.sh simulator`, or deploy to an
+unlocked, trusted Watch with Developer Mode enabled:
+
+```sh
+python3 Projects/MobileProbe/watchos/deploy.py \
+  --device '<Watch name or identifier>' --team '<development team>'
+```
+
+Minimum watchOS is 10.0. Device and simulator builds succeeded with Xcode 26.3,
+including the shared C++ runtime. On a Watch SE simulator (watchOS 11.1), an
+upward drag produced a shot and the two-shot demo replay reported matched outputs.
+Physical Watch installation remains pending
+Apple's developer connection preparation and Developer Mode setup. A successful
+build does not validate wrist gestures on hardware.

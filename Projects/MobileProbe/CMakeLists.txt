@@ -6,7 +6,22 @@ if(NOT TARGET ICEPlatformRuntime)
 endif()
 set(ICE_MOBILE_BUNDLE_ID "org.ice.MobileProbe" CACHE STRING "Bundle identifier for development signing")
 set(ICE_DEVELOPMENT_TEAM "" CACHE STRING "Apple development team ID; empty builds unsigned")
-if(APPLE AND CMAKE_SYSTEM_NAME STREQUAL "iOS")
+if(APPLE AND CMAKE_SYSTEM_NAME STREQUAL "watchOS")
+    enable_language(OBJCXX Swift)
+    add_executable(ICEWatchProbe MACOSX_BUNDLE watchos/Main.swift watchos/Bridge.mm)
+    target_compile_options(ICEWatchProbe PRIVATE "$<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>")
+    target_link_libraries(ICEWatchProbe PRIVATE ICEPlatformRuntime "-framework SwiftUI" "-framework WatchKit" "-framework CoreMotion")
+    set_target_properties(ICEWatchProbe PROPERTIES
+        MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/watchos/Info.plist"
+        XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "${ICE_MOBILE_BUNDLE_ID}"
+        XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "4"
+        XCODE_ATTRIBUTE_SWIFT_VERSION "5.0"
+        XCODE_ATTRIBUTE_SWIFT_OBJC_BRIDGING_HEADER "${CMAKE_CURRENT_SOURCE_DIR}/watchos/Bridge.h"
+        XCODE_GENERATE_SCHEME YES)
+    if(ICE_DEVELOPMENT_TEAM)
+        set_target_properties(ICEWatchProbe PROPERTIES XCODE_ATTRIBUTE_DEVELOPMENT_TEAM "${ICE_DEVELOPMENT_TEAM}" XCODE_ATTRIBUTE_CODE_SIGN_STYLE "Automatic")
+    endif()
+elseif(APPLE AND CMAKE_SYSTEM_NAME STREQUAL "iOS")
     enable_language(OBJCXX)
     add_executable(ICEMobileProbe MACOSX_BUNDLE ios/Main.mm)
     target_compile_options(ICEMobileProbe PRIVATE -fobjc-arc)

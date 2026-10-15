@@ -127,3 +127,16 @@ engine development, but the full legacy game stack is not yet mobile-compatible.
 
 The probes are diagnostic apps. Companion pairing/networking and full game rendering
 are not part of this milestone.
+
+## watchOS input companion
+
+`Projects/MobileProbe/watchos` is a native SwiftUI watch-only app with an
+Objective-C++ bridge to the existing C++ host and companion reducer. It exercises
+application lifecycle, touch and wrist sensors without claiming a render surface
+or running a full game renderer. Minimum watchOS: 10.0.
+
+See `COMPANION.md` for build/deploy commands. Both simulator and device builds
+compile the shared runtime; simulator touch input and two-shot replay have been
+verified. Hardware setup requires Developer Mode on the Watch itself, distinct
+from the paired iPhone. Connecting the paired iPhone to the Mac by USB resolved
+initial Watch transport preparation failures during setup.
