@@ -13,17 +13,18 @@ target_include_directories(ICEAssetRuntime PUBLIC include)
 target_include_directories(ICEAssetRuntime SYSTEM PRIVATE 3rdparty)
 ice_strict_target(ICEAssetRuntime)
 
-add_library(ICEMetaRuntime STATIC src/meta/schema.cpp)
-add_library(ice::meta ALIAS ICEMetaRuntime)
-target_link_libraries(ICEMetaRuntime PUBLIC ice::expected)
-target_include_directories(ICEMetaRuntime PUBLIC include)
-ice_strict_target(ICEMetaRuntime)
+include(../cmake/ICEMeta.cmake)
 
 # Consumers may select individual modules. The aggregate includes enabled native backends,
 # without owning an application, window or device.
 add_library(ICEEngine INTERFACE)
 add_library(ice::engine ALIAS ICEEngine)
 target_link_libraries(ICEEngine INTERFACE ice::platform ice::assets ice::meta ice::data)
+option(ICE_BUILD_COMMANDS "Build the optional headless command/session service" ON)
+if(ICE_BUILD_COMMANDS)
+    include(../cmake/ICECommands.cmake)
+    target_link_libraries(ICEEngine INTERFACE ice::commands)
+endif()
 if(ICE_BUILD_DESKTOP)
     include(../cmake/ICEDesktop.cmake)
     target_link_libraries(ICEEngine INTERFACE ice::window)

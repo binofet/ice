@@ -3,6 +3,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/ICEExpected.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/ICEUri.cmake")
 get_filename_component(ICE_DATA_ROOT "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
 add_library(ICEDataRuntime STATIC
+    "${ICE_DATA_ROOT}/engine/src/data/json.cpp"
     "${ICE_DATA_ROOT}/engine/src/data/binary.cpp"
     "${ICE_DATA_ROOT}/engine/src/data/schema.cpp"
     "${ICE_DATA_ROOT}/engine/src/data/graph.cpp"

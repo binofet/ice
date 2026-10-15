@@ -192,7 +192,12 @@ adapters and generated consumer caches. Rich native graphs support enums, nested
 inline/local/external references, opt-in data inheritance and explicit container merge
 operations, with bounded preparation, revision checks, undo and generation handles.
 C# and Python source providers, JSON/XML/codecs and Rust consumers are demonstrated in
-Metagen; native runtime JSON/XML/codecs and typed materialization remain separate work.
+Metagen; native runtime XML/compression codecs and typed materialization remain separate work.
+Native JSON now reads/writes the existing owned data tree, with strict Unicode, exact
+64-bit integers, duplicate-key rejection and shared resource budgets. The generic
+command/session boundary is implemented in `ice::commands`; its descriptors reuse
+the existing scalar Metagen consumer. See [the contract](docs/commands.md). Scene
+editing, runtime scripting, durable history and collaborative authority remain later slices.
 See `Tools/MetagenIntegration/README.md` for the exact supported native contract.
 
 The cleanup retains CPU math, URI, glTF/animation, host/input, companion and data modules.

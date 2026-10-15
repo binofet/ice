@@ -1,6 +1,6 @@
 ---
 Checks: '-*,clang-analyzer-core.*,clang-analyzer-cplusplus.*,bugprone-use-after-move,bugprone-sizeof-expression,bugprone-suspicious-memset-usage,bugprone-dangling-handle'
 WarningsAsErrors: '*'
-HeaderFilterRegex: '[/\\](engine[/\\](include[/\\]ice|src)[/\\](assets|animation|core|data|io|meta|platform|render)|tests[/\\](data_graph|desktop_window|scene_animation|gltf_asset|meta_runtime|resource_uri))'
+HeaderFilterRegex: '[/\\](engine[/\\](include[/\\]ice|src)[/\\](assets|animation|commands|core|data|io|meta|platform|render)|tests[/\\](commands|data_graph|data_json|desktop_window|scene_animation|gltf_asset|meta_runtime|resource_uri))'
 FormatStyle: file
 ...

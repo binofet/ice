@@ -41,6 +41,7 @@ though the optional companion protocol tests use local sockets. Select
 | `ice::render` | Backend selection, URI pipeline preparation, procedural draws, presentation and captures |
 | `ice::metal`, `ice::opengl` | Native backends with independently retained resource lifetimes |
 | `ice::meta`, `ice::data` | Scalar settings proof and validated rich graph preparation/publication |
+| `ice::commands` | Optional headless command discovery, schema validation, session revisions and bounded retry receipts |
 | `ice::companion`, `ice::companion_web` | Optional gestures, recordings, local pairing, QR/browser controllers |
 | `ice::engine` | Convenience aggregate of the core modules and enabled native backends/windows |
 
@@ -52,6 +53,12 @@ Metal is enabled by default on supported Apple SDKs; desktop OpenGL defaults to 
 desktop-window option. Linux GPU tests can run with Mesa under `xvfb-run -a` and
 `LIBGL_ALWAYS_SOFTWARE=1`. The common test performs Metal/OpenGL handoffs on macOS
 and OpenGL device replacements on Linux. Windows currently has compile/link coverage.
+
+[The shared command service](docs/commands.md) has no window, GPU, network or model
+dependency. Hosts register their operations and invoke them between frames; clients
+use the same immutable descriptors and structured results. Disable it with
+`ICE_BUILD_COMMANDS=OFF` when unused. `ice::data` also provides bounded native JSON
+encoding/decoding through `ice/data/json.h`, alongside the experimental MDB1 format.
 
 ## Applications and development
 

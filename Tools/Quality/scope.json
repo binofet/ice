@@ -1,5 +1,11 @@
 {
   "format": [
+    "engine/include/ice/data/json.h",
+    "engine/src/data/json.cpp",
+    "tests/data_json.cpp",
+    "engine/include/ice/commands/service.h",
+    "engine/src/commands/service.cpp",
+    "tests/commands.cpp",
     "engine/include/ice/io/resource_uri.h",
     "engine/include/ice/animation/scene_animation.h",
     "engine/include/ice/assets/scene_asset.h",
@@ -57,6 +63,10 @@
     "tests/live_pipeline.cpp"
   ],
   "lint": [
+    "engine/src/data/json.cpp",
+    "tests/data_json.cpp",
+    "engine/src/commands/service.cpp",
+    "tests/commands.cpp",
     "engine/src/io/resource_uri.cpp",
     "engine/src/animation/scene_animation.cpp",
     "engine/src/assets/scene_asset.cpp",
