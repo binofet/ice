@@ -156,10 +156,11 @@ Validation of these published commits:
   its Unicode terminal and procedural combustion opening. Both application tests pass
   in C++20/23 on Mac; native Metal/OpenGL replacements retain its session.
 
-Native IME interaction is a separate validation scope. The earlier AppKit23 native
-delivery fixture passed before late-focus/runloop hardening; an unlocked-desktop rerun
-of the final native fixture remains necessary. A locked desktop reports unavailable,
-not a pass. No hands-on full IME candidate-selection result is implied.
+Native IME interaction is a separate validation scope. The final AppKit native fixture
+passes when launched through its application bundle: native key routing, UTF-8
+commit/preedit, candidate rectangle, interpreted commands, focus/late-callback
+cancellation and overflow. A direct shell launch without a native key window reports
+unavailable, not a pass. No hands-on full IME candidate-selection result is implied.
 
 ## Transactional URI shader replacement
 
