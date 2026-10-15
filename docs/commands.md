@@ -62,8 +62,10 @@ faults, hangs, malicious callbacks or data races.
 
 ## Exact bounded retries
 
-Every bounded request with a valid operation ID receives a cached immutable
-receipt, including validation and host failures. Repeating the same operation ID
+A new bounded request with a valid operation ID on an active, non-reentrant service
+receives a cached immutable receipt, including validation and host failures.
+Reentrant calls, moved-from services and conflicting reuse return transient rejections.
+Repeating the same operation ID
 and exact authored request returns the same shared receipt without rerunning the
 callback. Retry comparison precedes revision checks, so the receipt for a
 successful mutation remains available after it advances the revision. Receipt
