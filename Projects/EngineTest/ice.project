@@ -1,0 +1,10 @@
+# Source project: edit engine shaders and reload in the viewer.
+[mounts]
+assets://project/ = ./Resource/
+shaders://engine/ = ../../Engine/Resources/shaders/
+textures://project/ = assets://project/textures/
+
+# Ordered override roots: first existing shader wins.
+[search]
+shaders://project/ = assets://project/shaders/
+shaders://project/ = shaders://engine/

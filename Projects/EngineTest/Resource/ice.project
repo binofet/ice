@@ -1,0 +1,10 @@
+# Packaged project: mounts resolve relative to this project URI.
+[mounts]
+assets://project/ = ./
+shaders://engine/ = ./engine-shaders/
+textures://project/ = assets://project/textures/
+
+# Ordered override roots: first existing shader wins.
+[search]
+shaders://project/ = assets://project/shaders/
+shaders://project/ = shaders://engine/

@@ -1,22 +1,21 @@
 #pragma once
-#include <string>
 #include "Core/GXDevice/icGLext.h"
-
-// A context-owned GLSL program. Release before destroying its GL context.
-// Compile is transactional: a failed replacement leaves the old program usable.
-class icShaderGL {
-public:
-    icShaderGL() = default;
+#include "Render/Shader/icShader.h"
+// Context-owned compiled GLSL stage. Release before destroying the context.
+class icShaderGL final : public icShader {
+  public:
     ~icShaderGL() { Release(); }
-    icShaderGL(const icShaderGL&) = delete;
-    icShaderGL& operator=(const icShaderGL&) = delete;
-    bool Compile(const char* vertex, const char* fragment, std::string& diagnostics);
+    icShaderGL() = default;
+    icShaderGL(const icShaderGL &) = delete;
+    icShaderGL &operator=(const icShaderGL &) = delete;
+    bool Compile(const icShaderSource &, std::string &) override;
+    bool Valid() const override { return shader != 0; }
+    const icShaderSource &Source() const override { return source; }
+    GLuint Name() const { return shader; }
     void Release();
-    bool Valid() const { return program != 0; }
-    GLuint Name() const { return program; }
-    void Bind() const;
-    static void Unbind();
-    GLint Uniform(const char* name) const;
-private:
-    GLuint program = 0;
+    static bool Available();
+
+  private:
+    GLuint shader = 0;
+    icShaderSource source;
 };

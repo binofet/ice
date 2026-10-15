@@ -13,11 +13,12 @@ Windows needs the OpenAL runtime DLL as with Airhockey.
 
 ## Restored samples
 
-**EngineTest** exercises native window creation, model/texture loading, text,
-perspective rendering, Lua scene reload, and the existing grid pathfinder.
-Space pauses rotation; R reloads `Resource/scripts/scene.lua`; Tab shows the route;
-Escape closes. Script reload creates a candidate VM and only replaces the running
-VM after validation. Change `rotation_speed` to experiment.
+**EngineTest** now opens the static glTF viewer with material inspection, orbit/pan/zoom,
+wireframe, reload and a generated material lab. See [GLTF.md](GLTF.md) for controls,
+URI project mounts, shader/pipeline contracts and scope. `--legacy` or L returns to
+its Lua cube/pathfinder exercise: Space pauses rotation, R reloads
+`Resource/scripts/scene.lua`, Tab shows the route and Escape closes. Script reload
+creates a candidate VM and replaces the running VM after validation.
 
 The old unsafe thread/allocator benchmark main has been replaced. The unfinished
 ObjectModel/delegate tests remain in source but are excluded from the runnable
@@ -92,12 +93,11 @@ are checked in so ordinary builds need no image tools or generation service.
 The Android launcher, iOS asset catalog, browser icon, macOS bundle and Windows
 resource use the matching icon. Watch artwork/deployment remains deferred.
 
-`icShaderGL` is the engine's first small programmable rendering building block:
-context-owned vertex/fragment GLSL compilation, link diagnostics, uniform lookup
-and explicit binding. Replacement is transactional: bad source leaves the previous
-program intact. Release GL objects before destroying their context. The current
-implementation targets desktop compatibility OpenGL 2.0+ / GLSL 1.20, using native
-symbols on Mac/Linux and context-resolved functions on Windows.
+`icShaderGL` now represents a compiled stage behind the common `icShader`
+interface. `icPipelineGL` links stages and applies declared state/layout; the small
+`icProgramGL` adapter retains SkeeBall's linked-program usage. See [GLTF.md](GLTF.md)
+for the current backend boundary and limitations. Replacement is transactional;
+release GL resources before destroying their context.
 
 SkeeBall's `ArcadeGrade` copies the backbuffer into a resize-aware texture and draws
 a programmable fullscreen color grade, restrained highlight glow and vignette.

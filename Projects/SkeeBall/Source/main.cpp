@@ -70,7 +70,7 @@ int main(int argc,char** argv){
     if(pairingSmoke)app.ToggleCompanion();
     if(partySmoke)app.ToggleBrowser();
     if(smoke&&!std::getenv("ICE_DISABLE_SHADERS")){
-        icShaderGL program;std::string log;
+        icProgramGL program;std::string log;
         if(!program.Compile("#version 120\nvoid main(){gl_Position=gl_Vertex;}","#version 120\nvoid main(){gl_FragColor=vec4(1.0);}",log))return 2;
         auto original=program.Name();
         if(program.Compile("invalid source","invalid source",log)||program.Name()!=original||log.empty())return 3;
