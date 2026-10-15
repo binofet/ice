@@ -82,3 +82,11 @@ if(BUILD_TESTING)
     target_link_libraries(ice_join_qr_tests PRIVATE ICEPlatformRuntime)
     add_test(NAME ice_join_qr COMMAND ice_join_qr_tests)
 endif()
+
+if(BUILD_TESTING)
+    add_executable(ice_render_gl_tests tests/render_gl.cpp)
+    target_link_libraries(ice_render_gl_tests PRIVATE ICEngine)
+    target_include_directories(ice_render_gl_tests PRIVATE Projects/Common)
+    set_target_properties(ice_render_gl_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+    # Requires a real WindowServer/display or Xvfb; run with the graphical smoke checks.
+endif()

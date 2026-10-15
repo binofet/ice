@@ -101,7 +101,11 @@ ICRESULT icGXDeviceGL::Init( icWindow* const pWindow )
     if ( pWindow )
     {
         m_pMainWindow = pWindow;
-        return CreateDevice();
+        ICRESULT result = CreateDevice();
+        if (ICEFAIL(result)) return result;
+        // GL starts with depth testing off; match the device's declared default.
+        // Previously the first UI widget happened to enable it as a side effect.
+        return EnableDepthTest(m_bDepthTest);
     }
 
     return IC_FAIL_GEN;

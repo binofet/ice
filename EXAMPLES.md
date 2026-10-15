@@ -111,3 +111,14 @@ and retention of a valid program.
 Capture the title/game with `SkeeBall --smoke-test <existing-directory>` or the QR
 lobby with `SkeeBall --party-smoke <output.ppm>`. Asset-only builds refresh the
 runtime Resource directory. No physics tuning is included in this presentation pass.
+
+### Desktop depth-state regression
+
+The GL device now applies its declared depth-test default immediately after creating
+its context. It previously left GL's default (disabled) in place until a UI widget
+happened to enable it; the new title screen exposed that dependency, letting back
+surfaces overwrite foreground ramps and cage geometry. No mesh winding change was
+needed. Run `build/macos/bin/ice_render_gl_tests` in a WindowServer session (or the
+Linux target under Xvfb) to verify pixel occlusion in both submission orders, a
+negative control with depth disabled, and font-overlay state restoration. This
+context-dependent test is separate from headless CTest.
