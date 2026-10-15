@@ -26,7 +26,7 @@ jobs:
           cmake --build build/metagen-ci --parallel 4
           if ! ctest --test-dir build/metagen-ci --output-on-failure; then
             if [ "$RUNNER_OS" = macOS ]; then
-              lldb --batch -o run -o 'thread backtrace all' -- build/metagen-ci/meta_graph_tests Tools/MetagenIntegration/Generated || true
+              lldb --batch -o run -k 'thread backtrace all' -- build/metagen-ci/meta_graph_tests Tools/MetagenIntegration/Generated || true
             fi
             exit 1
           fi

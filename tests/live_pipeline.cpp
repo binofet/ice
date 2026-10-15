@@ -137,7 +137,7 @@ int main() {
 		CHECK(!live.activate(**gpu, 2) && !live.undo(**gpu, 3) && check_active(colors));
 		// This owner explicitly promises an empty, reusable moved-from state. Exercise
 		// that stronger contract rather than treating moved-from access as unspecified.
-		// NOLINTBEGIN(bugprone-use-after-move)
+		// NOLINTBEGIN(bugprone-use-after-move, clang-analyzer-cplusplus.Move)
 		live_pipeline moved(std::move(live));
 		CHECK(!live.current() && live.revision() == 0 && moved.revision() == 3);
 		CHECK(!live.activate(**gpu, 0));
@@ -145,7 +145,7 @@ int main() {
 		CHECK(live.activate(**other, 0) == 1);
 		live = std::move(moved);
 		CHECK(live.revision() == 3 && check_active(colors) && !moved.current());
-		// NOLINTEND(bugprone-use-after-move)
+		// NOLINTEND(bugprone-use-after-move, clang-analyzer-cplusplus.Move)
 		CHECK(live.prepare(**gpu, *replacement, "reload_vertex", "reload_fragment", 3, uniforms));
 		live.discard_prepared();
 		CHECK(!live.has_prepared() && !live.activate(**gpu, 3) && check_active(colors));

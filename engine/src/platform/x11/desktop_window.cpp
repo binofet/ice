@@ -300,18 +300,20 @@ private:
 		event.selection_start = byte_offset(preedit_, std::size_t(std::max(cursor, 0)));
 		post(std::move(event));
 	}
-	static Bool preedit_start(XIC, XPointer client, XPointer) {
+	static Bool preedit_start([[maybe_unused]] XIC input_context, XPointer client,
+	                          [[maybe_unused]] XPointer call_data) {
 		auto &owner      = *reinterpret_cast<x11_window *>(client);
 		owner.composing_ = true;
 		return 4096;
 	}
-	static void preedit_done(XIM, XPointer client, XPointer) {
+	static void preedit_done([[maybe_unused]] XIM input_method, XPointer client,
+	                         [[maybe_unused]] XPointer call_data) {
 		auto &owner      = *reinterpret_cast<x11_window *>(client);
 		owner.composing_ = false;
 		owner.preedit_.clear();
 		owner.publish_preedit(0);
 	}
-	static void preedit_draw(XIM, XPointer client, XPointer data) {
+	static void preedit_draw([[maybe_unused]] XIM input_method, XPointer client, XPointer data) {
 		auto &owner = *reinterpret_cast<x11_window *>(client);
 		if (owner.cancelling_ || owner.destroying_)
 			return;
@@ -354,7 +356,7 @@ private:
 		owner.preedit_.replace(first, end - first, replacement);
 		owner.publish_preedit(change.caret);
 	}
-	static void preedit_caret(XIM, XPointer client, XPointer data) {
+	static void preedit_caret([[maybe_unused]] XIM input_method, XPointer client, XPointer data) {
 		auto &owner = *reinterpret_cast<x11_window *>(client);
 		auto &caret = *reinterpret_cast<XIMPreeditCaretCallbackStruct *>(data);
 		// The preedit renderer exposes the IM's absolute caret; relative movement is
@@ -362,7 +364,8 @@ private:
 		if (caret.direction == XIMAbsolutePosition)
 			owner.publish_preedit(caret.position);
 	}
-	static void context_destroyed(XIM, XPointer client, XPointer) {
+	static void context_destroyed([[maybe_unused]] XIM input_method, XPointer client,
+	                              [[maybe_unused]] XPointer call_data) {
 		auto &owner          = *reinterpret_cast<x11_window *>(client);
 		owner.input_context_ = nullptr;
 		owner.preedit_.clear();
