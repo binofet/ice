@@ -231,44 +231,60 @@ physics remains deliberately deferred. Simulator and synthetic transport fixture
 are distinguished above from physical device verification.
 
 
-## No-install browser touch controller — 2026-10-14
+## Browser party controller — 2026-10-14
 
-Press **F3** in SkeeBall, or launch with `--browser-controller`, to enable the
-optional native HTTP bridge. Open the displayed `http://<LAN-address>:<port>/#<code>`
-on the phone and tap **Join game**. The fragment pre-fills the code; it is exchanged
-for a session cookie on joining. F2 retains the native companion path. The same game
-host accepts only one active controller at a time in this milestone. No camera or
-motion permissions are requested by the browser controller.
+Choose **Phone Party** on the SkeeBall title screen, press **F3**, or launch with
+`--browser-controller`. Scan the on-screen QR code with the phone camera, open the
+link, enter a name and tap **Join table**. All devices must use the same local Wi-Fi.
+The first online player starts the round from their phone. Up to eight browser
+players take turns, five balls each, with individual scores shown on both screens.
+Late arrivals join the next round. Leaving or ten seconds without a status heartbeat
+forfeits remaining turns; an already launched ball still belongs to its shooter.
+The first remaining online player becomes the lobby leader. Results offer **Play
+again**. F3 opens/closes the lobby and pauses the lane; F2 closes the whole table.
+The game must remain focused to accept shots.
 
-`ICECompanionWeb` is a separate optional desktop library. It serves a self-contained
-HTML/CSS/JavaScript page, with no web framework, CDN, account or external service.
-HTTP touch intents feed an ordinary `icCompanionLink` client, so the existing game
-readiness checks, packet validation and duplicate suppression remain authoritative.
-Browser gestures implement the same bounded aim/power intent contract; they are not
-raw recorded native touch samples. Browser power/feel has not been calibrated against
-the native UI. The game must remain focused to accept shots.
+F2 also retains the native companion path when no table is open. Native companion
+transport remains single-controller; the party room currently belongs to the browser
+bridge. It does not make the native UDP protocol multiplayer.
 
-The server uses nonblocking native TCP sockets, at most eight connections, bounded
-headers/bodies, one-second request deadlines, and explicit Content-Length framing.
-It closes each HTTP response; chunked requests and ambiguous duplicate headers are
-rejected. Commands require a numeric same-origin Host/Origin and session cookie.
-Cookies are HttpOnly and SameSite=Strict with a distinct name per listener port.
-A new browser cannot displace the current session. Sequence numbers deduplicate
-HTTP commands, and leaving/hiding the page clears its session; two seconds without
-browser status requests also disconnect it. A paused host invalidates its browser
-session before processing buffered requests.
+`ICECompanionWeb` serves a self-contained HTML/CSS/JavaScript page using native
+nonblocking TCP sockets. No framework, CDN, account, external QR service or package
+is needed. `icJoinQR` implements QR version 3-L byte encoding with Reed–Solomon parity
+and a four-module quiet zone. SkeeBall renders its integer-sized modules directly.
+The current encoder accepts at most 53 bytes, enough for the numeric IPv4 join URL.
 
-This is an intentionally small local HTTP subset, not a general web server or a
-public Internet service. No TLS is supplied. Browser motion on arbitrary LAN HTTP
-pages is not part of this milestone; native AR and an HTTPS motion-controller path
-remain future work. There is no QR generator, automatic phone browser opening or
-multiplayer lobby yet. Safari was opened on the paired development iPhone through
-`devicectl --payload-url` for the hardware test, not through a product auto-launch API.
+Each browser has a separate HttpOnly, SameSite=Strict cookie, with a distinct cookie
+name per listener port. Tabs in the same browser profile share that seat. Join rotates
+the token, and reload resumes the seat through status. Names are bounded to twenty
+ASCII letters, numbers, spaces, underscores, hyphens or periods. Commands require a
+numeric same-origin Host/Origin. Eight concurrent HTTP connections, bounded headers
+and bodies, explicit Content-Length and one-second request deadlines limit resources.
+Ambiguous framing is rejected. Browser hiding cancels the current gesture; heartbeat
+timeout handles suspended pages. An explicit Leave releases the seat immediately.
 
-Nine CTest suites pass on Mac and Linux. The web suite tests fragmented HTTP requests,
-wrong codes, session ownership, duplicate commands, invalid values, cross-origin
-rejection, ambiguous framing and leave/session invalidation through real sockets.
-Windows cross-compiles; runtime remains unverified. Browser joining and a pointer
-throw were exercised in a real browser. The user then confirmed Safari on their
-physical iPhone worked, and SkeeBall logged two real network-driven ball impulses.
-Game physics tuning remains deferred.
+The room owns turn generations and shot ownership. HTTP sequences suppress duplicates,
+and a stale turn cannot launch on a later turn. Accepted intents go through one ordinary
+`icCompanionLink` loopback client and the existing game readiness checks. A settled
+ball reports points to its recorded shooter. Only the current party ball is eligible
+to score, so a previous physical ball cannot earn points for the next player. SkeeBall
+recycles its physical five-ball pool while room totals remain independent. A host
+polling gap over one second invalidates sessions and ends an unfinished round.
+
+This is a small local HTTP subset, not a public Internet service. There is no TLS.
+No camera or motion permission is requested by the page. Browser motion and native
+AR remain future work, and physics/gesture calibration is deliberately deferred.
+The QR is opened by the phone's ordinary camera/link UI; product code does not force
+Safari to open remotely.
+
+Eleven CTest suites cover room lifecycle/capacity/late joins/disconnects, QR geometry
+and capacity, and real HTTP/UDP ownership, turn rejection, duplicate commands,
+cross-origin rejection and framing checks. The QR was independently decoded with
+Apple Vision both from an encoder fixture and the actual Mac game framebuffer.
+The browser UI joined and started a round, and a pointer throw launched and settled
+a real SkeeBall ball. A separate native game instance completed a two-player round
+through the HTTP API: ten alternating launches, five balls per player, independent
+scores of 160 and 200. This is a synthetic intent/physics integration check rather
+than a physical gesture calibration test. Mac shader and fixed-function fallback smoke checks pass;
+Linux tests/sample runs pass. Windows cross-compiles and links; runtime remains
+unverified. Earlier native and browser control were confirmed on the physical iPhone.

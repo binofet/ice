@@ -1,5 +1,6 @@
 #ifndef __GAME_STATE_H__
 #define __GAME_STATE_H__
+#include <cstdint>
 
 
 //////////////////////////////////////////////////////////////////////////////
@@ -99,6 +100,9 @@ private:
     bool                m_bLastLMB;
     bool                bScored;
 
+    std::uint64_t       m_companionShooter=0;
+    unsigned            m_companionShotScore=0;
+    bool                m_companionSettled=false;
     bool                bInPlay;
     bool                bWaiting;
 

@@ -1,4 +1,4 @@
-add_library(ICEPlatformRuntime STATIC ../Engine/src/Platform/icHost.cpp ../Engine/src/Input/icCompanion.cpp ../Engine/src/Network/icCompanionLink.cpp)
+add_library(ICEPlatformRuntime STATIC ../Engine/src/Platform/icHost.cpp ../Engine/src/Input/icCompanion.cpp ../Engine/src/Network/icCompanionLink.cpp ../Engine/src/Input/icCompanionRoom.cpp ../Engine/src/Util/icJoinQR.cpp)
 target_include_directories(ICEPlatformRuntime PUBLIC ../Engine/include)
 target_compile_features(ICEPlatformRuntime PUBLIC cxx_std_11)
 set_target_properties(ICEPlatformRuntime PROPERTIES

@@ -80,3 +80,34 @@ All six sample targets built and completed real-window smoke runs on macOS
 Core runtime, Airhockey gameplay and playground gameplay CTest suites passed on both.
 All targets also compiled and linked with 64-bit MinGW on spacegoo. Windows runtime,
 physical input feel and audible sound still need hands-on validation.
+
+## SkeeBall arcade presentation
+
+The title screen offers solo play, phone party, settings and quit, using mouse or
+Up/Down and Return. The cabinet keeps the original mesh/UV layout with a new
+walnut, brass and navy/teal diffuse atlas, matching title art and application icons.
+Source art lives in `Projects/SkeeBall/GameFolder/Resource/art`; the title, cabinet
+and icon were generated with OpenAI ImageGen for this project. Build-format assets
+are checked in so ordinary builds need no image tools or generation service.
+The Android launcher, iOS asset catalog, browser icon, macOS bundle and Windows
+resource use the matching icon. Watch artwork/deployment remains deferred.
+
+`icShaderGL` is the engine's first small programmable rendering building block:
+context-owned vertex/fragment GLSL compilation, link diagnostics, uniform lookup
+and explicit binding. Replacement is transactional: bad source leaves the previous
+program intact. Release GL objects before destroying their context. The current
+implementation targets desktop compatibility OpenGL 2.0+ / GLSL 1.20, using native
+symbols on Mac/Linux and context-resolved functions on Windows.
+
+SkeeBall's `ArcadeGrade` copies the backbuffer into a resize-aware texture and draws
+a programmable fullscreen color grade, restrained highlight glow and vignette.
+The title and QR lobby bypass this pass. This is an initial desktop shader path;
+scene geometry still uses the compatibility renderer, with Metal/Vulkan/DX12 and
+material/shader reflection remaining future work. Unsupported GL or a shader compile
+failure preserves the original rendering. `ICE_DISABLE_SHADERS=1` explicitly tests
+that fallback. The game smoke test also checks failed shader replacement diagnostics
+and retention of a valid program.
+
+Capture the title/game with `SkeeBall --smoke-test <existing-directory>` or the QR
+lobby with `SkeeBall --party-smoke <output.ppm>`. Asset-only builds refresh the
+runtime Resource directory. No physics tuning is included in this presentation pass.

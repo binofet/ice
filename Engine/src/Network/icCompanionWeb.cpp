@@ -38,20 +38,33 @@ std::string token(){std::random_device random;std::ostringstream text;text<<std:
 struct icCompanionWeb::Impl {
  struct Client {WebSocket socket=invalidWeb;std::string input,output;std::size_t sent=0;double began=0;};
  WebSocket listener=invalidWeb;std::array<Client,8> clients;
- icCompanionLink upstream;unsigned short port=0,gamePort=0;unsigned code=0,lastSequence=0,attempts=0;
- std::string session;double lastSeen=0,lastPoll=-1,attemptWindow=0;
- bool lastAccepted=false;
- void dropPeer(){upstream.Close();session.clear();lastSequence=0;lastAccepted=false;}
+ struct Peer {std::uint64_t player=0;std::string session;unsigned lastSequence=0;bool lastAccepted=false,active=false;};
+ std::array<Peer,8> peers;
+ icCompanionRoom room;
+ icCompanionLink upstream;unsigned short port=0,gamePort=0;unsigned code=0,attempts=0;
+ double lastPoll=-1,attemptWindow=0,pendingAt=0;
+ bool gameReady=false;
+ std::uint64_t pendingPlayer=0;
+ void dropPeer(){upstream.Close();for(auto& p:peers)p=Peer();pendingPlayer=0;room.Interrupt();}
+ Peer* known(const std::map<std::string,std::string>& h){
+    auto found=h.find("cookie");if(found==h.end())return nullptr;
+    std::istringstream cookies(found->second);std::string entry;
+    while(std::getline(cookies,entry,';'))for(auto& p:peers)if(!p.session.empty()&&trim(entry)=="ICE"+std::to_string(port)+"="+p.session)return &p;
+    return nullptr;
+ }
+ std::string snapshot(const Peer& peer){
+    const char* phase=room.State()==icCompanionRoom::Phase::Playing?"playing":room.State()==icCompanionRoom::Phase::Results?"results":"lobby";
+    const char* connection=upstream.Status()==icCompanionLink::State::Connected?"connected":upstream.Status()==icCompanionLink::State::Pairing?"pairing":"disconnected";
+    std::string text="{\"state\":\""+std::string(connection)+"\",\"phase\":\""+phase+"\",\"me\":"+std::to_string(peer.player)+",\"turn\":"+std::to_string(room.Turn())+",\"current\":"+std::to_string(room.Current())+",\"round\":"+std::to_string(room.Round())+",\"leader\":"+std::to_string(room.Leader())+",\"nextSequence\":"+std::to_string(peer.lastSequence+1)+",\"canStart\":"+(room.Leader()==peer.player&&room.State()!=icCompanionRoom::Phase::Playing?"true":"false")+",\"canShoot\":"+(gameReady&&room.CanShoot(peer.player)&&!pendingPlayer?"true":"false")+",\"players\":[";
+    bool comma=false;for(const auto& p:room.Players()){if(comma)text+=",";comma=true;text+="{\"id\":"+std::to_string(p.id)+",\"name\":\""+jsonText(p.name)+"\",\"score\":"+std::to_string(p.score)+",\"balls\":"+std::to_string(p.balls)+",\"online\":"+(p.online?"true":"false")+",\"waiting\":"+(p.forfeited?"true":"false")+"}";}
+    return text+"]}";
+ }
  void closeClient(Client& c){if(c.socket!=invalidWeb)closeWeb(c.socket);c=Client();}
  void respond(Client& c,int status,const std::string& body,const std::string& cookie="",bool html=false){
   const char* reason=status==200?"OK":status==400?"Bad Request":status==401?"Unauthorized":status==403?"Forbidden":status==404?"Not Found":status==409?"Conflict":status==413?"Content Too Large":"Too Many Requests";
-  c.output="HTTP/1.1 "+std::to_string(status)+" "+reason+"\r\nContent-Type: "+(html?"text/html; charset=utf-8":"application/json")+"\r\nContent-Length: "+std::to_string(body.size())+"\r\nConnection: close\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: no-referrer\r\nContent-Security-Policy: default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'\r\n";
+  c.output="HTTP/1.1 "+std::to_string(status)+" "+reason+"\r\nContent-Type: "+(html?"text/html; charset=utf-8":"application/json")+"\r\nContent-Length: "+std::to_string(body.size())+"\r\nConnection: close\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: no-referrer\r\nContent-Security-Policy: default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'\r\n";
   if(!cookie.empty())c.output+="Set-Cookie: ICE"+std::to_string(port)+"="+cookie+"; Path=/; HttpOnly; SameSite=Strict\r\n";
   c.output+="\r\n"+body;
- }
- bool authorized(const std::map<std::string,std::string>& h){
-  if(session.empty())return false;auto found=h.find("cookie");if(found==h.end())return false;
-  std::istringstream cookies(found->second);std::string entry;while(std::getline(cookies,entry,';'))if(trim(entry)=="ICE"+std::to_string(port)+"="+session)return true;return false;
  }
  void request(Client& c,double now){
   auto end=c.input.find("\r\n\r\n");if(end==std::string::npos){if(c.input.size()>4096)respond(c,413,"{}");return;}
@@ -78,27 +91,36 @@ struct icCompanionWeb::Impl {
   if(c.input.size()!=end+4+length){respond(c,400,"{}");return;}
   std::string body=c.input.substr(end+4,length);
   if(method=="GET"&&path=="/"){respond(c,200,kCompanionPage,"",true);return;}
-  bool auth=authorized(headers);
+  Peer* peer=known(headers);
   if(method=="POST"&&path=="/join"){
    if(now-attemptWindow>=1){attemptWindow=now;attempts=0;}if(++attempts>4){respond(c,429,"{}");return;}
-   if(body!=std::to_string(code)){respond(c,401,"{}");return;}
-   if(!session.empty()&&!auth){respond(c,409,"{}");return;}
-   dropPeer();session=token();lastSeen=now;
-   if(!upstream.Connect("127.0.0.1",gamePort,code,now)){dropPeer();respond(c,409,"{}");return;}
-   respond(c,200,"{}",session);return;
+   auto newline=body.find('\n');std::string supplied=body.substr(0,newline),name=newline==std::string::npos?"":trim(body.substr(newline+1));
+   if(supplied!=std::to_string(code)){respond(c,401,"{}");return;}
+   if(name.size()>20){respond(c,400,"{}");return;}for(unsigned char ch:name)if(!std::isalnum(ch)&&ch!=' '&&ch!='_'&&ch!='-'&&ch!='.'){respond(c,400,"{}");return;}
+   if(!peer){
+       auto id=room.Join(name,now);if(!id){respond(c,409,"{}");return;}
+       for(auto& slot:peers){bool exists=false;for(const auto& p:room.Players())if(p.id==slot.player)exists=true;if(!exists)slot=Peer();}
+       for(auto& slot:peers)if(!slot.player){peer=&slot;peer->player=id;break;}
+   }
+   if(!peer){respond(c,409,"{}");return;}
+   peer->session=token();peer->lastSequence=0;peer->lastAccepted=false;peer->active=true;room.Touch(peer->player,now);
+   if(upstream.Status()!=icCompanionLink::State::Connected&&upstream.Status()!=icCompanionLink::State::Pairing)upstream.Connect("127.0.0.1",gamePort,code,now);
+   respond(c,200,snapshot(*peer),peer->session);return;
   }
-  if(!auth){respond(c,401,"{}");return;}
-  lastSeen=now;
-  if(method=="GET"&&path=="/status"){
-   const char* state=upstream.Status()==icCompanionLink::State::Connected?"connected":upstream.Status()==icCompanionLink::State::Pairing?"pairing":"disconnected";
-   respond(c,200,std::string("{\"state\":\"")+state+"\",\"delivered\":"+std::to_string(upstream.Delivered())+",\"message\":\""+jsonText(upstream.Message())+"\"}");return;
-  }
-  if(method=="POST"&&path=="/leave"){dropPeer();respond(c,200,"{}");return;}
+  if(!peer||!peer->active){respond(c,401,"{}");return;}
+  room.Touch(peer->player,now);
+  if(method=="GET"&&path=="/status"){respond(c,200,snapshot(*peer));return;}
+  if(method=="POST"&&path=="/leave"){room.Leave(peer->player);peer->active=false;if(pendingPlayer==peer->player)pendingPlayer=0;respond(c,200,"{}");return;}
+  if(method=="POST"&&path=="/start"){respond(c,room.Start(peer->player)?200:409,"{}");return;}
   if(method=="POST"&&path=="/shot"){
-   unsigned sequence=0;icShotIntent shot;std::istringstream payload(body);payload>>sequence>>shot.aim>>shot.power;
+   unsigned sequence=0,turn=0;icShotIntent shot;std::istringstream payload(body);payload>>sequence>>turn>>shot.aim>>shot.power;
    if(!payload||payload>>extra||!sequence||!std::isfinite(shot.aim)||!std::isfinite(shot.power)||shot.aim < -1||shot.aim>1||shot.power<0||shot.power>1){respond(c,400,"{}");return;}
-   if(sequence<=lastSequence){respond(c,sequence==lastSequence&&lastAccepted?200:409,"{}");return;}
-   lastSequence=sequence;shot.seconds=now;lastAccepted=upstream.SendShot(shot,now);respond(c,lastAccepted?200:409,"{}");return;
+   if(sequence<=peer->lastSequence){respond(c,sequence==peer->lastSequence&&peer->lastAccepted?200:409,"{}");return;}
+   peer->lastSequence=sequence;peer->lastAccepted=false;
+   if(!gameReady||pendingPlayer||turn!=room.Turn()||!room.CanShoot(peer->player)){respond(c,409,"{}");return;}
+   shot.seconds=now;peer->lastAccepted=upstream.SendShot(shot,now);
+   if(peer->lastAccepted){pendingPlayer=peer->player;pendingAt=now;}
+   respond(c,peer->lastAccepted?200:409,"{}");return;
   }
   respond(c,404,"{}");
  }
@@ -129,7 +151,11 @@ bool icCompanionWeb::Start(unsigned short companionPort,unsigned code){
 void icCompanionWeb::Poll(double now){
  if(m->listener==invalidWeb||!std::isfinite(now)||now<0)return;
  if(m->lastPoll>=0&&(now<m->lastPoll||now-m->lastPoll>1)){m->dropPeer();for(auto& c:m->clients)m->closeClient(c);}
- m->lastPoll=now;if(!m->session.empty()&&now-m->lastSeen>2)m->dropPeer();m->upstream.Poll(now);
+ m->lastPoll=now;m->room.Poll(now);bool active=false;
+ for(auto& peer:m->peers){for(const auto& player:m->room.Players())if(player.id==peer.player&&!player.online)peer.active=false;active|=peer.active;}
+ if(!active&&m->upstream.Status()!=icCompanionLink::State::Closed)m->upstream.Close();
+ if(m->pendingPlayer&&now-m->pendingAt>.35)m->pendingPlayer=0;
+ m->upstream.Poll(now);
  for(int i=0;i<8;++i){auto socket=accept(m->listener,nullptr,nullptr);if(socket==invalidWeb)break;
   auto found=m->clients.end();for(auto c=m->clients.begin();c!=m->clients.end();++c)if(c->socket==invalidWeb){found=c;break;}
   if(found==m->clients.end()||!nonblocking(socket)){closeWeb(socket);continue;}
@@ -156,3 +182,8 @@ void icCompanionWeb::Poll(double now){
 }
 unsigned short icCompanionWeb::Port()const{return m->port;}
 std::string icCompanionWeb::JoinURL(const std::string& address)const{return "http://"+address+":"+std::to_string(m->port)+"/#"+std::to_string(m->code);}
+
+void icCompanionWeb::SetGameReady(bool ready){m->gameReady=ready;if(!ready)m->pendingPlayer=0;}
+std::uint64_t icCompanionWeb::ClaimShotOwner(double now){auto id=m->pendingPlayer;m->pendingPlayer=0;if(!std::isfinite(now)||now<m->pendingAt||now-m->pendingAt>.35||!m->room.BeginShot(id))return 0;return id;}
+bool icCompanionWeb::FinishShot(std::uint64_t player,unsigned points){return m->room.FinishShot(player,points);}
+const icCompanionRoom& icCompanionWeb::Room()const{return m->room;}

@@ -125,6 +125,7 @@ SkeeBall::~SkeeBall(void)
 ICRESULT SkeeBall::Cleanup(void)
 {
     if(!m_pMainWin&&!m_pGxDevice)return IC_OK;
+    m_grade.Release();
     m_SoundDevice.Cleanup();
     if(m_Content){delete m_Content;m_Content=nullptr;}
     if(m_pGxDevice)SAFEDEL(m_pGxDevice);
@@ -807,10 +808,18 @@ ICRESULT SkeeBall::Update(void)
     if(pInput->IsPressed(ICKEY_F2))ToggleCompanion();
     if(pInput->IsPressed(ICKEY_F3))ToggleBrowser();
     const double now=std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
-    Companion.AcceptShots(CompanionFocused && m_StateMachine.PeekState()==&m_GameState && m_GameState.ReadyForShot());
-    CompanionWeb.Poll(now);
-    Companion.Poll(now);
-    if(CompanionPanel && Companion.Status()==icCompanionLink::State::Connected)CompanionPanel=false;
+    const bool gameReady=CompanionFocused && !CompanionPanel && m_StateMachine.PeekState()==&m_GameState && m_GameState.ReadyForShot() && (!BrowserPanel||CompanionWeb.Room().State()==icCompanionRoom::Phase::Playing);
+    Companion.AcceptShots(gameReady);CompanionWeb.SetGameReady(gameReady);
+    CompanionWeb.Poll(now);Companion.Poll(now);
+    if(BrowserPanel){
+        const auto& room=CompanionWeb.Room();
+        if(room.Round()!=CompanionRoundSeen){
+            CompanionRoundSeen=room.Round();m_GameState.OnPush();
+            if(m_StateMachine.PeekState()!=&m_GameState)m_StateMachine.PushState(&m_GameState);
+            CompanionPanel=false;
+        }
+        if(room.State()!=icCompanionRoom::Phase::Playing)CompanionPanel=true;
+    }else if(CompanionPanel && Companion.Status()==icCompanionLink::State::Connected)CompanionPanel=false;
     // Pause the game while the dedicated pairing screen is visible.
     if(!CompanionPanel)res |= m_StateMachine.Update(elapsed);
 
@@ -892,6 +901,7 @@ ICRESULT SkeeBall::RenderFrame(bool present)
     if(!CompanionPanel)res = m_StateMachine.Render();
     else{glPushAttrib(GL_COLOR_BUFFER_BIT|GL_ENABLE_BIT);glDisable(GL_SCISSOR_TEST);glClearColor(.025f,.045f,.07f,1);glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);glPopAttrib();}
 
+    if(!CompanionPanel && m_StateMachine.PeekState()==&m_GameState) {int w,h;m_pMainWin->GetFramebufferSize(&w,&h);m_grade.Apply(w,h); }
     m_pGxDevice->SetProjection(m_pGxDevice->GetOrtho());
     icMatrix44 temp;
     temp.Identity();
@@ -922,11 +932,23 @@ ICRESULT SkeeBall::RenderFrame(bool present)
         int width,height;m_pMainWin->GetFramebufferSize(&width,&height);int x=width/10;
         if(BrowserPanel){
             std::string address=CompanionAddresses.substr(0,CompanionAddresses.find(" / "));
-            m_pairFont.Print(icVector2Int(x,height*8/10),icColor::WHITE,"JOIN IN YOUR BROWSER");
-            m_font.Print(icVector2Int(x,height*6/10),icColor::WHITE,"On your phone, open:");
-            m_font.Print(icVector2Int(x,height*5/10),icColor::WHITE,CompanionWeb.JoinURL(address).c_str());
-            m_font.Print(icVector2Int(x,height*3/10),icColor::WHITE,"Tap Join game. No app installation needed.");
-            m_font.Print(icVector2Int(x,height/10),icColor::WHITE,"Same Wi-Fi network. F3 to cancel.");
+            m_pairFont.Print(icVector2Int(x,height*85/100),icColor::WHITE,"SCAN TO JOIN");
+            int module=std::max(3,std::min(width/2,height*6/10)/37),side=37*module,qx=x,qy=height/5;
+            glPushAttrib(GL_ENABLE_BIT|GL_CURRENT_BIT|GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+            glDisable(GL_TEXTURE_2D);glDisable(GL_LIGHTING);glDisable(GL_DEPTH_TEST);glDisable(GL_CULL_FACE);glDisable(GL_BLEND);
+            glColor3f(1,1,1);glBegin(GL_QUADS);glVertex2i(qx,qy);glVertex2i(qx+side,qy);glVertex2i(qx+side,qy+side);glVertex2i(qx,qy+side);glEnd();
+            glColor3f(0,0,0);glBegin(GL_QUADS);for(int row=0;row<29;++row)for(int col=0;col<29;++col)if(CompanionQR.dark[row][col]){int left=qx+(col+4)*module,bottom=qy+(32-row)*module;glVertex2i(left,bottom);glVertex2i(left+module,bottom);glVertex2i(left+module,bottom+module);glVertex2i(left,bottom+module);}glEnd();glPopAttrib();
+            int rx=width*55/100,y=height*74/100;
+            const auto& room=CompanionWeb.Room();
+            m_font.Print(icVector2Int(rx,y),icColor::WHITE,room.State()==icCompanionRoom::Phase::Results?"ROUND COMPLETE":"PLAYERS AT THE TABLE");y-=42;
+            for(const auto& player:room.Players()){
+                char line[128];std::snprintf(line,sizeof(line),"%s%s   %u",player.name.c_str(),player.online?"":" (offline)",player.score);
+                m_font.Print(icVector2Int(rx,y),icColor::WHITE,line);y-=36;
+            }
+            if(room.Players().empty())m_font.Print(icVector2Int(rx,y),icColor::WHITE,"Scan with your phone camera.");
+            m_font.Print(icVector2Int(rx,height/5),icColor::WHITE,"Start the round on the leader's phone.");
+            m_font.Print(icVector2Int(x,height/9),icColor::WHITE,CompanionWeb.JoinURL(address).c_str());
+            m_font.Print(icVector2Int(x,height/18),icColor::WHITE,"Same Wi-Fi. F3: show/hide lobby. F2: close table.");
         }else{
         m_font.Print(icVector2Int(x,height*8/10),icColor::WHITE,"CONNECT YOUR PHONE");
         m_font.Print(icVector2Int(x,height*7/10),icColor::WHITE,"Open ICE Companion and tap Connect");
@@ -939,7 +961,15 @@ ICRESULT SkeeBall::RenderFrame(bool present)
         m_pairFont.Print(icVector2Int(x,height*2/10),icColor::WHITE,code);
         m_font.Print(icVector2Int(x,height/10),icColor::WHITE,"Same Wi-Fi network. F2 to cancel.");
         }
-    }else m_font.Print(icVector2Int(12,18),icColor::WHITE,CompanionCode?"Phone controller connected  |  F2 to disconnect":"F2: phone app   F3: browser controller");
+    }else if(m_StateMachine.PeekState()==&m_GameState){
+        m_font.Print(icVector2Int(12,18),icColor::WHITE,CompanionCode?"F3: show lobby  |  F2: disconnect":"F2: phone app   F3: browser party");
+        if(BrowserPanel){int width,height;m_pMainWin->GetFramebufferSize(&width,&height);int y=height-40;
+            for(const auto& player:CompanionWeb.Room().Players()){
+                char line[128];std::snprintf(line,sizeof(line),"%s%s  %u  (%u/5)",CompanionWeb.Room().Current()==player.id?"> ":"",player.name.c_str(),player.score,player.balls);
+                m_font.Print(icVector2Int(24,y),icColor::WHITE,line);y-=30;
+            }
+        }
+    }
     if(present)PresentFrame();
     return IC_OK;
 }// END FUNCTION Render(void)
@@ -1043,17 +1073,19 @@ void SkeeBall::ProcessSettings(void)
     }
 }// END FUNCTION ProcessSettings(void)
 void SkeeBall::ToggleCompanion(){
-    if(CompanionCode){CompanionWeb.Close();BrowserPanel=false;Companion.Close();CompanionCode=0;CompanionPanel=false;return;}
+    if(CompanionCode){CompanionWeb.Close();BrowserPanel=false;Companion.Close();CompanionCode=0;CompanionPanel=false;CompanionRoundSeen=0;return;}
     std::random_device random;unsigned code=100000+random()%900000;
     if(Companion.Listen(0,code)){CompanionCode=code;CompanionPanel=true;CompanionAddresses=icCompanionLink::LocalAddresses();icPrintf("Companion %s port=%u code=%06u",CompanionAddresses.c_str(),Companion.Port(),code);}
 }
 
 void SkeeBall::ToggleBrowser(){
-    if(CompanionWeb.Port()){ToggleCompanion();return;}
+    if(CompanionWeb.Port()){CompanionPanel=!CompanionPanel;return;}
+    if(CompanionCode)ToggleCompanion();
     if(!CompanionCode)ToggleCompanion();
     if(CompanionCode&&CompanionWeb.Start(Companion.Port(),CompanionCode)){
         BrowserPanel=CompanionPanel=true;
         auto address=CompanionAddresses.substr(0,CompanionAddresses.find(" / "));
+        CompanionQR.Encode(CompanionWeb.JoinURL(address));
         icPrintf("Browser controller: %s",CompanionWeb.JoinURL(address).c_str());
     }
 }

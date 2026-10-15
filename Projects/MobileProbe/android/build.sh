@@ -10,7 +10,7 @@ cmake -S "$project_root/Projects/MobileProbe" -B "$build" -DCMAKE_TOOLCHAIN_FILE
 cmake --build "$build" -j6
 mkdir -p "$build/apk/lib/arm64-v8a"
 cp "$build/libice_mobile_probe.so" "$build/apk/lib/arm64-v8a/"
-"$tools/aapt" package -f -M "$project_root/Projects/MobileProbe/android/AndroidManifest.xml" -I "$sdk/platforms/android-34/android.jar" -F "$build/unsigned.apk"
+"$tools/aapt" package -f -S "$project_root/Projects/MobileProbe/android/res" -M "$project_root/Projects/MobileProbe/android/AndroidManifest.xml" -I "$sdk/platforms/android-34/android.jar" -F "$build/unsigned.apk"
 (cd "$build/apk" && zip -q "$build/unsigned.apk" lib/arm64-v8a/libice_mobile_probe.so)
 "$tools/zipalign" -f 4 "$build/unsigned.apk" "$build/aligned.apk"
 # Generate an isolated debug key; no developer credentials or release signing involved.

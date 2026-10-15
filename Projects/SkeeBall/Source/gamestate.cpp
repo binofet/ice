@@ -258,6 +258,7 @@ void GameState::UpdateScore(const float fDeltaTime)
 
     for (int i=0; i<MAX_BALLS; ++i)
     {
+        if(gApp.BrowserPanel&&i!=MAX_BALLS-m_curBall)continue;
         btVector3 bv = m_balls[i].m_body->getWorldTransform().getOrigin();
 
         icVector3 pos(bv.x(),bv.y(),bv.z());
@@ -348,6 +349,8 @@ ICRESULT GameState::Update(const float fDeltaTime, bool *bFinished)
     }
 #endif
 
+    if(gApp.BrowserPanel){ldown=false;m_bLastLMB=false;}
+
     // Update the camera
     m_MaxCam.Update(fDeltaTime);
 
@@ -427,6 +430,7 @@ ICRESULT GameState::Update(const float fDeltaTime, bool *bFinished)
     icShotIntent remoteShot;
     const double companionNow=std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
     bool remote=ball && ReadyForShot() && gApp.Companion.TakeShot(remoteShot,companionNow);
+    if(remote&&gApp.BrowserPanel){m_companionShooter=gApp.CompanionWeb.ClaimShotOwner(companionNow);m_companionShotScore=0;m_companionSettled=false;if(!m_companionShooter)remote=false;}
     if(remote){
         icVector3 position(-31.047312f+(remoteShot.aim+1)*.5f*(37.262222f+31.047312f),-23.20f,140.0f);
         ball->SetPos(position);m_fDy=remoteShot.power*1000.0f;
@@ -455,7 +459,7 @@ ICRESULT GameState::Update(const float fDeltaTime, bool *bFinished)
 
         ball->m_body->activate(true);
         ball->m_body->applyImpulse(force,btVector3(0.0,0.0,0.0));
-        if(remote)icPrintf("Companion launched SkeeBall aim=%.3f power=%.3f",remoteShot.aim,remoteShot.power);
+        if(remote)icPrintf("Companion launched SkeeBall player=%llu aim=%.3f power=%.3f",(unsigned long long)m_companionShooter,remoteShot.aim,remoteShot.power);
 
         m_fPlayTimer = 0.0f;
         bInPlay = true;
@@ -482,6 +486,7 @@ ICRESULT GameState::Update(const float fDeltaTime, bool *bFinished)
             {
                 bInPlay = false;
                 bWaiting = false;
+                if(m_companionShooter)m_companionSettled=true;
             }
         }
     }
@@ -518,7 +523,7 @@ ICRESULT GameState::Update(const float fDeltaTime, bool *bFinished)
         m_balls[i].Update(fDeltaTime);
 
 
-    if (m_curBall == MAX_BALLS && bInPlay == false && bWaiting == false)
+    if (!gApp.BrowserPanel && m_curBall == MAX_BALLS && bInPlay == false && bWaiting == false)
     {
         m_loserSnd->Play();
 
@@ -562,7 +567,15 @@ ICRESULT GameState::Update(const float fDeltaTime, bool *bFinished)
     //    m_mat.Translate(0.0f,0.0f,-0.01f);
     //}
 
+    int previousScore=m_i32Score;
     UpdateScore(fDeltaTime);
+    if(m_companionShooter)m_companionShotScore+=(unsigned)(m_i32Score-previousScore);
+    if(m_companionSettled){
+        gApp.CompanionWeb.FinishShot(m_companionShooter,m_companionShotScore);
+        icPrintf("Party shot settled player=%llu points=%u",(unsigned long long)m_companionShooter,m_companionShotScore);
+        m_companionShooter=0;m_companionSettled=false;
+    }
+    if(gApp.BrowserPanel&&m_curBall==MAX_BALLS&&!bInPlay&&!bWaiting&&!m_companionShooter)OnPush();
 
     icSoundParam param;
 
@@ -604,6 +617,11 @@ ICRESULT GameState::Render(void)
 
     icGXDevice* pDev = m_pContent->GetDevice();
 
+    // A quiet stage behind the cabinets, instead of the old empty black void.
+    icMatrix44 stage;stage.Identity();pDev->SetProjection(pDev->GetOrtho());pDev->SetViewMatrix(stage);pDev->SetWorldTransform(stage);
+    glPushAttrib(GL_ALL_ATTRIB_BITS);glDisable(GL_TEXTURE_2D);glDisable(GL_DEPTH_TEST);glDisable(GL_LIGHTING);glDisable(GL_CULL_FACE);
+    float sw=gApp.GetSettings().iScreen_x,sh=gApp.GetSettings().iScreen_y;
+    glBegin(GL_QUADS);glColor3f(.015f,.025f,.035f);glVertex2f(0,0);glVertex2f(sw,0);glColor3f(.055f,.13f,.15f);glVertex2f(sw,sh);glVertex2f(0,sh);glEnd();glPopAttrib();
     // set projection and view matrix
     pDev->SetProjection(m_MaxCam.GetProjection());
     pDev->SetViewMatrix(m_MaxCam.GetViewMat());
@@ -699,7 +717,7 @@ ICRESULT GameState::Render(void)
             y_pos = gApp.GetSettings().iScreen_y * 0.8435f;
         }
     }
-    m_ScoreFont.Printf(icVector2Int(x_pos,y_pos),icColor::BRED, "%03d",m_i32Score);
+    if(!gApp.BrowserPanel)m_ScoreFont.Printf(icVector2Int(x_pos,y_pos),icColor::BRED, "%03d",m_i32Score);
 
 
 
@@ -762,8 +780,8 @@ ICRESULT GameState::Render(void)
         }
     }
     int balls = (bInPlay || bWaiting) ? MAX_BALLS-m_curBall + 1 : MAX_BALLS-m_curBall;
-    m_Font.Printf(icVector2Int(x_pos,y_pos),icColor::BRED, "%02d",balls);
-    m_Font.Print(icVector2Int(20,25),icColor::WHITE,"Aim: mouse or arrows | Hold Space or left mouse, release to roll | Esc: pause");
+    if(!gApp.BrowserPanel)m_Font.Printf(icVector2Int(x_pos,y_pos),icColor::BRED, "%02d",balls);
+    if(!gApp.BrowserPanel)m_Font.Print(icVector2Int(20,55),icColor::WHITE,"Aim: mouse or arrows | Hold Space or left mouse, release to roll | Esc: pause");
 
     if (m_bLastLMB)
     {
@@ -782,6 +800,7 @@ ICRESULT GameState::Render(void)
 **/
 void GameState::OnPush(void)
 {
+    m_companionShooter=0;m_companionShotScore=0;m_companionSettled=false;
     m_curBall = 0;
     bWaiting = false;
     bInPlay = false;

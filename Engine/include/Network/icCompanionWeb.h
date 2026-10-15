@@ -2,6 +2,7 @@
 #define IC_COMPANION_WEB_H
 #include <memory>
 #include <string>
+#include "Input/icCompanionRoom.h"
 // Optional local HTTP touch controller. Owns a native client connection to the
 // existing companion UDP host; gameplay does not depend on a browser transport.
 class icCompanionWeb {
@@ -14,6 +15,10 @@ public:
     void Poll(double now);
     void Close();
     unsigned short Port() const;
+    void SetGameReady(bool ready);
+    std::uint64_t ClaimShotOwner(double now);
+    bool FinishShot(std::uint64_t player,unsigned points);
+    const icCompanionRoom& Room() const;
     std::string JoinURL(const std::string& address) const;
 private:
     struct Impl;

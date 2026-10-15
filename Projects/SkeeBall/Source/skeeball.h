@@ -11,6 +11,7 @@
 #include "Content/icContentLoader.h"
 
 #include "Render/Font/icFontGL.h"
+#include "arcade_grade.h"
 
 #include "Util/icSettingsFile.h"
 #include "Util/icStateMachine.h"
@@ -27,6 +28,7 @@
 #include "last_game.h"
 #include "Network/icCompanionLink.h"
 #include "Network/icCompanionWeb.h"
+#include "Util/icJoinQR.h"
 
 #ifdef WIIMOTE
 #include "wiimote.h"
@@ -97,6 +99,8 @@ public:
     icCompanionLink Companion;
     icCompanionWeb CompanionWeb;
     bool BrowserPanel=false;
+    icJoinQR CompanionQR;
+    unsigned CompanionRoundSeen=0;
     void ToggleBrowser();
     unsigned CompanionCode=0;
     bool CompanionFocused=true;
@@ -134,6 +138,7 @@ private:
 
     icTimer             m_GameTime;         //! The time keeper
 
+    ArcadeGrade m_grade;
     icFontGL            m_font;
     icFontGL            m_pairFont;
 

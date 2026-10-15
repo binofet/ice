@@ -109,6 +109,7 @@ ICRESULT icFontGL::Initialize(const char* szFileName, const int size,
         for(int col=0;col<width*4;++col)
             std::swap(pixels[row*width*4+col],pixels[(height-1-row)*width*4+col]);
     glGenTextures(1,&m_Texture);glBindTexture(GL_TEXTURE_2D,m_Texture);
+    glTexEnvi(GL_TEXTURE_ENV,GL_TEXTURE_ENV_MODE,GL_MODULATE);
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
     glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA,width,height,0,GL_RGBA,GL_UNSIGNED_BYTE,pixels.data());
@@ -148,6 +149,7 @@ ICRESULT icFontGL::Print(const icVector2Int& v2ScreenPos, const icColor& color, 
     glMatrixMode(GL_MODELVIEW);glPushMatrix();glLoadIdentity();
     glDisable(GL_LIGHTING);glDisable(GL_DEPTH_TEST);glDisable(GL_CULL_FACE);glEnable(GL_BLEND);
     glBlendFunc(GL_ONE,GL_ONE_MINUS_SRC_ALPHA);glEnable(GL_TEXTURE_2D);glBindTexture(GL_TEXTURE_2D,m_Texture);
+    glTexEnvi(GL_TEXTURE_ENV,GL_TEXTURE_ENV_MODE,GL_MODULATE);
     glColor4f(color.R(),color.G(),color.B(),color.A());
     float x=v2ScreenPos.x,y=v2ScreenPos.y;
     for(const unsigned char* c=(const unsigned char*)buff;*c;++c){
