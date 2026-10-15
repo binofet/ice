@@ -1,6 +1,6 @@
 # Native application host milestone
 
-ICE now has an explicit `icHost` in `Engine/include/Platform/icHost.h`.
+ICE now has an explicit `ice::platform::host` in `engine/include/ice/platform/host.h`.
 It is built as `ICEPlatformRuntime`, with no window, OpenGL, audio or legacy engine
 dependencies. Desktop ICE links it; mobile probes compile exactly the same C++ source.
 The historical game entry points remain compatible. EngineTest now uses host callbacks.

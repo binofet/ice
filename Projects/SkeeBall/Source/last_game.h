@@ -1,74 +1,68 @@
 #ifndef __LAST_GAME_H__
 #define __LAST_GAME_H__
 
-
 //////////////////////////////////////////////////////////////////////////////
 // ICE INCLUDES
-#include "Util/icStateMachine.h"
-#include "Render/icModel.h"
-#include "Content/icContentLoader.h"
-#include "Render/Camera/icMaxCam.h"
-#include "Render/VertBuffer/icVertBuffer.h"
-#include "Render/IndexBuffer/icIndexBuf.h"
-#include "Render/Texture/icTexture.h"
-#include "Render/Font/icFontGL.h"
-#include "UI/icWidget.h"
+#include "ice/assets/content_loader.h"
+#include "ice/render/gl/font_gl.h"
+#include "ice/render/index_buf.h"
+#include "ice/render/max_cam.h"
+#include "ice/render/model.h"
+#include "ice/render/texture.h"
+#include "ice/render/vert_buffer.h"
+#include "ice/util/state_machine.h"
+#include "ice/widget.h"
 
 //////////////////////////////////////////////////////////////////////////////
 // LOCAL INCLUDES
+#include "ball.h"
 #include "btBulletDynamicsCommon.h"
 #include "skeeball_ramp.h"
-#include "ball.h"
-
 
 /*! This is the main game state
-**/
-class LastGame : public icState
-{
+ **/
+class LastGame : public ice::util::state {
 public:
-    //////////////////////////////////////////////////////////////////////////
-    // LIFECYCLE
-    LastGame(void);
-    ~LastGame(void);
+	//////////////////////////////////////////////////////////////////////////
+	// LIFECYCLE
+	LastGame(void);
+	~LastGame(void);
 
-    ICRESULT Init(icContentLoader* pContentLoader);
+	ice::result init(ice::assets::content_loader *pContentLoader);
 
-    //////////////////////////////////////////////////////////////////////////
-    // OPERATIONS
-    ICRESULT Update(const float fDeltaTime, bool* bFinished);
-    ICRESULT Render(void);
+	//////////////////////////////////////////////////////////////////////////
+	// OPERATIONS
+	ice::result update(const float fDeltaTime, bool *bFinished);
+	ice::result render(void);
 
-    void OnPush(void);
-    void OnPop(void);
+	void on_push(void);
+	void on_pop(void);
 
-    int GameMode;
-
+	int GameMode;
 
 private:
-    //////////////////////////////////////////////////////////////////////////
-    // PRIVATE METHODS
-    ICRESULT InitPhysics(void);
+	//////////////////////////////////////////////////////////////////////////
+	// PRIVATE METHODS
+	ice::result init_physics(void);
 
-    void UpdatePhysics(const float fDeltaTime);
+	void update_physics(const float fDeltaTime);
 
-    void UpdateScore();
+	void update_score();
 
-    //////////////////////////////////////////////////////////////////////////
-    // PRIVATE MEMBERS
+	//////////////////////////////////////////////////////////////////////////
+	// PRIVATE MEMBERS
 
-    // cameras
-    icMaxCam            m_MaxCam;
+	// cameras
+	ice::render::max_cam max_cam_;
 
-    icMatrix44          m_Transform;
+	ice::math::mat4 transform_;
 
-    icContentLoader*    m_pContent;
+	ice::assets::content_loader *content_;
 
-    // game objects
-    icFontGL            m_ScoreFont;
+	// game objects
+	ice::render::gl::font_gl score_font_;
 
-    Ramp                m_ramp;
+	Ramp ramp_;
 };
-
-
 
 #endif //__LAST_GAME_H__

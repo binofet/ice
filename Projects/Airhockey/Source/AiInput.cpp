@@ -1,17 +1,24 @@
 #include "AiInput.h"
 #include "gameplay.h"
-AiInput::AiInput(int player,b2Body* puck,b2Body* paddle):InputHandler(player,puck,paddle){
-    auto p=paddle->GetPosition();m_target.Set(p.x,p.y);
+AiInput::AiInput(int player, b2Body *puck, b2Body *paddle) : InputHandler(player, puck, paddle) {
+	auto p    = paddle->GetPosition();
+	(target_) = ice::math::vec2(p.x, p.y);
 }
-ICRESULT AiInput::Process(icInput*,float dt){
-    if(m_i32Player!=PLAYER_TWO)return IC_FAIL_GEN;
-    m_reaction-=dt;
-    if(m_reaction<=0){
-        auto target=gameplay::aiTarget(m_Puck->GetPosition(),m_Puck->GetLinearVelocity(),m_Paddle->GetPosition());
-        m_target.Set(target.x,target.y);m_reaction+=0.10f;
-    }
-    gameplay::drive(m_Paddle,b2Vec2(m_target.x,m_target.y),m_i32Player,dt,0.95f,10.0f);
-    return IC_OK;
+ice::result AiInput::process(ice::input::input *, float dt) {
+	if (player_ != PLAYER_TWO)
+		return IC_FAIL_GEN;
+	reaction_ -= dt;
+	if (reaction_ <= 0) {
+		auto target = gameplay::aiTarget(puck_->GetPosition(), puck_->GetLinearVelocity(),
+		                                 paddle_->GetPosition());
+		(target_)   = ice::math::vec2(target.x, target.y);
+		reaction_ += 0.10f;
+	}
+	gameplay::drive(paddle_, b2Vec2(target_.x, target_.y), player_, dt, 0.95f, 10.0f);
+	return IC_OK;
 }
 
-void AiInput::ResetTarget(){auto p=m_Paddle->GetPosition();m_target.Set(p.x,p.y);}
+void AiInput::reset_target() {
+	auto p    = paddle_->GetPosition();
+	(target_) = ice::math::vec2(p.x, p.y);
+}

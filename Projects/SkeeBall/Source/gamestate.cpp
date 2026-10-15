@@ -5,677 +5,660 @@
 
 #include "skeeball.h"
 
-//#include "BulletDynamics/Dynamics/btDiscreteDynamicsWorld.cpp"
+// #include "BulletDynamics/Dynamics/btDiscreteDynamicsWorld.cpp"
 
 //////////////////////////////////////////////////////////////////////////////
 // ICE INCLUDES
-#include "Core/IO/icInput.h"
-#include "Math/icRand.h"
+#include "ice/input/input.h"
+#include "ice/math/rand.h"
 
+ice::math::vec3 pt_ten(-3.269999f, 20.250437f, -112.25557);
+ice::math::vec3 pt_twenty(-2.799999f, 33.980305f, -124.99829f);
+ice::math::vec3 pt_thirty(-2.3799999f, 45.618351f, -137.65363f);
+ice::math::vec3 pt_fourty(-2.9799999f, 57.686325f, -151.56598f);
+ice::math::vec3 pt_fifty(-3.139999f, 68.416206f, -165.14851f);
+ice::math::vec3 pt_hundred_l(26.960522f, 80.188721f, -178.32127f);
+ice::math::vec3 pt_hundred_r(-32.840496f, 80.188721f, -178.32127f);
 
-icVector3 pt_ten(-3.269999f,20.250437f,-112.25557);
-icVector3 pt_twenty(-2.799999f,33.980305f,-124.99829f);
-icVector3 pt_thirty(-2.3799999f,45.618351f,-137.65363f);
-icVector3 pt_fourty(-2.9799999f,57.686325f,-151.56598f);
-icVector3 pt_fifty(-3.139999f,68.416206f,-165.14851f);
-icVector3 pt_hundred_l(26.960522f,80.188721f,-178.32127f);
-icVector3 pt_hundred_r(-32.840496f,80.188721f,-178.32127f);
+ice::math::vec3 spawn_pos(47.823, -19.383, 114.481);
 
-icVector3 spawn_pos(47.823,-19.383,114.481);
+#define SQR_SCORE_DST (75.0f)
 
-#define SQR_SCORE_DST       (75.0f)
-
-extern SkeeBall& gApp;
+extern SkeeBall &gApp;
 
 /*! c'tor
-**/
-GameState::GameState(void)
-{
-    m_pContent = NULL;
+ **/
+GameState::GameState(void) {
+	content_ = NULL;
 
-    m_physWorld = NULL;
-    m_dispatcher = NULL;
-    m_pairCache = NULL;
-    m_constraintSolver = NULL;
-    m_collisionConfig = NULL;
-    m_pTicketStart = NULL;
-    m_pTicketRoll = NULL;
+	phys_world_        = NULL;
+	dispatcher_        = NULL;
+	pair_cache_        = NULL;
+	constraint_solver_ = NULL;
+	collision_config_  = NULL;
+	ticket_start_      = NULL;
+	ticket_roll_       = NULL;
 
-    bInPlay = false;
-    bWaiting = false;
-    m_bLastLMB = false;
-    bScored = false;
+	bInPlay   = false;
+	bWaiting  = false;
+	last_lmb_ = false;
+	bScored   = false;
 
-    m_fPercent = 0.0f;
-    m_fDy = 0.0f;
-    m_fTicketRot = 0.0f;
-}// END FUNCTION GameState(void)
-
+	percent_    = 0.0f;
+	dy_         = 0.0f;
+	ticket_rot_ = 0.0f;
+} // END FUNCTION GameState(void)
 
 /*! d'tor
-**/
-GameState::~GameState()
-{
-    if (m_physWorld)
-        delete m_physWorld;
-    if (m_dispatcher)
-        delete m_dispatcher;
-    if (m_pairCache)
-        delete m_pairCache;
-    if (m_constraintSolver)
-        delete m_constraintSolver;
-    if (m_collisionConfig)
-        delete m_collisionConfig;
+ **/
+GameState::~GameState() {
+	if (phys_world_)
+		delete phys_world_;
+	if (dispatcher_)
+		delete dispatcher_;
+	if (pair_cache_)
+		delete pair_cache_;
+	if (constraint_solver_)
+		delete constraint_solver_;
+	if (collision_config_)
+		delete collision_config_;
 
-}// END FUNCTION ~GameState()
-
+} // END FUNCTION ~GameState()
 
 /*! Initializes the games state
  *
  *  @param          pContentLoader      Pointer to main content loader
  *  @returns        ICRESULT            Success/failure/warnings of init
-**/
-ICRESULT GameState::Init(icContentLoader* pContentLoader)
-{
-    ICRESULT res = IC_OK;
+ **/
+ice::result GameState::init(ice::assets::content_loader *pContentLoader) {
+	ice::result res = IC_OK;
 
-    if (!pContentLoader)
-        return IC_FAIL_GEN;
+	if (!pContentLoader)
+		return IC_FAIL_GEN;
 
-    m_pContent = pContentLoader;
+	content_ = pContentLoader;
 
-    icGXDevice* pDev = m_pContent->GetDevice();
+	ice::render::graphics_device *pDev = content_->get_device();
 
-    m_Transform.Identity();
+	(transform_) = ice::math::mat4(1);
 
-    // get us a camera
-    icReal ar = (icReal)gApp.GetSettings().iScreen_x/(icReal)gApp.GetSettings().iScreen_y;
-    icCreatePerspective((40.0f*IC_PI/180.0f),ar,1.0f,10000000.0f, m_MaxCam.GetProjection());
-    
-    m_MaxCam.Zoom() = 328.0f;
-    m_MaxCam.ZoomMax() = 400.0f;
-    m_MaxCam.ZoomMin() = 2.0f;
-    m_MaxCam.Xrot() = 1.5584f;
-    m_MaxCam.Yrot() = 4.683891f;
-    m_MaxCam.Center().Set(-7.341785f, 33.721600f, -8.874823f);
+	// get us a camera
+	ice::math::real ar = (ice::math::real)gApp.get_settings().iScreen_x /
+	                     (ice::math::real)gApp.get_settings().iScreen_y;
+	max_cam_.get_projection() = glm::perspectiveLH_ZO(float((40.0f * IC_PI / 180.0f)), float(ar),
+	                                                  float(1.0f), float(10000000.0f));
 
-    m_MaxCam.bEnableInput = gApp.GetSettings().bFreeCam;
+	max_cam_.zoom()     = 328.0f;
+	max_cam_.zoom_max() = 400.0f;
+	max_cam_.zoom_min() = 2.0f;
+	max_cam_.xrot()     = 1.5584f;
+	max_cam_.yrot()     = 4.683891f;
+	(max_cam_.center()) = ice::math::vec3(-7.341785f, 33.721600f, -8.874823f);
 
-    // physics
-    res |= InitPhysics();
+	max_cam_.enable_input = gApp.get_settings().bFreeCam;
 
+	// physics
+	res |= init_physics();
 
-    res |= m_ScoreFont.Initialize("Arial",40,m_pContent->GetDevice());
-    res |= m_Font.Initialize("Arial",24,m_pContent->GetDevice());
+	res |= score_font_.initialize("Arial", 40, content_->get_device());
+	res |= font_.initialize("Arial", 24, content_->get_device());
 
-    if (ICEFAIL(m_pContent->Load("Resource/models/ticket_start.icm", &m_pTicketStart)))
-        return IC_FAIL_GEN;
+	if (ICEFAIL(content_->load("Resource/models/ticket_start.icm", &ticket_start_)))
+		return IC_FAIL_GEN;
 
-    if (ICEFAIL(m_pContent->Load("Resource/models/ticket.icm", &m_pTicketRoll)))
-        return IC_FAIL_GEN;
+	if (ICEFAIL(content_->load("Resource/models/ticket.icm", &ticket_roll_)))
+		return IC_FAIL_GEN;
 
+	ice::math::real sx = (ice::math::real)gApp.get_settings().iScreen_x;
+	ice::math::real sy = (ice::math::real)gApp.get_settings().iScreen_y;
 
+	ice::math::real rat = sy / 1024.0f;
+	ice::math::real mx  = sx / 2.0f;
 
+	ramp_.init(content_, phys_world_);
 
-    icReal sx = (icReal)gApp.GetSettings().iScreen_x;
-    icReal sy = (icReal)gApp.GetSettings().iScreen_y;
+	ice::math::vec3 pos      = spawn_pos;
+	int             maxballs = ice::math::min(MAX_BALLS, MAX_BALLS_OUT);
+	for (int i = 0; i < maxballs; ++i) {
+		balls_[i].init(content_, phys_world_, pos);
+		pos.z += 7.95f;
+		pos.y -= 1.50f;
+	}
 
-    icReal rat = sy/1024.0f;
-    icReal mx = sx/2.0f;
+	(pos) = ice::math::vec3(0.0f, -50.0f, 0.0f);
+	for (int i = maxballs; i < MAX_BALLS; ++i) {
+		balls_[i].init(content_, phys_world_, pos);
+	}
 
-    m_ramp.Init(m_pContent,m_physWorld);
+	ice::audio::sound_param params;
 
+	params.loop  = false;
+	params.vol   = gApp.get_settings().fSfx_vol;
+	params.pitch = 1.0f;
 
-    icVector3 pos = spawn_pos;
-    int maxballs = icMin(MAX_BALLS, MAX_BALLS_OUT);
-    for (int i=0; i<maxballs; ++i)
-    {
-        m_balls[i].Init(m_pContent,m_physWorld,pos);
-        pos.z += 7.95f;
-        pos.y -= 1.50f;
-    }
+	content_->load("Resource/audio/out_of_balls.wav", &loser_snd_);
+	loser_snd_->set_params(params);
 
-    pos.Set(0.0f,-50.0f,0.0f);
-    for (int i=maxballs; i<MAX_BALLS; ++i)
-    {
-        m_balls[i].Init(m_pContent,m_physWorld,pos);
-    }
+	content_->load("Resource/audio/normpt_score.wav", &score_snd_);
+	score_snd_->set_params(params);
 
-    icSoundParam params;
+	content_->load("Resource/audio/goodpt_score.wav", &score2nd_);
+	score2nd_->set_params(params);
 
-    params.bLoop = false;
-    params.fVol = gApp.GetSettings().fSfx_vol;
-    params.fPitch = 1.0f;
-   
+	// m_pContent->Load("Resource/models/ball.icm", &m_pTestBall);
+	// m_mat.Identity();
 
-    m_pContent->Load("Resource/audio/out_of_balls.wav",&m_loserSnd);
-    m_loserSnd->SetParams(params);
-
-    m_pContent->Load("Resource/audio/normpt_score.wav",&m_scoreSnd);
-    m_scoreSnd->SetParams(params);
-
-    m_pContent->Load("Resource/audio/goodpt_score.wav",&m_score2nd);
-    m_score2nd->SetParams(params);
-
-    //m_pContent->Load("Resource/models/ball.icm", &m_pTestBall);
-    //m_mat.Identity();
-
-    return res;
-}// END FUNCTION Init(icContentLoader* pContentLoader)
-
+	return res;
+} // END FUNCTION Init(icContentLoader* pContentLoader)
 
 /*! Initializes the physics
  *
  *  @returns        ICRESULT        Success/failure of physics initialization
-**/
-ICRESULT GameState::InitPhysics(void)
-{
-	m_collisionConfig = new btDefaultCollisionConfiguration();
-	m_dispatcher = new btCollisionDispatcher(m_collisionConfig);
+ **/
+ice::result GameState::init_physics(void) {
+	collision_config_ = new btDefaultCollisionConfiguration();
+	dispatcher_       = new btCollisionDispatcher(collision_config_);
 
-	btVector3 worldMin(-1000,-1000,-1000);
-	btVector3 worldMax(1000,1000,1000);
+	btVector3 worldMin(-1000, -1000, -1000);
+	btVector3 worldMax(1000, 1000, 1000);
 
-	m_pairCache = new btAxisSweep3(worldMin,worldMax);
-	m_constraintSolver = new btSequentialImpulseConstraintSolver();
-	m_physWorld = new btDiscreteDynamicsWorld(m_dispatcher,m_pairCache,m_constraintSolver,m_collisionConfig);
+	pair_cache_        = new btAxisSweep3(worldMin, worldMax);
+	constraint_solver_ = new btSequentialImpulseConstraintSolver();
+	phys_world_        = new btDiscreteDynamicsWorld(dispatcher_, pair_cache_, constraint_solver_,
+	                                                 collision_config_);
 
-    btVector3 grav(0.0f,-30.0f,0.0f);
-    m_physWorld->setGravity(grav);
+	btVector3 grav(0.0f, -30.0f, 0.0f);
+	phys_world_->setGravity(grav);
 
-    return IC_OK;
-}// END FUNCTION InitPhysics(void)
-
+	return IC_OK;
+} // END FUNCTION InitPhysics(void)
 
 /*! Updates the current scores
-**/
-void GameState::UpdateScore(const float fDeltaTime)
-{
-    if (!m_physWorld || bScored)
-        return;
+ **/
+void GameState::update_score(const float fDeltaTime) {
+	if (!phys_world_ || bScored)
+		return;
 
-    for (int i=0; i<MAX_BALLS; ++i)
-    {
-        if(gApp.BrowserPanel&&i!=MAX_BALLS-m_curBall)continue;
-        btVector3 bv = m_balls[i].m_body->getWorldTransform().getOrigin();
+	for (int i = 0; i < MAX_BALLS; ++i) {
+		if (gApp.BrowserPanel && i != MAX_BALLS - cur_ball_)
+			continue;
+		btVector3 bv = balls_[i].body_->getWorldTransform().getOrigin();
 
-        icVector3 pos(bv.x(),bv.y(),bv.z());
+		ice::math::vec3 pos(bv.x(), bv.y(), bv.z());
 
-        if (pos.DistanceSqr(pt_ten) < SQR_SCORE_DST)
-        {
-            bScored = true;
-            m_i32Score += 10;
-            m_scoreSnd->Play();
-        }
-        else if (pos.DistanceSqr(pt_twenty) < SQR_SCORE_DST)
-        {
-            bScored = true;
-            m_i32Score += 20;
-            m_scoreSnd->Play();
-        }
-        else if (pos.DistanceSqr(pt_thirty) < SQR_SCORE_DST)
-        {
-            bScored = true;
-            m_i32Score += 30;
-            m_score2nd->Play();
-        }
-        else if (pos.DistanceSqr(pt_fourty) < SQR_SCORE_DST)
-        {
-            bScored = true;
-            m_i32Score += 40;
-            m_score2nd->Play();
-        }
-        else if (pos.DistanceSqr(pt_fifty) < SQR_SCORE_DST)
-        {
-            bScored = true;
-            m_i32Score += 50;
-            m_score2nd->Play();
-        }
-        else if (pos.DistanceSqr(pt_hundred_l) < SQR_SCORE_DST)
-        {
-            bScored = true;
-            m_i32Score += 100;
-            m_score2nd->Play();
-        }
-        else if (pos.DistanceSqr(pt_hundred_r) < SQR_SCORE_DST)
-        {
-            bScored = true;
-            m_i32Score += 100;
-            m_score2nd->Play();
-        }
-    }
+		if (glm::dot((pos) - (pt_ten), (pos) - (pt_ten)) < SQR_SCORE_DST) {
+			bScored = true;
+			score_ += 10;
+			score_snd_->play();
+		} else if (glm::dot((pos) - (pt_twenty), (pos) - (pt_twenty)) < SQR_SCORE_DST) {
+			bScored = true;
+			score_ += 20;
+			score_snd_->play();
+		} else if (glm::dot((pos) - (pt_thirty), (pos) - (pt_thirty)) < SQR_SCORE_DST) {
+			bScored = true;
+			score_ += 30;
+			score2nd_->play();
+		} else if (glm::dot((pos) - (pt_fourty), (pos) - (pt_fourty)) < SQR_SCORE_DST) {
+			bScored = true;
+			score_ += 40;
+			score2nd_->play();
+		} else if (glm::dot((pos) - (pt_fifty), (pos) - (pt_fifty)) < SQR_SCORE_DST) {
+			bScored = true;
+			score_ += 50;
+			score2nd_->play();
+		} else if (glm::dot((pos) - (pt_hundred_l), (pos) - (pt_hundred_l)) < SQR_SCORE_DST) {
+			bScored = true;
+			score_ += 100;
+			score2nd_->play();
+		} else if (glm::dot((pos) - (pt_hundred_r), (pos) - (pt_hundred_r)) < SQR_SCORE_DST) {
+			bScored = true;
+			score_ += 100;
+			score2nd_->play();
+		}
+	}
 
-    icReal rot = m_i32NumTickets * 0.09f * 4.0f/3.0f;
-    if (m_fTicketRot != rot)
-    {
-        m_fTicketRot = icLerp(m_fTicketRot, rot, fDeltaTime * 4.0f);
-    }
+	ice::math::real rot = num_tickets_ * 0.09f * 4.0f / 3.0f;
+	if (ticket_rot_ != rot) {
+		ticket_rot_ = ice::math::lerp(ticket_rot_, rot, fDeltaTime * 4.0f);
+	}
 
-    if (m_i32Score > gApp.GetSettings().iHighScore)
-    {
-        SkeeBallSettings settings = gApp.GetSettings();
-        settings.iHighScore = m_i32Score;
-        gApp.UpdateSettings(settings);
-    }
+	if (score_ > gApp.get_settings().iHighScore) {
+		SkeeBallSettings settings = gApp.get_settings();
+		settings.iHighScore       = score_;
+		gApp.update_settings(settings);
+	}
 
-    m_i32NumTickets = m_i32Score % 10 + m_i32Score/10;
-}// END FUNCTION UpdateScore()
-
+	num_tickets_ = score_ % 10 + score_ / 10;
+} // END FUNCTION UpdateScore()
 
 /*! Updates the current game that is in session
  *
  *  @param          fDeltaTime          Elapsed time since last update
  *  @param          bFinished           Pointer, set to true if ste is done
  *  @returns        ICRESULT            Success/failure/warnings of update
-**/
-ICRESULT GameState::Update(const float fDeltaTime, bool *bFinished)
-{
-    ICRESULT res = IC_OK;
+ **/
+ice::result GameState::update(const float fDeltaTime, bool *bFinished) {
+	ice::result res = IC_OK;
 
-    icInput* input = icInput::Instance();
+	ice::input::input *input = ice::input::input::instance();
 
-    bool ldown = input->IsDown(ICMOUSE_L) || input->IsDown(ICKEY_SPACE);
+	bool ldown = input->is_down(ice::input::mouse_l) || input->is_down(ice::input::key_space);
 
 #ifdef WIIMOTE
-    if (gApp.GetSettings().bWiiMote)
-    {
-        wiimote& wii_remote = gApp.remote;
-        if (wii_remote.IsConnected())
-        {
-            ldown |= wii_remote.Button.B();
-        }
-    }
+	if (gApp.GetSettings().bWiiMote) {
+		wiimote &wii_remote = gApp.remote;
+		if (wii_remote.IsConnected()) {
+			ldown |= wii_remote.Button.B();
+		}
+	}
 #endif
 
-    if(gApp.BrowserPanel){ldown=false;m_bLastLMB=false;}
+	if (gApp.BrowserPanel) {
+		ldown     = false;
+		last_lmb_ = false;
+	}
 
-    // Update the camera
-    m_MaxCam.Update(fDeltaTime);
+	// Update the camera
+	max_cam_.update(fDeltaTime);
 
-    // Update the physics world
-    m_physWorld->stepSimulation(fDeltaTime,8,1.0f/120.0f);
+	// Update the physics world
+	phys_world_->stepSimulation(fDeltaTime, 8, 1.0f / 120.0f);
 
-    Ball* ball = NULL;
-    
-    if (!bInPlay && !bWaiting && m_curBall < MAX_BALLS  && m_curBall > -1)
-    {
-        icVector3 spawn = spawn_pos;
-        int wrap_index = ( m_curBall + 2 > MAX_BALLS) ? MAX_BALLS - m_curBall : m_curBall;
+	Ball *ball = NULL;
 
-        if (m_curBall > -1 && MAX_BALLS - m_curBall > MAX_BALLS_OUT)
-            m_balls[wrap_index].SetPos(spawn);
+	if (!bInPlay && !bWaiting && cur_ball_ < MAX_BALLS && cur_ball_ > -1) {
+		ice::math::vec3 spawn = spawn_pos;
+		int wrap_index        = (cur_ball_ + 2 > MAX_BALLS) ? MAX_BALLS - cur_ball_ : cur_ball_;
 
-        if (m_curBall < 0)
-            m_curBall = 0;
+		if (cur_ball_ > -1 && MAX_BALLS - cur_ball_ > MAX_BALLS_OUT)
+			balls_[wrap_index].set_pos(spawn);
 
-        int index = MAX_BALLS - ++m_curBall;
-        ball = &m_balls[index];
-        bWaiting = true;
+		if (cur_ball_ < 0)
+			cur_ball_ = 0;
 
-        bScored = false;
+		int index = MAX_BALLS - ++cur_ball_;
+		ball      = &balls_[index];
+		bWaiting  = true;
 
-        icVector3 pos(0.0f,-23.20f,140.0f);
+		bScored = false;
 
-        ball->SetPos(pos);
+		ice::math::vec3 pos(0.0f, -23.20f, 140.0f);
 
-        btTransform predictedTrans;
-        btRigidBody* body = ball->m_body;
+		ball->set_pos(pos);
+
+		btTransform  predictedTrans;
+		btRigidBody *body = ball->body_;
 		body->predictIntegratedTransform(fDeltaTime, predictedTrans);
-		btScalar squareMotion = (predictedTrans.getOrigin()-body->getWorldTransform().getOrigin()).length2();
-		
-		body->proceedToTransform( predictedTrans);
-    }
-    else if (bWaiting && m_curBall > -1)
-    {
-        ball = &m_balls[MAX_BALLS - m_curBall];
+		btScalar squareMotion =
+		    (predictedTrans.getOrigin() - body->getWorldTransform().getOrigin()).length2();
 
-        // drop a ball for physics testing
-        icMatrix44 mat;
-        ball->GetMat(&mat);
-        icVector3 pos = mat.GetPos();
+		body->proceedToTransform(predictedTrans);
+	} else if (bWaiting && cur_ball_ > -1) {
+		ball = &balls_[MAX_BALLS - cur_ball_];
 
-        icReal x = 0.0f;
-     
-#ifdef WIIMOTE
-        if (gApp.GetSettings().bWiiMote)
-        {
-            wiimote& wiimote = gApp.remote;
-            if (wiimote.NunchukConnected())
-            {
-                x = wiimote.Nunchuk.Joystick.X * 100.0f * fDeltaTime;
-            }
-            if (wiimote.Button.Left())
-                x -= 100.0f * fDeltaTime;
-            if (wiimote.Button.Right())
-                x += 100.0f * fDeltaTime;
-        }
+		// drop a ball for physics testing
+		ice::math::mat4 mat;
+		ball->get_mat(&mat);
+		ice::math::vec3 pos = ice::math::vec3((mat)[3]);
 
-        
-#endif
-        x += icInput::Instance()->GetAxis(ICAXIS_MOUSE_X) * 12000.0f * fDeltaTime;
-        if (input->IsDown(ICKEY_LEFT)) x -= 45.0f * fDeltaTime;
-        if (input->IsDown(ICKEY_RIGHT)) x += 45.0f * fDeltaTime;
-        float new_x = icClamp(pos.x + x, -31.047312f,37.262222f);
-        pos.Set(new_x,-23.20f,140.0f);
-        
-        if (ball && !bInPlay && bWaiting)
-        {
-            ball->SetPos(pos);
-            ball->m_body->activate(true);
-        }
-    }
-
-    icShotIntent remoteShot;
-    const double companionNow=std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
-    bool remote=ball && ReadyForShot() && gApp.Companion.TakeShot(remoteShot,companionNow);
-    if(remote&&gApp.BrowserPanel){m_companionShooter=gApp.CompanionWeb.ClaimShotOwner(companionNow);m_companionShotScore=0;m_companionSettled=false;if(!m_companionShooter)remote=false;}
-    if(remote){
-        icVector3 position(-31.047312f+(remoteShot.aim+1)*.5f*(37.262222f+31.047312f),-23.20f,140.0f);
-        ball->SetPos(position);m_fDy=remoteShot.power*1000.0f;
-        ldown=false;m_bLastLMB=true;
-    }
-    if (input->IsPressed(ICKEY_ESCAPE))
-    {
-        m_bRenderTopOnly = true;
-        icInput::Instance()->ShowCurs();
-        gApp.GetStateMachine().PushState(&gApp.m_PauseMenu);
-    }
-    else if (ball && !bInPlay && !ldown && m_bLastLMB)
-    {
-        icVector3 look(0.0f,-0.2f,1.49904881f);
-        look.Normalize();
-
-        icReal scale = icClamp(m_fDy,0.0f, 1000.0f);
-        if (gApp.GetSettings().bWiiMote)
-        {
-            scale = m_v3Accel.Length();
-            m_v3Accel.Set(0.0f,0.0f,0.0f);
-        }
-
-        look *= -scale;
-        btVector3 force(look.x,look.y,look.z);
-
-        ball->m_body->activate(true);
-        ball->m_body->applyImpulse(force,btVector3(0.0,0.0,0.0));
-        if(remote)icPrintf("Companion launched SkeeBall player=%llu aim=%.3f power=%.3f",(unsigned long long)m_companionShooter,remoteShot.aim,remoteShot.power);
-
-        m_fPlayTimer = 0.0f;
-        bInPlay = true;
-        bWaiting = false;
-
-        m_fPercent = 0.0f;
-        m_fDy = 0.0f;
-    }
-
-    // check for ball status
-    if (bInPlay)
-    {
-        m_fPlayTimer+=fDeltaTime;
-        int index = MAX_BALLS - m_curBall;
-
-        if (0 <= index && index < MAX_BALLS)
-        {
-            Ball* ball = &m_balls[index];
-
-            icMatrix44 mat;
-            ball->GetMat(&mat);
-
-            if (mat.GetPos().y < -40.0f || m_fPlayTimer > 5.0f)
-            {
-                bInPlay = false;
-                bWaiting = false;
-                if(m_companionShooter)m_companionSettled=true;
-            }
-        }
-    }
-
-    if (ldown && m_bLastLMB)
-    {
-        m_fDy += 650.0f * fDeltaTime;
+		ice::math::real x = 0.0f;
 
 #ifdef WIIMOTE
-        if (gApp.GetSettings().bWiiMote)
-        {
-            wiimote& mote = gApp.remote;
-            
-            m_fDy += abs(mote.Acceleration.Orientation.Pitch) * 5.0f * fDeltaTime;
+		if (gApp.GetSettings().bWiiMote) {
+			wiimote &wiimote = gApp.remote;
+			if (wiimote.NunchukConnected()) {
+				x = wiimote.Nunchuk.Joystick.X * 100.0f * fDeltaTime;
+			}
+			if (wiimote.Button.Left())
+				x -= 100.0f * fDeltaTime;
+			if (wiimote.Button.Right())
+				x += 100.0f * fDeltaTime;
+		}
 
-            m_v3Accel.x += mote.Acceleration.X * 1000.0f * fDeltaTime;
-            m_v3Accel.y += mote.Acceleration.Y * 1000.0f * fDeltaTime;
-            m_v3Accel.z += mote.Acceleration.Z * 1000.0f * fDeltaTime;
-
-            m_fDy = m_v3Accel.Length();
-        }
 #endif
+		x += ice::input::input::instance()->get_axis(ice::input::mouse_x) * 12000.0f * fDeltaTime;
+		if (input->is_down(ice::input::key_left))
+			x -= 45.0f * fDeltaTime;
+		if (input->is_down(ice::input::key_right))
+			x += 45.0f * fDeltaTime;
+		float new_x = ice::math::clamp(pos.x + x, -31.047312f, 37.262222f);
+		(pos)       = ice::math::vec3(new_x, -23.20f, 140.0f);
 
-        // make sure you keep fluid movement
-        m_fDy = icClamp(m_fDy, 0.0f, 1000.0f);
-        float val = icClamp(m_fDy,0.0f, 1000.0f);
-        m_fPercent = val/1000.0f * 100.0f;
-    }
+		if (ball && !bInPlay && bWaiting) {
+			ball->set_pos(pos);
+			ball->body_->activate(true);
+		}
+	}
 
-    m_bLastLMB = ldown;
+	ice::input::shot_intent remoteShot;
+	const double            companionNow =
+	    std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+	bool remote = ball && ready_for_shot() && gApp.Companion.take_shot(remoteShot, companionNow);
+	if (remote && gApp.BrowserPanel) {
+		companion_shooter_    = gApp.CompanionWeb.claim_shot_owner(companionNow);
+		companion_shot_score_ = 0;
+		companion_settled_    = false;
+		if (!companion_shooter_)
+			remote = false;
+	}
+	if (remote) {
+		ice::math::vec3 position(
+		    -31.047312f + (remoteShot.aim + 1) * .5f * (37.262222f + 31.047312f), -23.20f, 140.0f);
+		ball->set_pos(position);
+		dy_       = remoteShot.power * 1000.0f;
+		ldown     = false;
+		last_lmb_ = true;
+	}
+	if (input->is_pressed(ice::input::key_escape)) {
+		render_top_only_ = true;
+		ice::input::input::instance()->show_curs();
+		gApp.get_state_machine().push_state(&gApp.pause_menu_);
+	} else if (ball && !bInPlay && !ldown && last_lmb_) {
+		ice::math::vec3 look(0.0f, -0.2f, 1.49904881f);
+		(look) = glm::normalize(look);
 
+		ice::math::real scale = ice::math::clamp(dy_, 0.0f, 1000.0f);
+		if (gApp.get_settings().bWiiMote) {
+			scale    = glm::length(accel_);
+			(accel_) = ice::math::vec3(0.0f, 0.0f, 0.0f);
+		}
 
-    for (int i=0; i<MAX_BALLS; ++i)
-        m_balls[i].Update(fDeltaTime);
+		look *= -scale;
+		btVector3 force(look.x, look.y, look.z);
 
+		ball->body_->activate(true);
+		ball->body_->applyImpulse(force, btVector3(0.0, 0.0, 0.0));
+		if (remote)
+			ice::printf("Companion launched SkeeBall player=%llu aim=%.3f power=%.3f",
+			            (unsigned long long)companion_shooter_, remoteShot.aim, remoteShot.power);
 
-    if (!gApp.BrowserPanel && m_curBall == MAX_BALLS && bInPlay == false && bWaiting == false)
-    {
-        m_loserSnd->Play();
+		play_timer_ = 0.0f;
+		bInPlay     = true;
+		bWaiting    = false;
 
-        m_curBall = -1;
+		percent_ = 0.0f;
+		dy_      = 0.0f;
+	}
 
-        m_fGameOverTimer  = 0.0f;
-    }
-    else if (m_curBall == -1)
-    {
-        m_fGameOverTimer += fDeltaTime;
+	// check for ball status
+	if (bInPlay) {
+		play_timer_ += fDeltaTime;
+		int index = MAX_BALLS - cur_ball_;
 
-        if (m_fGameOverTimer >= 6.0f)
-        {
-            icState* state = gApp.GetStateMachine().PopState();
-            gApp.GetStateMachine().PushState(state);
-        }
-    }
+		if (0 <= index && index < MAX_BALLS) {
+			Ball *ball = &balls_[index];
 
-    //if (input->IsDown(ICKEY_W))
-    //{
-    //    m_mat.Translate(0.0f,0.01f,0.0f);
-    //}
-    //else if (input->IsDown(ICKEY_S))
-    //{
-    //    m_mat.Translate(0.0f,-0.01f,0.0f);
-    //}
-    //else if (input->IsDown(ICKEY_D))
-    //{
-    //    m_mat.Translate(0.01f,0.0f,0.0f);
-    //}
-    //else if (input->IsDown(ICKEY_A))
-    //{
-    //    m_mat.Translate(-0.01f,0.0f,0.0f);
-    //}
-    //else if (input->IsDown(ICKEY_UP))
-    //{
-    //    m_mat.Translate(0.0f,0.0f,0.01f);
-    //}
-    //else if (input->IsDown(ICKEY_DOWN))
-    //{
-    //    m_mat.Translate(0.0f,0.0f,-0.01f);
-    //}
+			ice::math::mat4 mat;
+			ball->get_mat(&mat);
 
-    int previousScore=m_i32Score;
-    UpdateScore(fDeltaTime);
-    if(m_companionShooter)m_companionShotScore+=(unsigned)(m_i32Score-previousScore);
-    if(m_companionSettled){
-        gApp.CompanionWeb.FinishShot(m_companionShooter,m_companionShotScore);
-        icPrintf("Party shot settled player=%llu points=%u",(unsigned long long)m_companionShooter,m_companionShotScore);
-        m_companionShooter=0;m_companionSettled=false;
-    }
-    if(gApp.BrowserPanel&&m_curBall==MAX_BALLS&&!bInPlay&&!bWaiting&&!m_companionShooter)OnPush();
+			if (ice::math::vec3((mat)[3]).y < -40.0f || play_timer_ > 5.0f) {
+				bInPlay  = false;
+				bWaiting = false;
+				if (companion_shooter_)
+					companion_settled_ = true;
+			}
+		}
+	}
 
-    icSoundParam param;
-
-    param.bLoop = false;
-    param.fPitch = 1.0f;
-    param.fVol = gApp.GetSettings().fSfx_vol;
-    
-    m_scoreSnd->SetParams(param);
-    m_score2nd->SetParams(param);
-    m_loserSnd->SetParams(param);
+	if (ldown && last_lmb_) {
+		dy_ += 650.0f * fDeltaTime;
 
 #ifdef WIIMOTE
-    if (gApp.GetSettings().bWiiMote)
-    {
-        wiimote& wii_remote = gApp.remote;
-        if (wii_remote.IsConnected())
-        {
-            if (wii_remote.Button.Home())
-            {
-                m_bRenderTopOnly = true;
-                icInput::Instance()->ShowCurs();
-                gApp.GetStateMachine().PushState(&gApp.m_PauseMenu);
-            }
-        }
-    }
+		if (gApp.GetSettings().bWiiMote) {
+			wiimote &mote = gApp.remote;
+
+			m_fDy += abs(mote.Acceleration.Orientation.Pitch) * 5.0f * fDeltaTime;
+
+			m_v3Accel.x += mote.Acceleration.X * 1000.0f * fDeltaTime;
+			m_v3Accel.y += mote.Acceleration.Y * 1000.0f * fDeltaTime;
+			m_v3Accel.z += mote.Acceleration.Z * 1000.0f * fDeltaTime;
+
+			m_fDy = m_v3Accel.Length();
+		}
 #endif
 
-    return res;
-}// END FUNCTION Update(const float fDeltaTime, bool *bFinished)
+		// make sure you keep fluid movement
+		dy_       = ice::math::clamp(dy_, 0.0f, 1000.0f);
+		float val = ice::math::clamp(dy_, 0.0f, 1000.0f);
+		percent_  = val / 1000.0f * 100.0f;
+	}
 
+	last_lmb_ = ldown;
+
+	for (int i = 0; i < MAX_BALLS; ++i)
+		balls_[i].update(fDeltaTime);
+
+	if (!gApp.BrowserPanel && cur_ball_ == MAX_BALLS && bInPlay == false && bWaiting == false) {
+		loser_snd_->play();
+
+		cur_ball_ = -1;
+
+		game_over_timer_ = 0.0f;
+	} else if (cur_ball_ == -1) {
+		game_over_timer_ += fDeltaTime;
+
+		if (game_over_timer_ >= 6.0f) {
+			ice::util::state *state = gApp.get_state_machine().pop_state();
+			gApp.get_state_machine().push_state(state);
+		}
+	}
+
+	// if (input->IsDown(ICKEY_W))
+	//{
+	//     m_mat.Translate(0.0f,0.01f,0.0f);
+	// }
+	// else if (input->IsDown(ICKEY_S))
+	//{
+	//     m_mat.Translate(0.0f,-0.01f,0.0f);
+	// }
+	// else if (input->IsDown(ICKEY_D))
+	//{
+	//     m_mat.Translate(0.01f,0.0f,0.0f);
+	// }
+	// else if (input->IsDown(ICKEY_A))
+	//{
+	//     m_mat.Translate(-0.01f,0.0f,0.0f);
+	// }
+	// else if (input->IsDown(ICKEY_UP))
+	//{
+	//     m_mat.Translate(0.0f,0.0f,0.01f);
+	// }
+	// else if (input->IsDown(ICKEY_DOWN))
+	//{
+	//     m_mat.Translate(0.0f,0.0f,-0.01f);
+	// }
+
+	int previousScore = score_;
+	update_score(fDeltaTime);
+	if (companion_shooter_)
+		companion_shot_score_ += (unsigned)(score_ - previousScore);
+	if (companion_settled_) {
+		gApp.CompanionWeb.finish_shot(companion_shooter_, companion_shot_score_);
+		ice::printf("Party shot settled player=%llu points=%u",
+		            (unsigned long long)companion_shooter_, companion_shot_score_);
+		companion_shooter_ = 0;
+		companion_settled_ = false;
+	}
+	if (gApp.BrowserPanel && cur_ball_ == MAX_BALLS && !bInPlay && !bWaiting && !companion_shooter_)
+		on_push();
+
+	ice::audio::sound_param param;
+
+	param.loop  = false;
+	param.pitch = 1.0f;
+	param.vol   = gApp.get_settings().fSfx_vol;
+
+	score_snd_->set_params(param);
+	score2nd_->set_params(param);
+	loser_snd_->set_params(param);
+
+#ifdef WIIMOTE
+	if (gApp.GetSettings().bWiiMote) {
+		wiimote &wii_remote = gApp.remote;
+		if (wii_remote.IsConnected()) {
+			if (wii_remote.Button.Home()) {
+				m_bRenderTopOnly = true;
+				ice::input::input::Instance()->ShowCurs();
+				gApp.GetStateMachine().PushState(&gApp.m_PauseMenu);
+			}
+		}
+	}
+#endif
+
+	return res;
+} // END FUNCTION Update(const float fDeltaTime, bool *bFinished)
 
 /*! Renders the current game that is in session
  *
  *  @returns        ICRESULT        Success/failure/warnings of render
-**/
-ICRESULT GameState::Render(void)
-{
-    ICRESULT res = IC_OK;
+ **/
+ice::result GameState::render(void) {
+	ice::result res = IC_OK;
 
-    icGXDevice* pDev = m_pContent->GetDevice();
+	ice::render::graphics_device *pDev = content_->get_device();
 
-    // A quiet stage behind the cabinets, instead of the old empty black void.
-    icMatrix44 stage;stage.Identity();pDev->SetProjection(pDev->GetOrtho());pDev->SetViewMatrix(stage);pDev->SetWorldTransform(stage);
-    glPushAttrib(GL_ALL_ATTRIB_BITS);glDisable(GL_TEXTURE_2D);glDisable(GL_DEPTH_TEST);glDisable(GL_LIGHTING);glDisable(GL_CULL_FACE);
-    int liveWidth,liveHeight;gApp.ui.Size(liveWidth,liveHeight);float sw=liveWidth,sh=liveHeight;
-    glBegin(GL_QUADS);glColor3f(.015f,.025f,.035f);glVertex2f(0,0);glVertex2f(sw,0);glColor3f(.055f,.13f,.15f);glVertex2f(sw,sh);glVertex2f(0,sh);glEnd();glPopAttrib();
-    int renderWidth,renderHeight;gApp.ui.Size(renderWidth,renderHeight);
-    if(renderHeight<=0)return IC_OK;
-    icCreatePerspective(40.f*IC_PI/180.f,(icReal)renderWidth/renderHeight,1.f,2000.f,m_MaxCam.GetProjection());
-    // set projection and view matrix
-    pDev->SetProjection(m_MaxCam.GetProjection());
-    pDev->SetViewMatrix(m_MaxCam.GetViewMat());
+	// A quiet stage behind the cabinets, instead of the old empty black void.
+	ice::math::mat4 stage;
+	(stage) = ice::math::mat4(1);
+	pDev->set_projection(pDev->get_ortho());
+	pDev->set_view_matrix(stage);
+	pDev->set_world_transform(stage);
+	glPushAttrib(GL_ALL_ATTRIB_BITS);
+	glDisable(GL_TEXTURE_2D);
+	glDisable(GL_DEPTH_TEST);
+	glDisable(GL_LIGHTING);
+	glDisable(GL_CULL_FACE);
+	int liveWidth, liveHeight;
+	gApp.ui.size(liveWidth, liveHeight);
+	float sw = liveWidth, sh = liveHeight;
+	glBegin(GL_QUADS);
+	glColor3f(.015f, .025f, .035f);
+	glVertex2f(0, 0);
+	glVertex2f(sw, 0);
+	glColor3f(.055f, .13f, .15f);
+	glVertex2f(sw, sh);
+	glVertex2f(0, sh);
+	glEnd();
+	glPopAttrib();
+	int renderWidth, renderHeight;
+	gApp.ui.size(renderWidth, renderHeight);
+	if (renderHeight <= 0)
+		return IC_OK;
+	max_cam_.get_projection() = glm::perspectiveLH_ZO(
+	    float(40.f * IC_PI / 180.f), float((ice::math::real)renderWidth / renderHeight), float(1.f),
+	    float(2000.f));
+	// set projection and view matrix
+	pDev->set_projection(max_cam_.get_projection());
+	pDev->set_view_matrix(max_cam_.get_view_mat());
 
-    res |= m_ramp.Render();
+	res |= ramp_.render();
 
-    for (int i=0; i<MAX_BALLS; ++i)
-        m_balls[i].Render();
+	for (int i = 0; i < MAX_BALLS; ++i)
+		balls_[i].render();
 
-    m_m44Tickets.Identity();
-    m_m44Tickets.Translate(39.7f,-61.848f,120.62f);//120.62f
-    m_m44Tickets.RotX(-1.79f + m_fTicketRot);
-    m_m44Tickets.RotY(IC_PI);
+	(m44_tickets_) = ice::math::mat4(1);
+	(m44_tickets_)[3] += ice::math::vec4(ice::math::vec3(39.7f, -61.848f, 120.62f), 0); // 120.62f
+	(m44_tickets_) = glm::rotate(m44_tickets_, -1.79f + ticket_rot_, ice::math::vec3(1, 0, 0));
+	(m44_tickets_) = glm::rotate(m44_tickets_, IC_PI, ice::math::vec3(0, 1, 0));
 
-    m_m44Tickets.Scale(-1.0f,1.0f,1.0f);
+	(m44_tickets_) = glm::scale(m44_tickets_, ice::math::vec3(-1.0f, 1.0f, 1.0f));
 
-    icReal rot = m_i32NumTickets * 0.09f * 4.0f/3.0f;
+	ice::math::real rot = num_tickets_ * 0.09f * 4.0f / 3.0f;
 
-    if (m_i32NumTickets < 10 || (m_i32NumTickets < 10 && m_fTicketRot != rot))
-    {
-        m_pTicketStart->Render(m_m44Tickets);
-    }
-    else
-    {
-        m_pTicketRoll->Render(m_m44Tickets);
-    }
+	if (num_tickets_ < 10 || (num_tickets_ < 10 && ticket_rot_ != rot)) {
+		ticket_start_->render(m44_tickets_);
+	} else {
+		ticket_roll_->render(m44_tickets_);
+	}
 
-    //m_pTestBall->Render(m_mat);
+	// m_pTestBall->Render(m_mat);
 
-    pDev->SetProjection(pDev->GetOrtho());
-    pDev->SetViewMatrix(m_Transform);
-    pDev->SetWorldTransform(m_Transform);
+	pDev->set_projection(pDev->get_ortho());
+	pDev->set_view_matrix(transform_);
+	pDev->set_world_transform(transform_);
 
-    int width,height;gApp.ui.Size(width,height);
-    if(!gApp.BrowserPanel){
-        gApp.ui.Begin(false);
-        const float x=24,y=height-166;
-        gApp.ui.Rect({x,y,224,142},icColor(4,19,27,238));
-        gApp.ui.Rect({x,y+138,224,4},icColor(92,187,174));
-        gApp.ui.Text(x+18,y+111,"SCORE",true);
-        char score[24];std::snprintf(score,sizeof(score),"%03d",m_i32Score);
-        gApp.ui.Heading(x+18,y+61,score);
-        int balls=m_curBall<0?0:MAX_BALLS-m_curBall+(bWaiting?1:0);
-        char remaining[40];std::snprintf(remaining,sizeof(remaining),"BALLS LEFT   %d",icClamp(balls,0,MAX_BALLS));
-        gApp.ui.Text(x+18,y+20,remaining,true);
-        if(m_bLastLMB){char power[40];std::snprintf(power,sizeof(power),"POWER  %.0f%%",m_fPercent);gApp.ui.Rect({width-228.f,height-76.f,204,52},icColor(4,19,27,238));gApp.ui.Text(width-210.f,height-58.f,power);}
-        gApp.ui.Text(20,50,"Mouse/arrows: aim  |  Hold & release: roll  |  Esc: pause",true);
-        gApp.ui.End();
-    }
+	int width, height;
+	gApp.ui.size(width, height);
+	if (!gApp.BrowserPanel) {
+		gApp.ui.begin(false);
+		const float x = 24, y = height - 166;
+		gApp.ui.rect({x, y, 224, 142}, ice::math::color(4, 19, 27, 238));
+		gApp.ui.rect({x, y + 138, 224, 4}, ice::math::color(92, 187, 174));
+		gApp.ui.text(x + 18, y + 111, "SCORE", true);
+		char score[24];
+		std::snprintf(score, sizeof(score), "%03d", score_);
+		gApp.ui.heading(x + 18, y + 61, score);
+		int  balls = cur_ball_ < 0 ? 0 : MAX_BALLS - cur_ball_ + (bWaiting ? 1 : 0);
+		char remaining[40];
+		std::snprintf(remaining, sizeof(remaining), "BALLS LEFT   %d",
+		              ice::math::clamp(balls, 0, MAX_BALLS));
+		gApp.ui.text(x + 18, y + 20, remaining, true);
+		if (last_lmb_) {
+			char power[40];
+			std::snprintf(power, sizeof(power), "POWER  %.0f%%", percent_);
+			gApp.ui.rect({width - 228.f, height - 76.f, 204, 52}, ice::math::color(4, 19, 27, 238));
+			gApp.ui.text(width - 210.f, height - 58.f, power);
+		}
+		gApp.ui.text(20, 50, "Mouse/arrows: aim  |  Hold & release: roll  |  Esc: pause", true);
+		gApp.ui.end();
+	}
 
-    return res;
-}// END FUNCTION Render(void)
-
+	return res;
+} // END FUNCTION Render(void)
 
 /*! This gets called when the gamestate gets pushed on the stack
  *  and should reset anything that needs to be reset for each game
-**/
-void GameState::OnPush(void)
-{
-    m_companionShooter=0;m_companionShotScore=0;m_companionSettled=false;
-    m_curBall = 0;
-    bWaiting = false;
-    bInPlay = false;
-    bScored = false;
+ **/
+void GameState::on_push(void) {
+	companion_shooter_    = 0;
+	companion_shot_score_ = 0;
+	companion_settled_    = false;
+	cur_ball_             = 0;
+	bWaiting              = false;
+	bInPlay               = false;
+	bScored               = false;
 
-    m_fGameOverTimer = 0.0f;
+	game_over_timer_ = 0.0f;
 
-    m_i32Score = 0;
+	score_ = 0;
 
-    if (m_physWorld)
-    {
-        icVector3 pos = spawn_pos;
-        int maxball = icMin(MAX_BALLS, MAX_BALLS_OUT);
-        for (int i=0; i<maxball ; ++i)
-        {
-            m_balls[i].SetPos(pos);
-            pos.z += 7.95f;
-            pos.y -= 1.50f;
+	if (phys_world_) {
+		ice::math::vec3 pos     = spawn_pos;
+		int             maxball = ice::math::min(MAX_BALLS, MAX_BALLS_OUT);
+		for (int i = 0; i < maxball; ++i) {
+			balls_[i].set_pos(pos);
+			pos.z += 7.95f;
+			pos.y -= 1.50f;
 
-            m_balls[i].Enable(true);
-        }
-        pos.Set(0.0f,-50.0f,0.0f);
-        for (int i=maxball; i<MAX_BALLS; ++i)
-        {
-            m_balls[i].SetPos(pos);
-            m_balls[i].Enable(true);
-        }
-    }
+			balls_[i].enable(true);
+		}
+		(pos) = ice::math::vec3(0.0f, -50.0f, 0.0f);
+		for (int i = maxball; i < MAX_BALLS; ++i) {
+			balls_[i].set_pos(pos);
+			balls_[i].enable(true);
+		}
+	}
 
-    m_fTicketRot = 0.0f;
+	ticket_rot_ = 0.0f;
 
-    m_m44Tickets.Identity();
+	(m44_tickets_) = ice::math::mat4(1);
 
-    //if (gApp.GetSettings().bSfx)
-    //    m_score2nd->Play();
+	// if (gApp.GetSettings().bSfx)
+	//     m_score2nd->Play();
 
-    icInput::Instance()->HideCurs();
-}// END FUNCTION OnPush(void)
-
+	ice::input::input::instance()->hide_curs();
+} // END FUNCTION OnPush(void)
 
 /*! This gets called when the gamestate gets popped off the stack
  *  we might not need it
-**/
-void GameState::OnPop(void)
-{
-    if (m_physWorld)
-    {
-        icVector3 pos(0.0f,-130.183,0.0f);
-        for (int i=0; i<MAX_BALLS; ++i)
-        {
-            m_balls[i].SetPos(pos);
+ **/
+void GameState::on_pop(void) {
+	if (phys_world_) {
+		ice::math::vec3 pos(0.0f, -130.183, 0.0f);
+		for (int i = 0; i < MAX_BALLS; ++i) {
+			balls_[i].set_pos(pos);
 
-            m_balls[i].Enable(false);
-        }     
-    }
-}// END FUNCTION OnPop(void)
+			balls_[i].enable(false);
+		}
+	}
+} // END FUNCTION OnPop(void)

@@ -3,59 +3,58 @@
 
 //////////////////////////////////////////////////////////////////////////////
 // ICE INCLUDES
-#include "Render/icModel.h"
-#include "Math/Vector/icVector2.h"
-
+#include "ice/math/vec2.h"
+#include "ice/render/model.h"
 
 //////////////////////////////////////////////////////////////////////////////
 // LOCAL INCLUDES
 #include "InputHandler.h"
 
-
 //////////////////////////////////////////////////////////////////////////////
 // FORWARD DECLARATIONS
-class icContentLoader;
+namespace ice::assets {
+class content_loader;
+}
 class b2World;
 class b2Body;
 
-
 /*! Provides a Paddle object
-**/
-class Paddle
-{
+ **/
+class Paddle {
 public:
-    //////////////////////////////////////////////////////////////////////////
-    // LIFECYCLE
-    Paddle(void);
-    ~Paddle(void);
+	//////////////////////////////////////////////////////////////////////////
+	// LIFECYCLE
+	Paddle(void);
+	~Paddle(void);
 
-    ICRESULT Init(icContentLoader* pContent, b2World* pWorld);
+	ice::result init(ice::assets::content_loader *pContent, b2World *pWorld);
 
-    //////////////////////////////////////////////////////////////////////////
-    // OPERATIONS
-    ICRESULT Update(const float fDeltaTime);
-    ICRESULT Render(void);
+	//////////////////////////////////////////////////////////////////////////
+	// OPERATIONS
+	ice::result update(const float fDeltaTime);
+	ice::result render(void);
 
-    void Reset(void);
+	void reset(void);
 
-    void SetInputHandler(InputHandler* pHandler) {m_pHandler = pHandler;};
+	void set_input_handler(InputHandler *pHandler) { handler_ = pHandler; };
 
-    InputHandler* GetInputHandler(void) {return m_pHandler;};
+	InputHandler *get_input_handler(void) { return handler_; };
 
-    b2Body* GetPhys(void) {return m_pPhys[0];};
+	b2Body *get_phys(void) { return phys_[0]; };
 
-    int player;
+	int player;
+
 private:
-    ICRESULT InitPhysics(b2World* pWorld);
+	ice::result init_physics(b2World *pWorld);
 
-    icMatrix44          m_Trans;        //! Model transform matrix
+	ice::math::mat4 trans_; //! Model transform matrix
 
-    icContentLoader*    m_pContent;
+	ice::assets::content_loader *content_;
 
-    icModel*            m_pModel[3];           //! puck model
-    b2Body*             m_pPhys[3];     //! Phyics 0-disc,1-triangle,2-square
+	ice::render::model *model_[3]; //! puck model
+	b2Body             *phys_[3];  //! Phyics 0-disc,1-triangle,2-square
 
-    InputHandler*       m_pHandler;
+	InputHandler *handler_;
 };
 
 #endif //__PADDLE_H__

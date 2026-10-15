@@ -3,50 +3,50 @@
 
 //////////////////////////////////////////////////////////////////////////////
 // ICE INCLUDES
-#include "Audio/icSound.h"
 #include "gameplay.h"
-#include "Render/icModel.h"
+#include "ice/audio/sound.h"
+#include "ice/render/model.h"
 
-#include "Math/Vector/icVector2.h"
-
-class icContentLoader;
+#include "ice/math/vec2.h"
+namespace ice::assets {
+class content_loader;
+}
 class b2World;
 class b2Body;
 
 /*! Provides a puck object
-**/
-class Puck
-{
+ **/
+class Puck {
 public:
-    //////////////////////////////////////////////////////////////////////////
-    // LIFECYCLE
-    Puck(void);
-    ~Puck(void);
+	//////////////////////////////////////////////////////////////////////////
+	// LIFECYCLE
+	Puck(void);
+	~Puck(void);
 
-    ICRESULT Init(icContentLoader* pContent, b2World* pWorld);
+	ice::result init(ice::assets::content_loader *pContent, b2World *pWorld);
 
-    //////////////////////////////////////////////////////////////////////////
-    // OPERATIONS
-    ICRESULT Update(const float fDeltaTime);
-    ICRESULT Render(void);
+	//////////////////////////////////////////////////////////////////////////
+	// OPERATIONS
+	ice::result update(const float fDeltaTime);
+	ice::result render(void);
 
-    void Reset(void);
+	void reset(void);
 
-    b2Body* GetPhys(void) {return m_pPhys;};
+	b2Body *get_phys(void) { return phys_; };
 
 private:
-    ICRESULT InitPhysics(b2World* pWorld);
+	ice::result init_physics(b2World *pWorld);
 
-    icMatrix44          m_Trans;    //! puck transformation matrix
+	ice::math::mat4 trans_; //! puck transformation matrix
 
-    gameplay::RailRecovery m_railRecovery;
-    float               m_fTimer;
+	gameplay::RailRecovery rail_recovery_;
+	float                  timer_;
 
-    icContentLoader*    m_pContent;
+	ice::assets::content_loader *content_;
 
-    icModel*            m_pPuck;
-    icSoundI*           m_pSound;   //! Sound of puck hitting the boundries
-    b2Body*             m_pPhys;
+	ice::render::model  *puck_;
+	ice::audio::sound_i *sound_; //! Sound of puck hitting the boundries
+	b2Body              *phys_;
 };
 
 #endif //__PUCK_H__

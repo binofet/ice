@@ -1,33 +1,82 @@
-#include "Core/Application/Window/icWindowWIN.h"
-#include "Core/GXDevice/icGXDeviceGL.h"
-#include "Core/IO/icInput.h"
+#include "ice/input/input.h"
+#include "ice/platform/win32/window.h"
+#include "ice/render/gl/graphics_device.h"
 #include <cstdio>
-#define CHECK(x) do{if(!(x)){std::fprintf(stderr,"Win32 smoke failed line %d: %s\n",__LINE__,#x);return 1;}}while(0)
-static bool draw(icGXDeviceGL& device,float red,float green,float blue){
-    device.FrameBegin();glClearColor(red,green,blue,1);glClear(GL_COLOR_BUFFER_BIT);
-    unsigned char pixel[4]={};glReadBuffer(GL_BACK);glReadPixels(10,10,1,1,GL_RGBA,GL_UNSIGNED_BYTE,pixel);
-    bool correct=abs(pixel[0]-(int)(red*255))<3&&abs(pixel[1]-(int)(green*255))<3&&abs(pixel[2]-(int)(blue*255))<3;
-    device.FrameEnd();return correct&&glGetError()==GL_NO_ERROR;
+#define CHECK(x)                                                                                   \
+	do {                                                                                           \
+		if (!(x)) {                                                                                \
+			std::fprintf(stderr, "Win32 smoke failed line %d: %s\n", __LINE__, #x);                \
+			return 1;                                                                              \
+		}                                                                                          \
+	} while (0)
+static bool draw(ice::render::gl::graphics_device &device, float red, float green, float blue) {
+	device.frame_begin();
+	glClearColor(red, green, blue, 1);
+	glClear(GL_COLOR_BUFFER_BIT);
+	unsigned char pixel[4] = {};
+	glReadBuffer(GL_BACK);
+	glReadPixels(10, 10, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, pixel);
+	bool correct = abs(pixel[0] - (int)(red * 255)) < 3 && abs(pixel[1] - (int)(green * 255)) < 3 &&
+	               abs(pixel[2] - (int)(blue * 255)) < 3;
+	device.frame_end();
+	return correct && glGetError() == GL_NO_ERROR;
 }
-int main(){
-    icWindowDef def={};def.i16Width=320;def.i16Height=240;def.pWindowName="ICE native main";
-    icWindowWIN main(def,nullptr);CHECK(main.GetHWND());CHECK(!ICEFAIL(main.Show()));
-    icGXDeviceGL first;CHECK(!ICEFAIL(first.Init(&main)));
-    def.i16Width=200;def.i16Height=160;def.pWindowName="ICE native preview";
-    icWindowWIN preview(def,&main);CHECK(preview.GetHWND());CHECK(!ICEFAIL(preview.Show()));CHECK(main.GetID()!=preview.GetID()&&main.GetID()!=0);
-    icGXDeviceGL second;CHECK(!ICEFAIL(second.Init(&preview)));icWindow::PumpEvents();
-    CHECK(GetWindow(preview.GetHWND(),GW_OWNER)==main.GetHWND());
-    CHECK(draw(first,1,0,0));CHECK(draw(second,0,1,0));CHECK(draw(first,0,0,1));
-    def.i16Width=260;def.i16Height=180;CHECK(!ICEFAIL(preview.UpdateParams(def)));
-    int width,height;preview.GetClientSize(&width,&height);CHECK(width==260&&height==180);
-    def.bFullScreen=true;CHECK(!ICEFAIL(preview.UpdateParams(def)));icWindow::PumpEvents();
-    preview.GetClientSize(&width,&height);CHECK(width>0&&height>0);
-    def.bFullScreen=false;CHECK(!ICEFAIL(preview.UpdateParams(def)));icWindow::PumpEvents();
-    preview.GetClientSize(&width,&height);CHECK(width==260&&height==180);
-    SendMessage(preview.GetHWND(),WM_KEYDOWN,ICKEY_A,0);CHECK(icInput::Instance()->IsDown(ICKEY_A));icInput::Instance()->Update();
-    SendMessage(preview.GetHWND(),WM_KEYUP,ICKEY_A,0);CHECK(icInput::Instance()->IsPressed(ICKEY_A));
-    SendMessage(preview.GetHWND(),WM_CLOSE,0,0);CHECK(preview.ShouldClose());CHECK(!main.ShouldClose());
-    second.Cleanup();preview.Cleanup();preview.Cleanup();CHECK(draw(first,0,1,1));
-    first.Cleanup();main.Cleanup();main.Cleanup();
-    std::puts("Win32 platform checks passed: independent windows/contexts, owner, resize, key events, close and cleanup");return 0;
+int main() {
+	ice::platform::window_def def = {};
+	def.width                     = 320;
+	def.height                    = 240;
+	def.window_name               = "ICE native main";
+	ice::platform::win32::window main(def, nullptr);
+	CHECK(main.get_hwnd());
+	CHECK(!ICEFAIL(main.show()));
+	ice::render::gl::graphics_device first;
+	CHECK(!ICEFAIL(first.init(&main)));
+	def.width       = 200;
+	def.height      = 160;
+	def.window_name = "ICE native preview";
+	ice::platform::win32::window preview(def, &main);
+	CHECK(preview.get_hwnd());
+	CHECK(!ICEFAIL(preview.show()));
+	CHECK(main.get_id() != preview.get_id() && main.get_id() != 0);
+	ice::render::gl::graphics_device second;
+	CHECK(!ICEFAIL(second.init(&preview)));
+	ice::platform::window::pump_events();
+	CHECK(GetWindow(preview.get_hwnd(), GW_OWNER) == main.get_hwnd());
+	CHECK(draw(first, 1, 0, 0));
+	CHECK(draw(second, 0, 1, 0));
+	CHECK(draw(first, 0, 0, 1));
+	def.width  = 260;
+	def.height = 180;
+	CHECK(!ICEFAIL(preview.update_params(def)));
+	int width_, height_;
+	preview.get_client_size(&width_, &height_);
+	CHECK(width_ == 260 && height_ == 180);
+	def.full_screen = true;
+	CHECK(!ICEFAIL(preview.update_params(def)));
+	ice::platform::window::pump_events();
+	preview.get_client_size(&width_, &height_);
+	CHECK(width_ > 0 && height_ > 0);
+	def.full_screen = false;
+	CHECK(!ICEFAIL(preview.update_params(def)));
+	ice::platform::window::pump_events();
+	preview.get_client_size(&width_, &height_);
+	CHECK(width_ == 260 && height_ == 180);
+	SendMessage(preview.get_hwnd(), WM_KEYDOWN, ice::input::key_a, 0);
+	CHECK(ice::input::input::instance()->is_down(ice::input::key_a));
+	ice::input::input::instance()->update();
+	SendMessage(preview.get_hwnd(), WM_KEYUP, ice::input::key_a, 0);
+	CHECK(ice::input::input::instance()->is_pressed(ice::input::key_a));
+	SendMessage(preview.get_hwnd(), WM_CLOSE, 0, 0);
+	CHECK(preview.should_close());
+	CHECK(!main.should_close());
+	second.cleanup();
+	preview.cleanup();
+	preview.cleanup();
+	CHECK(draw(first, 0, 1, 1));
+	first.cleanup();
+	main.cleanup();
+	main.cleanup();
+	std::puts("Win32 platform checks passed: independent windows/contexts, owner, resize, key "
+	          "events, close and cleanup");
+	return 0;
 }

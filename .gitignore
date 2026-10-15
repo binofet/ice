@@ -5,3 +5,7 @@
 
 /Tools/Metagen/**/bin/
 /Tools/Metagen/**/obj/
+
+# Python quality-tool and schema-reader caches.
+__pycache__/
+*.py[cod]

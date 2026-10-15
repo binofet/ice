@@ -1,119 +1,114 @@
 #ifndef __GAME_STATE_H__
 #define __GAME_STATE_H__
 
-
 //////////////////////////////////////////////////////////////////////////////
 // ICE INCLUDES
-#include "Util/icStateMachine.h"
-#include "Render/icModel.h"
-#include "Content/icContentLoader.h"
-#include "Render/Camera/icCamera.h"
-#include "Render/Camera/icChaseCam.h"
-#include "Render/VertBuffer/icVertBuffer.h"
-#include "Render/IndexBuffer/icIndexBuf.h"
-#include "Render/Texture/icTexture.h"
-#include "Render/Font/icFont.h"
-#include "UI/icWidget.h"
+#include "ice/assets/content_loader.h"
+#include "ice/render/camera.h"
+#include "ice/render/chase_cam.h"
+#include "ice/render/font.h"
+#include "ice/render/index_buf.h"
+#include "ice/render/model.h"
+#include "ice/render/texture.h"
+#include "ice/render/vert_buffer.h"
+#include "ice/util/state_machine.h"
+#include "ice/widget.h"
 
 //////////////////////////////////////////////////////////////////////////////
 // LOCAL INCLUDES
-#include "puck.h"
 #include "paddle.h"
+#include "puck.h"
 #include "table.h"
 
 #include "../Box2D/Box2D.h"
 
+#define GAME_MODE_SINGLE 0
+#define GAME_MODE_TWO 1
+#define GAME_MODE_HOST 2
+#define GAME_MODE_CLIENT 3
 
-#define GAME_MODE_SINGLE        0
-#define GAME_MODE_TWO           1
-#define GAME_MODE_HOST          2
-#define GAME_MODE_CLIENT        3
-
-#define WINING_SCORE            10
-#define WIN_STALL_TIMER         3.0f
-
+#define WINING_SCORE 10
+#define WIN_STALL_TIMER 3.0f
 
 /*! This is the main game state
-**/
-class GameState : public icState
-{
+ **/
+class GameState : public ice::util::state {
 public:
-    //////////////////////////////////////////////////////////////////////////
-    // LIFECYCLE
-    GameState(void);
-    ~GameState(void);
+	//////////////////////////////////////////////////////////////////////////
+	// LIFECYCLE
+	GameState(void);
+	~GameState(void);
 
-    ICRESULT Init(icContentLoader* pContentLoader);
+	ice::result init(ice::assets::content_loader *pContentLoader);
 
-    //////////////////////////////////////////////////////////////////////////
-    // OPERATIONS
-    ICRESULT Update(const float fDeltaTime, bool* bFinished);
-    ICRESULT Render(void);
+	//////////////////////////////////////////////////////////////////////////
+	// OPERATIONS
+	ice::result update(const float fDeltaTime, bool *bFinished);
+	ice::result render(void);
 
-    void OnPush(void);
-    void OnPop(void);
+	void on_push(void);
+	void on_pop(void);
 
-    int GameMode;
+	int GameMode;
 
-    int GetPlayer1Score() { return m_score[PLAYER_ONE]; };
-    int GetPlayer2Score() { return m_score[PLAYER_TWO]; };
+	int get_player1_score() { return score_[PLAYER_ONE]; };
+	int get_player2_score() { return score_[PLAYER_TWO]; };
 
-    void SetPlayer1Score(int s) {m_score[PLAYER_ONE]=s;};
-    void SetPlayer2Score(int s) {m_score[PLAYER_TWO]=s;};
+	void set_player1_score(int s) { score_[PLAYER_ONE] = s; };
+	void set_player2_score(int s) { score_[PLAYER_TWO] = s; };
 
 private:
-    friend struct GameplaySmokeChecks;
-    //////////////////////////////////////////////////////////////////////////
-    // PRIVATE METHODS
-    ICRESULT CreateGround(void);
-    ICRESULT InitPhysics(void);
-    ICRESULT UpdateUVs(const float fDeltaTime);
+	friend struct GameplaySmokeChecks;
+	//////////////////////////////////////////////////////////////////////////
+	// PRIVATE METHODS
+	ice::result create_ground(void);
+	ice::result init_physics(void);
+	ice::result update_u_vs(const float fDeltaTime);
 
-    void UpdatePhysics(const float fDeltaTime);
+	void update_physics(const float fDeltaTime);
 
-    void UpdateScore();
+	void update_score();
 
-    //////////////////////////////////////////////////////////////////////////
-    // PRIVATE MEMBERS
+	//////////////////////////////////////////////////////////////////////////
+	// PRIVATE MEMBERS
 
-    // cameras
-    icChaseCam          m_ChaseCam;
-    icCamera            m_Camera;
+	// cameras
+	ice::render::chase_cam chase_cam_;
+	ice::render::camera    camera_;
 
-    icMatrix44          m_Transform;
+	ice::math::mat4 transform_;
 
-    icContentLoader*    m_pContent;
+	ice::assets::content_loader *content_;
 
-    // ground
-    icTexture*          m_pGroundTex;
-    icVertBuffer*       m_pGround;
-    icIndexBuf*         m_pGroundIB;    
+	// ground
+	ice::render::texture     *ground_tex_;
+	ice::render::vert_buffer *ground_;
+	ice::render::index_buf   *ground_ib_;
 
-    // game objects
-    icFontI*            m_pFont;
-    Table               m_Table;
-    Puck                m_Puck;             //! Puck
-    Paddle              m_Paddles[2];       //! Paddles
+	// game objects
+	ice::render::font *font_;
+	Table              table_;
+	Puck               puck_;       //! Puck
+	Paddle             paddles_[2]; //! Paddles
 
-    icWidget*           m_wgtWin;
-    icTexture*          m_texPlyr1;
-    icTexture*          m_texPlyr2;
-    icWidget*           m_wgtScore[2];
-    int                 m_score[2];
-    float               m_fWinTimer;
+	ice::widget          *wgt_win_;
+	ice::render::texture *tex_plyr1_;
+	ice::render::texture *tex_plyr2_;
+	ice::widget          *wgt_score_[2];
+	int                   score_[2];
+	float                 win_timer_;
 
-    icSoundI*           m_scoreSnd;
-    icSoundI*           m_loserSnd;
+	ice::audio::sound_i *score_snd_;
+	ice::audio::sound_i *loser_snd_;
 
-    // physics
-    b2World*            m_World;
-    float m_serveTimer = 0;
-    float m_Accumulator = 0;
-    unsigned m_PhysicsSteps = 0;
+	// physics
+	b2World *world_;
+	float    serve_timer_   = 0;
+	float    accumulator_   = 0;
+	unsigned physics_steps_ = 0;
+
 public:
-    unsigned PhysicsSteps() const { return m_PhysicsSteps; }
+	unsigned physics_steps() const { return physics_steps_; }
 };
-
-
 
 #endif //__GAME_STATE_H__

@@ -2,126 +2,122 @@
 #define __GAME_STATE_H__
 #include <cstdint>
 
-
 //////////////////////////////////////////////////////////////////////////////
 // ICE INCLUDES
-#include "Util/icStateMachine.h"
-#include "Render/icModel.h"
-#include "Content/icContentLoader.h"
-#include "Render/Camera/icMaxCam.h"
-#include "Render/VertBuffer/icVertBuffer.h"
-#include "Render/IndexBuffer/icIndexBuf.h"
-#include "Render/Texture/icTexture.h"
-#include "Render/Font/icFontGL.h"
-#include "UI/icWidget.h"
+#include "ice/assets/content_loader.h"
+#include "ice/render/gl/font_gl.h"
+#include "ice/render/index_buf.h"
+#include "ice/render/max_cam.h"
+#include "ice/render/model.h"
+#include "ice/render/texture.h"
+#include "ice/render/vert_buffer.h"
+#include "ice/util/state_machine.h"
+#include "ice/widget.h"
 
 //////////////////////////////////////////////////////////////////////////////
 // LOCAL INCLUDES
+#include "ball.h"
 #include "btBulletDynamicsCommon.h"
 #include "skeeball_ramp.h"
-#include "ball.h"
 
-#define GAME_MODE_SINGLE        0
-#define GAME_MODE_TWO           1
-#define GAME_MODE_HOST          2
-#define GAME_MODE_CLIENT        3
+#define GAME_MODE_SINGLE 0
+#define GAME_MODE_TWO 1
+#define GAME_MODE_HOST 2
+#define GAME_MODE_CLIENT 3
 
-#define WINING_SCORE            10
-#define WIN_STALL_TIMER         3.0f
+#define WINING_SCORE 10
+#define WIN_STALL_TIMER 3.0f
 
-#define MAX_BALLS               5
+#define MAX_BALLS 5
 
-#define MAX_BALLS_OUT           3
-
+#define MAX_BALLS_OUT 3
 
 /*! This is the main game state
-**/
-class GameState : public icState
-{
+ **/
+class GameState : public ice::util::state {
 public:
-    //////////////////////////////////////////////////////////////////////////
-    // LIFECYCLE
-    GameState(void);
-    ~GameState(void);
+	//////////////////////////////////////////////////////////////////////////
+	// LIFECYCLE
+	GameState(void);
+	~GameState(void);
 
-    ICRESULT Init(icContentLoader* pContentLoader);
+	ice::result init(ice::assets::content_loader *pContentLoader);
 
-    //////////////////////////////////////////////////////////////////////////
-    // OPERATIONS
-    ICRESULT Update(const float fDeltaTime, bool* bFinished);
-    ICRESULT Render(void);
+	//////////////////////////////////////////////////////////////////////////
+	// OPERATIONS
+	ice::result update(const float fDeltaTime, bool *bFinished);
+	ice::result render(void);
 
-    void OnPush(void);
-    void OnPop(void);
+	void on_push(void);
+	void on_pop(void);
 
-    int GameMode;
-    bool ReadyForShot() const { return bWaiting && !bInPlay && m_curBall>0 && m_curBall<=MAX_BALLS; }
-    bool ShotInFlight() const { return bInPlay; }
-
+	int  GameMode;
+	bool ready_for_shot() const {
+		return bWaiting && !bInPlay && cur_ball_ > 0 && cur_ball_ <= MAX_BALLS;
+	}
+	bool shot_in_flight() const { return bInPlay; }
 
 private:
-    //////////////////////////////////////////////////////////////////////////
-    // PRIVATE METHODS
-    ICRESULT InitPhysics(void);
+	//////////////////////////////////////////////////////////////////////////
+	// PRIVATE METHODS
+	ice::result init_physics(void);
 
-    void UpdatePhysics(const float fDeltaTime);
+	void update_physics(const float fDeltaTime);
 
-    void UpdateScore(const float fDeltaTime);
+	void update_score(const float fDeltaTime);
 
-    //////////////////////////////////////////////////////////////////////////
-    // PRIVATE MEMBERS
+	//////////////////////////////////////////////////////////////////////////
+	// PRIVATE MEMBERS
 
-    // cameras
-    icMaxCam            m_MaxCam;
+	// cameras
+	ice::render::max_cam max_cam_;
 
-    icMatrix44          m_Transform;
-    icMatrix44          m_m44Tickets;
+	ice::math::mat4 transform_;
+	ice::math::mat4 m44_tickets_;
 
-    icContentLoader*    m_pContent;
+	ice::assets::content_loader *content_;
 
-    // game objects
-    icFontGL            m_Font;
-    icFontGL            m_ScoreFont;
+	// game objects
+	ice::render::gl::font_gl font_;
+	ice::render::gl::font_gl score_font_;
 
-    icModel*            m_pTicketStart;
-    icModel*            m_pTicketRoll;
+	ice::render::model *ticket_start_;
+	ice::render::model *ticket_roll_;
 
-    icVector3           m_v3Accel;
+	ice::math::vec3 accel_;
 
-    float               m_fDy;
-    float               m_fTicketRot;
-    float               m_fPercent;
-    float               m_fGameOverTimer;
-    float               m_fPlayTimer;
+	float dy_;
+	float ticket_rot_;
+	float percent_;
+	float game_over_timer_;
+	float play_timer_;
 
-    int                 m_i32Score;
-    int                 m_i32NumTickets;
+	int score_;
+	int num_tickets_;
 
-    bool                m_bLastLMB;
-    bool                bScored;
+	bool last_lmb_;
+	bool bScored;
 
-    std::uint64_t       m_companionShooter=0;
-    unsigned            m_companionShotScore=0;
-    bool                m_companionSettled=false;
-    bool                bInPlay;
-    bool                bWaiting;
+	std::uint64_t companion_shooter_    = 0;
+	unsigned      companion_shot_score_ = 0;
+	bool          companion_settled_    = false;
+	bool          bInPlay;
+	bool          bWaiting;
 
-    Ball                m_balls[MAX_BALLS];
-    int                 m_curBall;
-    Ramp                m_ramp;
+	Ball balls_[MAX_BALLS];
+	int  cur_ball_;
+	Ramp ramp_;
 
-    icSoundI*           m_scoreSnd;
-    icSoundI*           m_loserSnd;
-    icSoundI*           m_score2nd;
+	ice::audio::sound_i *score_snd_;
+	ice::audio::sound_i *loser_snd_;
+	ice::audio::sound_i *score2nd_;
 
-    // physics
-    btDiscreteDynamicsWorld*                m_physWorld;
-    btCollisionDispatcher*                  m_dispatcher;
-    btAxisSweep3*                           m_pairCache;
-    btSequentialImpulseConstraintSolver*    m_constraintSolver;
-    btDefaultCollisionConfiguration*        m_collisionConfig;
+	// physics
+	btDiscreteDynamicsWorld             *phys_world_;
+	btCollisionDispatcher               *dispatcher_;
+	btAxisSweep3                        *pair_cache_;
+	btSequentialImpulseConstraintSolver *constraint_solver_;
+	btDefaultCollisionConfiguration     *collision_config_;
 };
-
-
 
 #endif //__GAME_STATE_H__

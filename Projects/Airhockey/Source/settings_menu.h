@@ -1,60 +1,57 @@
 #ifndef __SETTINGS_MENU_STATE_H__
 #define __SETTINGS_MENU_STATE_H__
 
-
 //////////////////////////////////////////////////////////////////////////////
 // ICE INCLUDES
-#include "Util/icStateMachine.h"
-#include "Content/icContentLoader.h"
-#include "Render/Camera/icCamera.h"
-#include "UI/icFrame.h"
-#include "UI/icButton.h"
-#include "UI/icSlider.h"
-
-class icSlider;
+#include "ice/assets/content_loader.h"
+#include "ice/button.h"
+#include "ice/frame.h"
+#include "ice/render/camera.h"
+#include "ice/slider.h"
+#include "ice/util/state_machine.h"
+namespace ice {
+class slider;
+}
 
 /*! Implements the games main menu
-**/
-class SettingsMenu : public icState
-{
+ **/
+class SettingsMenu : public ice::util::state {
 public:
-    //////////////////////////////////////////////////////////////////////////
-    // LIFECYCLE
-    SettingsMenu(void);
-    ~SettingsMenu(void);
+	//////////////////////////////////////////////////////////////////////////
+	// LIFECYCLE
+	SettingsMenu(void);
+	~SettingsMenu(void);
 
-    ICRESULT Init(icContentLoader* pContentLoader);
+	ice::result init(ice::assets::content_loader *pContentLoader);
 
-    //////////////////////////////////////////////////////////////////////////
-    // OPERATIONS
-    ICRESULT Update(const float fDeltaTime, bool* bFinished);
-    ICRESULT Render(void);
+	//////////////////////////////////////////////////////////////////////////
+	// OPERATIONS
+	ice::result update(const float fDeltaTime, bool *bFinished);
+	ice::result render(void);
 
-    void OnPush(void);
-    void OnPop(void);
+	void on_push(void);
+	void on_pop(void);
 
 private:
-    icContentLoader*    m_pContent;
+	ice::assets::content_loader *content_;
 
-    // renderable objects
-    icFrame*            m_uiFrame;
-    icWidget*           m_ptxtSettings;
-    icWidget*           m_ptxtSfx;
-    icWidget*           m_ptxtMusic;
-    icWidget*           m_ptxtPaddle;
+	// renderable objects
+	ice::frame  *ui_frame_;
+	ice::widget *ptxt_settings_;
+	ice::widget *ptxt_sfx_;
+	ice::widget *ptxt_music_;
+	ice::widget *ptxt_paddle_;
 
-    icButton*           m_pbtnBack;
+	ice::button *pbtn_back_;
 
-    icSlider*           m_slidSfxVol;
-    icSlider*           m_slidMusicVol;
-    icSlider*           m_slidPaddle;
+	ice::slider *slid_sfx_vol_;
+	ice::slider *slid_music_vol_;
+	ice::slider *slid_paddle_;
 
-    icSoundI*           m_pClick;
-    icSoundI*           m_pHover;
+	ice::audio::sound_i *click_;
+	ice::audio::sound_i *hover_;
 
-    icModel*            m_Paddles[3];
+	ice::render::model *paddles_[3];
 };
-
-
 
 #endif //__SETTINGS_MENU_STATE_H__

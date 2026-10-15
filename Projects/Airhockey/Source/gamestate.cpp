@@ -1,625 +1,579 @@
 //////////////////////////////////////////////////////////////////////////////
 // LOCAL INCLUDES
 #include "gamestate.h"
-#include "gameplay.h"
-#include "PlayerInput.h"
-#include "NetworkInput.h"
 #include "AiInput.h"
+#include "NetworkInput.h"
+#include "PlayerInput.h"
+#include "gameplay.h"
 
 #include "airhockey.h"
 
 //////////////////////////////////////////////////////////////////////////////
 // ICE INCLUDES
-#include "Core/IO/icInput.h"
-#include "Math/icRand.h"
+#include "ice/input/input.h"
+#include "ice/math/rand.h"
 
+ice::math::vec2 bl[] = {ice::math::vec2(0.0f, 0.0f),   ice::math::vec2(0.119f, 0.0f),
+                        ice::math::vec2(0.189f, 0.0f), ice::math::vec2(0.281f, 0.0f),
+                        ice::math::vec2(0.400f, 0.0f), ice::math::vec2(0.500f, 0.0f),
+                        ice::math::vec2(0.600f, 0.0f), ice::math::vec2(0.700f, 0.0f),
+                        ice::math::vec2(0.800f, 0.0f), ice::math::vec2(0.900f, 0.0f)};
 
+ice::math::vec2 tl[] = {ice::math::vec2(0.0f, 1.0f),   ice::math::vec2(0.119f, 1.0f),
+                        ice::math::vec2(0.189f, 1.0f), ice::math::vec2(0.281f, 1.0f),
+                        ice::math::vec2(0.400f, 1.0f), ice::math::vec2(0.500f, 1.0f),
+                        ice::math::vec2(0.600f, 1.0f), ice::math::vec2(0.700f, 1.0f),
+                        ice::math::vec2(0.800f, 1.0f), ice::math::vec2(0.900f, 1.0f)};
 
-icVector2 bl[]={
-    icVector2(0.0f,0.0f),
-    icVector2(0.119f,0.0f),
-    icVector2(0.189f,0.0f),
-    icVector2(0.281f,0.0f),
-    icVector2(0.400f,0.0f),
-    icVector2(0.500f,0.0f),
-    icVector2(0.600f,0.0f),
-    icVector2(0.700f,0.0f),
-    icVector2(0.800f,0.0f),
-    icVector2(0.900f,0.0f)
-};
+ice::math::vec2 tr[] = {ice::math::vec2(0.108f, 1.0f), ice::math::vec2(0.192f, 1.0f),
+                        ice::math::vec2(0.285f, 1.0f), ice::math::vec2(0.395f, 1.0f),
+                        ice::math::vec2(0.500f, 1.0f), ice::math::vec2(0.600f, 1.0f),
+                        ice::math::vec2(0.700f, 1.0f), ice::math::vec2(0.800f, 1.0f),
+                        ice::math::vec2(0.900f, 1.0f), ice::math::vec2(1.0f, 1.0f)};
 
-icVector2 tl[]={
-    icVector2(0.0f,1.0f),
-    icVector2(0.119f,1.0f),
-    icVector2(0.189f,1.0f),
-    icVector2(0.281f,1.0f),
-    icVector2(0.400f,1.0f),
-    icVector2(0.500f,1.0f),
-    icVector2(0.600f,1.0f),
-    icVector2(0.700f,1.0f),
-    icVector2(0.800f,1.0f),
-    icVector2(0.900f,1.0f)
-};
+ice::math::vec2 br[] = {ice::math::vec2(0.108f, 0.0f), ice::math::vec2(0.192f, 0.0f),
+                        ice::math::vec2(0.285f, 0.0f), ice::math::vec2(0.395f, 0.0f),
+                        ice::math::vec2(0.500f, 0.0f), ice::math::vec2(0.600f, 0.0f),
+                        ice::math::vec2(0.700f, 0.0f), ice::math::vec2(0.800f, 0.0f),
+                        ice::math::vec2(0.900f, 0.0f), ice::math::vec2(1.0f, 0.0f)};
 
-icVector2 tr[]={
-    icVector2(0.108f,1.0f),
-    icVector2(0.192f,1.0f),
-    icVector2(0.285f,1.0f),
-    icVector2(0.395f,1.0f),
-    icVector2(0.500f,1.0f),
-    icVector2(0.600f,1.0f),
-    icVector2(0.700f,1.0f),
-    icVector2(0.800f,1.0f),
-    icVector2(0.900f,1.0f),
-    icVector2(1.0f,1.0f)
-};
-
-icVector2 br[]={
-    icVector2(0.108f,0.0f),
-    icVector2(0.192f,0.0f),
-    icVector2(0.285f,0.0f),
-    icVector2(0.395f,0.0f),
-    icVector2(0.500f,0.0f),
-    icVector2(0.600f,0.0f),
-    icVector2(0.700f,0.0f),
-    icVector2(0.800f,0.0f),
-    icVector2(0.900f,0.0f),
-    icVector2(1.0f,0.0f)
-};
-
-extern Airhockey& gApp;
+extern Airhockey &gApp;
 
 /*! c'tor
-**/
-GameState::GameState(void)
-{
-    m_pContent = NULL;
-    m_pGroundTex = NULL;
-    m_pGround = NULL;
+ **/
+GameState::GameState(void) {
+	content_    = NULL;
+	ground_tex_ = NULL;
+	ground_     = NULL;
 
-    m_World = NULL;
-    GameMode = GAME_MODE_SINGLE;
-    m_pFont = nullptr;
+	world_   = NULL;
+	GameMode = GAME_MODE_SINGLE;
+	font_    = nullptr;
 
-    m_wgtWin = NULL;
-    m_texPlyr1 = NULL;
-    m_texPlyr2 = NULL;
+	wgt_win_   = NULL;
+	tex_plyr1_ = NULL;
+	tex_plyr2_ = NULL;
 
-    m_fWinTimer = 0.0f;
-}// END FUNCTION GameState(void)
-
+	win_timer_ = 0.0f;
+} // END FUNCTION GameState(void)
 
 /*! d'tor
-**/
-GameState::~GameState()
-{
-    if (m_World)
-        delete m_World;
-}// END FUNCTION ~GameState()
-
+ **/
+GameState::~GameState() {
+	if (world_)
+		delete world_;
+} // END FUNCTION ~GameState()
 
 // HACK!
-const icReal halfx = 500.0;
-const icReal halfy = 500.0;
-const int numrow = 50;
-const int numcol = 50;
-const float edgeDist = (halfx*2)/(numrow-1);
-icVector3 cam_pos(0.0f,0.750f,-1.54f);
-icVector3 look_pos(0.0f,0.0f,0.0f);
-
+const ice::math::real halfx    = 500.0;
+const ice::math::real halfy    = 500.0;
+const int             numrow   = 50;
+const int             numcol   = 50;
+const float           edgeDist = (halfx * 2) / (numrow - 1);
+ice::math::vec3       cam_pos(0.0f, 0.750f, -1.54f);
+ice::math::vec3       look_pos(0.0f, 0.0f, 0.0f);
 
 /*! Initializes the games state
  *
  *  @param          pContentLoader      Pointer to main content loader
  *  @returns        ICRESULT            Success/failure/warnings of init
-**/
-ICRESULT GameState::Init(icContentLoader* pContentLoader)
-{
-    ICRESULT res = IC_OK;
+ **/
+ice::result GameState::init(ice::assets::content_loader *pContentLoader) {
+	ice::result res = IC_OK;
 
-    if (!pContentLoader)
-        return IC_FAIL_GEN;
+	if (!pContentLoader)
+		return IC_FAIL_GEN;
 
-    m_pContent = pContentLoader;
+	content_ = pContentLoader;
 
-    icGXDevice* pDev = m_pContent->GetDevice();
+	ice::render::graphics_device *pDev = content_->get_device();
 
-    m_Transform.Identity();
+	(transform_) = ice::math::mat4(1);
 
-    // get us a camera
-    icCreatePerspective((40.0f*IC_PI/180.0f),1280.0f/720.0f,1.0f,10000000.0f, m_ChaseCam.GetProjection());
-    icCreatePerspective((40.0f*IC_PI/180.0f),1280.0f/720.0f,1.0f,10000000.0f, m_Camera.GetProjection());
+	// get us a camera
+	chase_cam_.get_projection() = glm::perspectiveLH_ZO(
+	    float((40.0f * IC_PI / 180.0f)), float(1280.0f / 720.0f), float(1.0f), float(10000000.0f));
+	camera_.get_projection() = glm::perspectiveLH_ZO(
+	    float((40.0f * IC_PI / 180.0f)), float(1280.0f / 720.0f), float(1.0f), float(10000000.0f));
 
-    icCreateLookAt(cam_pos,look_pos,icVector3(0.0f,1.0f,0.0f),m_Camera.GetViewMat());
-    m_ChaseCam.GetViewMat().MakeTranslation(0.0f,0.0f,0.0f);
-    m_ChaseCam.SetChaseXform(&m_Transform);
-    
+	camera_.get_view_mat() =
+	    ice::math::camera_pose_lh(cam_pos, look_pos, ice::math::vec3(0.0f, 1.0f, 0.0f));
+	(chase_cam_.get_view_mat()) =
+	    glm::translate(ice::math::mat4(1), ice::math::vec3(0.0f, 0.0f, 0.0f));
+	chase_cam_.set_chase_xform(&transform_);
 
-    res |= m_pContent->Load("Resource/audio/excelent.wav",&m_scoreSnd);
-    icSoundParam param;
-    param.bLoop = false;
-    param.fPitch = 1.0f;
-    param.fVol = gApp.GetSettings().fSfx_vol;
-    m_scoreSnd->SetParams(param);
+	res |= content_->load("Resource/audio/excelent.wav", &score_snd_);
+	ice::audio::sound_param param;
+	param.loop  = false;
+	param.pitch = 1.0f;
+	param.vol   = gApp.get_settings().fSfx_vol;
+	score_snd_->set_params(param);
 
-    // create ground
-    res |= CreateGround();
+	// create ground
+	res |= create_ground();
 
-    // physics
-    res |= InitPhysics();
+	// physics
+	res |= init_physics();
 
-    // Initialize table
-    res |= m_Table.Init(m_pContent,m_World);
+	// Initialize table
+	res |= table_.init(content_, world_);
 
-    // Initialize puck
-    res |= m_Puck.Init(m_pContent,m_World);
+	// Initialize puck
+	res |= puck_.init(content_, world_);
 
-    // Initialize paddles
-    res |= m_Paddles[0].Init(m_pContent,m_World);
-    res |= m_Paddles[1].Init(m_pContent,m_World);
+	// Initialize paddles
+	res |= paddles_[0].init(content_, world_);
+	res |= paddles_[1].init(content_, world_);
 
-    m_Paddles[0].player = PLAYER_ONE;
-    m_Paddles[1].player = PLAYER_TWO;
+	paddles_[0].player = PLAYER_ONE;
+	paddles_[1].player = PLAYER_TWO;
 
+	ice::render::font_params fontParams = {"Arial", 36};
+	res |= content_->get_device()->create_font(&font_, &fontParams);
+	// res |= m_Font.Initialize("Arial",36,m_pContent);
 
-	icFontParams fontParams = { "Arial", 36 };
-	res |= m_pContent->GetDevice()->CreateFont(&m_pFont, &fontParams);
-    //res |= m_Font.Initialize("Arial",36,m_pContent);
+	ice::render::texture *tex1;
+	res |= content_->load("Resource/textures/UI_numbers.tga", &tex1);
 
-    icTexture* tex1;
-    res |= m_pContent->Load("Resource/textures/UI_numbers.tga",&tex1);
+	res |= content_->load("Resource/textures/UI_succubus_1.tga", &tex_plyr1_);
+	res |= content_->load("Resource/textures/UI_succubus_2.tga", &tex_plyr2_);
 
-    res |= m_pContent->Load("Resource/textures/UI_succubus_1.tga",&m_texPlyr1);
-    res |= m_pContent->Load("Resource/textures/UI_succubus_2.tga",&m_texPlyr2);
+	ice::math::real sx = (ice::math::real)gApp.get_settings().iScreen_x;
+	ice::math::real sy = (ice::math::real)gApp.get_settings().iScreen_y;
 
-    icReal sx = (icReal)gApp.GetSettings().iScreen_x;
-    icReal sy = (icReal)gApp.GetSettings().iScreen_y;
+	ice::math::real rat = sy / 1024.0f;
+	ice::math::real mx  = sx / 2.0f;
 
-    icReal rat = sy/1024.0f;
-    icReal mx = sx/2.0f;
+	// player ones score board
+	wgt_score_[PLAYER_ONE] = new ice::widget(content_);
+	wgt_score_[PLAYER_ONE]->set_textures(tex1);
+	ice::math::vec2 bl(0.0f, 0.0f);
+	ice::math::vec2 tl(0.0f, 1.0f);
+	ice::math::vec2 tr(0.108f, 1.0f);
+	ice::math::vec2 br(0.108f, 0.0f);
+	wgt_score_[PLAYER_ONE]->set_u_vs(tl, tr, bl, br);
+	wgt_score_[PLAYER_ONE]->set_size(ice::math::vec2(sy * 0.12f, sy * 0.14f));
+	wgt_score_[PLAYER_ONE]->set_pos(ice::math::vec2(sx * 0.88f, sy * 0.15f));
 
-    // player ones score board
-    m_wgtScore[PLAYER_ONE] = new icWidget(m_pContent);
-    m_wgtScore[PLAYER_ONE]->SetTextures(tex1);
-    icVector2 bl(0.0f,0.0f);
-    icVector2 tl(0.0f,1.0f);
-    icVector2 tr(0.108f,1.0f);
-    icVector2 br(0.108f,0.0f);
-    m_wgtScore[PLAYER_ONE]->SetUVs(tl,tr,bl,br);
-    m_wgtScore[PLAYER_ONE]->SetSize(icVector2(sy*0.12f,sy*0.14f));
-    m_wgtScore[PLAYER_ONE]->SetPos(icVector2(sx*0.88f,sy*0.15f));
+	// player twos score board
+	wgt_score_[PLAYER_TWO] = new ice::widget(content_);
+	wgt_score_[PLAYER_TWO]->set_textures(tex1);
+	(bl) = ice::math::vec2(0.0f, 0.0f);
+	(tl) = ice::math::vec2(0.0f, 1.0f);
+	(tr) = ice::math::vec2(0.108f, 1.0f);
+	(br) = ice::math::vec2(0.108f, 0.0f);
+	wgt_score_[PLAYER_TWO]->set_u_vs(tl, tr, bl, br);
+	wgt_score_[PLAYER_TWO]->set_size(ice::math::vec2(sy * 0.12f, sy * 0.14f));
+	wgt_score_[PLAYER_TWO]->set_pos(ice::math::vec2(sx * 0.78f, 0.70f));
 
-    // player twos score board
-    m_wgtScore[PLAYER_TWO] = new icWidget(m_pContent);
-    m_wgtScore[PLAYER_TWO]->SetTextures(tex1);
-    bl.Set(0.0f,0.0f);
-    tl.Set(0.0f,1.0f);
-    tr.Set(0.108f,1.0f);
-    br.Set(0.108f,0.0f);
-    m_wgtScore[PLAYER_TWO]->SetUVs(tl,tr,bl,br);
-    m_wgtScore[PLAYER_TWO]->SetSize(icVector2(sy*0.12f,sy*0.14f));
-    m_wgtScore[PLAYER_TWO]->SetPos(icVector2(sx*0.78f,0.70f));
+	// winner widget
+	wgt_win_ = new ice::widget(content_);
+	wgt_win_->set_textures(tex_plyr1_);
+	(bl) = ice::math::vec2(0.0f, 0.0f);
+	(tl) = ice::math::vec2(0.0f, 1.0f);
+	(tr) = ice::math::vec2(1.0f, 1.0f);
+	(br) = ice::math::vec2(1.0f, 0.0f);
+	wgt_win_->set_u_vs(tl, tr, bl, br);
+	wgt_win_->set_size(ice::math::vec2(sy * 0.75f, sy * 0.75f));
+	wgt_win_->set_pos(ice::math::vec2(mx, sy * 0.5f));
 
-    // winner widget
-    m_wgtWin = new icWidget(m_pContent);
-    m_wgtWin->SetTextures(m_texPlyr1);
-    bl.Set(0.0f,0.0f);
-    tl.Set(0.0f,1.0f);
-    tr.Set(1.0f,1.0f);
-    br.Set(1.0f,0.0f);
-    m_wgtWin->SetUVs(tl,tr,bl,br);
-    m_wgtWin->SetSize(icVector2(sy*0.75f,sy*0.75f));
-    m_wgtWin->SetPos(icVector2(mx,sy*0.5f));
-
-    return res;
-}// END FUNCTION Init(icContentLoader* pContentLoader)
-
+	return res;
+} // END FUNCTION Init(icContentLoader* pContentLoader)
 
 /*! Creates the ground object
  *
  *  @param          ICRESULT        Success/failure of ground creation
-**/
-ICRESULT GameState::CreateGround(void)
-{
-    ICRESULT res = IC_OK;
+ **/
+ice::result GameState::create_ground(void) {
+	ice::result res = IC_OK;
 
-    icGXDevice* pDev = m_pContent->GetDevice();
+	ice::render::graphics_device *pDev = content_->get_device();
 
-    icVertDef vert_def;
-    vert_def.numPrims = (numrow-1)*(numcol-1)*2;
-    vert_def.uiVertSize = sizeof(ICVRT_DIF);
-    vert_def.uiNumVerts = (numrow-1)*(numcol-1)*4;
-    vert_def.usage = IC_VERT_USAGE_STATIC;
-    vert_def.primType = IC_PRIM_TLIST;
-    vert_def.vertType = IC_VERT_DIF;
-    res |= pDev->CreateVB(&m_pGround, &vert_def);
+	ice::render::vert_def vert_def;
+	vert_def.num_prims = (numrow - 1) * (numcol - 1) * 2;
+	vert_def.vert_size = sizeof(ice::render::vrt_dif);
+	vert_def.num_verts = (numrow - 1) * (numcol - 1) * 4;
+	vert_def.usage     = IC_VERT_USAGE_STATIC;
+	vert_def.prim_type = ice::render::prim_tlist;
+	vert_def.vert_type = ice::render::ic_vert_dif;
+	res |= pDev->create_vb(&ground_, &vert_def);
 
-    icVertLock vertLock;
-    res |= m_pGround->Lock(&vertLock);
+	ice::render::vert_lock vertLock;
+	res |= ground_->lock(&vertLock);
 
-    ICVRT_DIF* vb = (ICVRT_DIF*)vertLock.pData;
+	ice::render::vrt_dif *vb = (ice::render::vrt_dif *)vertLock.data;
 
-    uint cur_vert=0;
+	ice::uint cur_vert = 0;
 
-    for (int row=0; row<numrow-1; ++row)
-    {
-        for (int col=0; col<numcol-1; ++col)
-        {
-            icReal x1 = (col*edgeDist)-halfx;
-            icReal y1 = (row*edgeDist)-halfy;
-            icReal x2 = ((col+1)*edgeDist)-halfx;
-            icReal y2 = ((row+1)*edgeDist)-halfy;
+	for (int row = 0; row < numrow - 1; ++row) {
+		for (int col = 0; col < numcol - 1; ++col) {
+			ice::math::real x1 = (col * edgeDist) - halfx;
+			ice::math::real y1 = (row * edgeDist) - halfy;
+			ice::math::real x2 = ((col + 1) * edgeDist) - halfx;
+			ice::math::real y2 = ((row + 1) * edgeDist) - halfy;
 
-            vb[cur_vert].pos.Set(x1,-10.0f,y1);
-            vb[cur_vert++].uv.Set(0.0f,0.0f);
+			(vb[cur_vert].pos)  = ice::math::vec3(x1, -10.0f, y1);
+			(vb[cur_vert++].uv) = ice::math::vec2(0.0f, 0.0f);
 
-            vb[cur_vert].pos.Set(x1,-10.0f,y2);
-            vb[cur_vert++].uv.Set(0.0f,1.0f);
+			(vb[cur_vert].pos)  = ice::math::vec3(x1, -10.0f, y2);
+			(vb[cur_vert++].uv) = ice::math::vec2(0.0f, 1.0f);
 
-            vb[cur_vert].pos.Set(x2,-10.0f,y2);
-            vb[cur_vert++].uv.Set(1.0f,1.0f);
+			(vb[cur_vert].pos)  = ice::math::vec3(x2, -10.0f, y2);
+			(vb[cur_vert++].uv) = ice::math::vec2(1.0f, 1.0f);
 
-            vb[cur_vert].pos.Set(x2,-10.0f,y1);
-            vb[cur_vert++].uv.Set(1.0f,0.0f);
-        }
-    }
+			(vb[cur_vert].pos)  = ice::math::vec3(x2, -10.0f, y1);
+			(vb[cur_vert++].uv) = ice::math::vec2(1.0f, 0.0f);
+		}
+	}
 
-    res |= m_pGround->Unlock();
-    res |= m_pContent->Load("Resource/textures/fire.tga", &m_pGroundTex);
+	res |= ground_->unlock();
+	res |= content_->load("Resource/textures/fire.tga", &ground_tex_);
 
+	ice::render::index_def ind_def;
+	ind_def.index_size = ice::render::ic_index_size_16;
+	ind_def.num_index  = (numrow - 1) * (numcol - 1) * 6;
+	ind_def.usage      = IC_INDEX_USAGE_STATIC;
+	res |= pDev->create_ib(&ground_ib_, &ind_def);
 
-    icIndexDef ind_def;
-    ind_def.indexSize = IC_INDEX_SIZE_16;
-    ind_def.numIndex = (numrow-1)*(numcol-1)*6;
-    ind_def.usage = IC_INDEX_USAGE_STATIC;
-    res |= pDev->CreateIB(&m_pGroundIB,&ind_def);
+	ice::render::index_lock iblock;
+	res |= ground_ib_->lock(&iblock);
 
-    icIndexLock iblock;
-    res |= m_pGroundIB->Lock(&iblock);
+	short    *ib        = (short *)iblock.data;
+	ice::uint cur_index = 0;
 
-    short* ib = (short*)iblock.pData;
-    uint cur_index = 0;
+	for (int row = 0; row < numrow - 1; ++row) {
+		for (int col = 0; col < numcol - 1; ++col) {
+			ib[cur_index++] = (numcol - 1) * row * 4 + col * 4;
+			ib[cur_index++] = (numcol - 1) * row * 4 + col * 4 + 1;
+			ib[cur_index++] = (numcol - 1) * row * 4 + col * 4 + 2;
 
+			ib[cur_index++] = (numcol - 1) * row * 4 + col * 4 + 2;
+			ib[cur_index++] = (numcol - 1) * row * 4 + col * 4 + 3;
+			ib[cur_index++] = (numcol - 1) * row * 4 + col * 4;
+		}
+	}
+	res |= ground_ib_->unlock();
 
-    for (int row=0; row<numrow-1; ++row)
-    {
-        for (int col=0; col<numcol-1; ++col)
-        {
-            ib[cur_index++] = (numcol-1)*row*4 + col*4 ;
-            ib[cur_index++] = (numcol-1)*row*4 + col*4 + 1;
-            ib[cur_index++] = (numcol-1)*row*4 + col*4 + 2;
-
-            ib[cur_index++] = (numcol-1)*row*4 + col*4 + 2;
-            ib[cur_index++] = (numcol-1)*row*4 + col*4 + 3;
-            ib[cur_index++] = (numcol-1)*row*4 + col*4;
-        }
-    }
-    res |= m_pGroundIB->Unlock();
-
-    return res;
-}// END FUNCTINO CreateGround(void)
-
+	return res;
+} // END FUNCTINO CreateGround(void)
 
 /*! Initializes the physics
  *
  *  @returns        ICRESULT        Success/failure of physics initialization
-**/
-ICRESULT GameState::InitPhysics(void)
-{
-    b2AABB aabb;
-    aabb.lowerBound.Set(-10.0f,-10.0f);
-    aabb.upperBound.Set(10.0f,10.0f);
+ **/
+ice::result GameState::init_physics(void) {
+	b2AABB aabb;
+	aabb.lowerBound.Set(-10.0f, -10.0f);
+	aabb.upperBound.Set(10.0f, 10.0f);
 
-    b2Vec2 grav(0.0f,0.0f);
-    m_World = new b2World(aabb,grav,false);
+	b2Vec2 grav(0.0f, 0.0f);
+	world_ = new b2World(aabb, grav, false);
 
-	return m_World ? IC_OK : IC_FAIL_GEN;
-}// END FUNCTION InitPhysics(void)
-
+	return world_ ? IC_OK : IC_FAIL_GEN;
+} // END FUNCTION InitPhysics(void)
 
 /*! Updates the UVs on the ground plane
  *
  *  @param          fDeltaTime          Elapsed time since last update
  *  @returns        ICRESULT            Success/failure of updating UVs
-**/
-ICRESULT GameState::UpdateUVs(const float fDeltaTime)
-{
-    ICRESULT res = IC_OK;
+ **/
+ice::result GameState::update_u_vs(const float fDeltaTime) {
+	ice::result res = IC_OK;
 
-    // ANIMATED UVs
-    icVertLock vlock;
-    res |= m_pGround->Lock(&vlock);
+	// ANIMATED UVs
+	ice::render::vert_lock vlock;
+	res |= ground_->lock(&vlock);
 
-    ICVRT_DIF* vb = (ICVRT_DIF*)vlock.pData;
+	ice::render::vrt_dif *vb = (ice::render::vrt_dif *)vlock.data;
 
-    static float curdir = 0.0f;
+	static float curdir = 0.0f;
 
-    icReal u1 = icCos(curdir) * 0.01f * fDeltaTime;
-    icReal v2 = icSin(curdir) * 0.01f * fDeltaTime;
+	ice::math::real u1 = ice::math::cos(curdir) * 0.01f * fDeltaTime;
+	ice::math::real v2 = ice::math::sin(curdir) * 0.01f * fDeltaTime;
 
-    icReal t = icRandF(0.0001f,0.001f);
-    curdir += icRandF(0.0f,10000000.0f) > 500000.0f ? t : -t;
+	ice::math::real t = ice::math::rand_f(0.0001f, 0.001f);
+	curdir += ice::math::rand_f(0.0f, 10000000.0f) > 500000.0f ? t : -t;
 
-    uint cur_vert = 0;
-    for (int row=0; row<numrow-1; ++row)
-    {
-        for (int col=0; col<numcol-1; ++col)
-        {
-            vb[cur_vert].uv.x += u1;
-            vb[cur_vert++].uv.y += v2;
-            vb[cur_vert].uv.x += u1;
-            vb[cur_vert++].uv.y += v2;
-            vb[cur_vert].uv.x += u1;
-            vb[cur_vert++].uv.y += v2;
-            vb[cur_vert].uv.x += u1;
-            vb[cur_vert++].uv.y += v2;
-        }
-    }
+	ice::uint cur_vert = 0;
+	for (int row = 0; row < numrow - 1; ++row) {
+		for (int col = 0; col < numcol - 1; ++col) {
+			vb[cur_vert].uv.x += u1;
+			vb[cur_vert++].uv.y += v2;
+			vb[cur_vert].uv.x += u1;
+			vb[cur_vert++].uv.y += v2;
+			vb[cur_vert].uv.x += u1;
+			vb[cur_vert++].uv.y += v2;
+			vb[cur_vert].uv.x += u1;
+			vb[cur_vert++].uv.y += v2;
+		}
+	}
 
-    res |= m_pGround->Unlock();
+	res |= ground_->unlock();
 
-    return res;
-}// END FUNCTION UpdateUVs(const float fDeltaTime)
-
+	return res;
+} // END FUNCTION UpdateUVs(const float fDeltaTime)
 
 /*! Updates the current scores
-**/
-void GameState::UpdateScore()
-{
-    if (GameMode == GAME_MODE_CLIENT) {
-        for(int player=0;player<2;++player){
-            int score=std::max(0,std::min(9,m_score[player]));
-            m_wgtScore[player]->SetUVs(tl[score],tr[score],bl[score],br[score]);
-        }
-        return;
-    }
-    if(m_score[0]>=WINING_SCORE||m_score[1]>=WINING_SCORE)return;
-    b2Vec2 pos=m_Puck.GetPhys()->GetPosition();
-    int scorer=pos.y>=0.87f?PLAYER_ONE:pos.y<=-0.74f?PLAYER_TWO:-1;
-    if(scorer<0)return;
-    if(m_scoreSnd&&gApp.GetSettings().bSfx)m_scoreSnd->Play();
-    ++m_score[scorer];
-    if(m_score[scorer]>=WINING_SCORE){
-        m_wgtWin->SetTextures(scorer==PLAYER_ONE?m_texPlyr1:m_texPlyr2);
-        m_fWinTimer=WIN_STALL_TIMER;
-        m_Puck.GetPhys()->SetLinearVelocity(b2Vec2(0,0));
-    }else{
-        int score=m_score[scorer];
-        m_wgtScore[scorer]->SetUVs(tl[score],tr[score],bl[score],br[score]);
-        m_Puck.Reset();m_Paddles[0].Reset();m_Paddles[1].Reset();
-        m_serveTimer=0.8f;
-        // Rebase player targets after a goal instead of snapping to the old shot.
-        for(auto& paddle:m_Paddles) if(auto handler=paddle.GetInputHandler())handler->ResetTarget();
-    }
-    gApp.SendPacket.score[PLAYER_ONE]=m_score[PLAYER_TWO];
-    gApp.SendPacket.score[PLAYER_TWO]=m_score[PLAYER_ONE];
+ **/
+void GameState::update_score() {
+	if (GameMode == GAME_MODE_CLIENT) {
+		for (int player = 0; player < 2; ++player) {
+			int score = std::max(0, std::min(9, score_[player]));
+			wgt_score_[player]->set_u_vs(tl[score], tr[score], bl[score], br[score]);
+		}
+		return;
+	}
+	if (score_[0] >= WINING_SCORE || score_[1] >= WINING_SCORE)
+		return;
+	b2Vec2 pos    = puck_.get_phys()->GetPosition();
+	int    scorer = pos.y >= 0.87f ? PLAYER_ONE : pos.y <= -0.74f ? PLAYER_TWO : -1;
+	if (scorer < 0)
+		return;
+	if (score_snd_ && gApp.get_settings().bSfx)
+		score_snd_->play();
+	++score_[scorer];
+	if (score_[scorer] >= WINING_SCORE) {
+		wgt_win_->set_textures(scorer == PLAYER_ONE ? tex_plyr1_ : tex_plyr2_);
+		win_timer_ = WIN_STALL_TIMER;
+		puck_.get_phys()->SetLinearVelocity(b2Vec2(0, 0));
+	} else {
+		int score = score_[scorer];
+		wgt_score_[scorer]->set_u_vs(tl[score], tr[score], bl[score], br[score]);
+		puck_.reset();
+		paddles_[0].reset();
+		paddles_[1].reset();
+		serve_timer_ = 0.8f;
+		// Rebase player targets after a goal instead of snapping to the old shot.
+		for (auto &paddle : paddles_)
+			if (auto handler = paddle.get_input_handler())
+				handler->reset_target();
+	}
+	gApp.SendPacket.score[PLAYER_ONE] = score_[PLAYER_TWO];
+	gApp.SendPacket.score[PLAYER_TWO] = score_[PLAYER_ONE];
 }
-
 
 /*! Updates the current game that is in session
  *
  *  @param          fDeltaTime          Elapsed time since last update
  *  @param          bFinished           Pointer, set to true if ste is done
  *  @returns        ICRESULT            Success/failure/warnings of update
-**/
-ICRESULT GameState::Update(const float fDeltaTime, bool *bFinished)
-{
-    ICRESULT res = IC_OK;
+ **/
+ice::result GameState::update(const float fDeltaTime, bool *bFinished) {
+	ice::result res = IC_OK;
 
-    // update the game objects
-    res |= m_Table.Update(fDeltaTime);
+	// update the game objects
+	res |= table_.update(fDeltaTime);
 
-    // Update the camera
-    m_ChaseCam.Update(fDeltaTime);
-    m_Camera.Update(fDeltaTime);
+	// Update the camera
+	chase_cam_.update(fDeltaTime);
+	camera_.update(fDeltaTime);
 
-    // update the physics
-    if (m_score[PLAYER_ONE] < WINING_SCORE && m_score[PLAYER_TWO] < WINING_SCORE)
-    {
-        auto input=icInput::Instance();
-        for(auto& paddle:m_Paddles) if(auto handler=paddle.GetInputHandler())handler->PrepareFrame(input);
-        const float fixedStep = gameplay::step;
-        float& accum = m_Accumulator;
-        accum += std::min(fDeltaTime,0.1f);
-        if (accum >= fixedStep)
-        {
-            int numsteps = accum/fixedStep;
-            for (int i=0; i<numsteps; ++i)
-            {
-                if(m_serveTimer>0){m_serveTimer=std::max(0.0f,m_serveTimer-fixedStep);continue;}
-                if(m_score[0]>=WINING_SCORE||m_score[1]>=WINING_SCORE)break;
-                // Input targets are sampled once per render frame, then simulated at 120 Hz.
-                res |= m_Paddles[0].Update(fixedStep);
-                res |= m_Paddles[1].Update(fixedStep);
-                res |= m_Puck.Update(fixedStep);
+	// update the physics
+	if (score_[PLAYER_ONE] < WINING_SCORE && score_[PLAYER_TWO] < WINING_SCORE) {
+		auto input = ice::input::input::instance();
+		for (auto &paddle : paddles_)
+			if (auto handler = paddle.get_input_handler())
+				handler->prepare_frame(input);
+		const float fixedStep = gameplay::step;
+		float      &accum     = accumulator_;
+		accum += std::min(fDeltaTime, 0.1f);
+		if (accum >= fixedStep) {
+			int numsteps = accum / fixedStep;
+			for (int i = 0; i < numsteps; ++i) {
+				if (serve_timer_ > 0) {
+					serve_timer_ = std::max(0.0f, serve_timer_ - fixedStep);
+					continue;
+				}
+				if (score_[0] >= WINING_SCORE || score_[1] >= WINING_SCORE)
+					break;
+				// Input targets are sampled once per render frame, then simulated at 120 Hz.
+				res |= paddles_[0].update(fixedStep);
+				res |= paddles_[1].update(fixedStep);
+				res |= puck_.update(fixedStep);
 
-                m_World->Step(fixedStep, 8);
-                UpdateScore();
-                ++m_PhysicsSteps;
-            }
+				world_->Step(fixedStep, 8);
+				update_score();
+				++physics_steps_;
+			}
 
-            accum -= numsteps*fixedStep;
-        }
+			accum -= numsteps * fixedStep;
+		}
 
+		res |= update_u_vs(fDeltaTime);
 
-        res |= UpdateUVs(fDeltaTime);
+		if (ice::input::input::instance()->is_pressed(ice::input::key_escape)) {
+			render_top_only_ = false;
+			ice::input::input::instance()->show_curs();
+			gApp.get_state_machine().push_state(&gApp.pause_menu_);
 
-        if (icInput::Instance()->IsPressed(ICKEY_ESCAPE))
-        {
-            m_bRenderTopOnly = false;
-            icInput::Instance()->ShowCurs();
-            gApp.GetStateMachine().PushState(&gApp.m_PauseMenu);
+			// icInput::Instance()->Update();
+		}
+	} else {
+		win_timer_ -= fDeltaTime;
+		if (win_timer_ <= 0.0f) {
+			puck_.reset();
+			paddles_[0].reset();
+			paddles_[1].reset();
+			serve_timer_       = 0.8f;
+			score_[PLAYER_ONE] = 0;
+			score_[PLAYER_TWO] = 0;
+			for (int player = 0; player < 2; ++player)
+				wgt_score_[player]->set_u_vs(tl[0], tr[0], bl[0], br[0]);
+			for (auto &paddle : paddles_)
+				if (auto handler = paddle.get_input_handler())
+					handler->reset_target();
+		}
+	}
+	update_score();
 
-            //icInput::Instance()->Update();
-        }
-    }
-    else
-    {
-        m_fWinTimer -= fDeltaTime;
-        if (m_fWinTimer <= 0.0f)
-        {
-            m_Puck.Reset();m_Paddles[0].Reset();m_Paddles[1].Reset();
-            m_serveTimer=0.8f;
-            m_score[PLAYER_ONE] = 0;m_score[PLAYER_TWO] = 0;
-            for(int player=0;player<2;++player)m_wgtScore[player]->SetUVs(tl[0],tr[0],bl[0],br[0]);
-            for(auto& paddle:m_Paddles)if(auto handler=paddle.GetInputHandler())handler->ResetTarget();
-        }
-    }
-    UpdateScore();
+	if (GameMode == GAME_MODE_CLIENT) {
+		score_[PLAYER_ONE] = gApp.ReceivePacket.score[PLAYER_ONE];
+		score_[PLAYER_TWO] = gApp.ReceivePacket.score[PLAYER_TWO];
+	}
 
+	wgt_score_[PLAYER_ONE]->update(fDeltaTime);
+	wgt_score_[PLAYER_TWO]->update(fDeltaTime);
+	wgt_win_->update(fDeltaTime);
 
-    if (GameMode == GAME_MODE_CLIENT)
-    {
-        m_score[PLAYER_ONE] = gApp.ReceivePacket.score[PLAYER_ONE];
-        m_score[PLAYER_TWO] = gApp.ReceivePacket.score[PLAYER_TWO];
-    }
-
-    m_wgtScore[PLAYER_ONE]->Update(fDeltaTime);
-    m_wgtScore[PLAYER_TWO]->Update(fDeltaTime);
-    m_wgtWin->Update(fDeltaTime);
-
-    // TODO: if score, win state and such
-    return res;
-}// END FUNCTION Update(const float fDeltaTime, bool *bFinished)
-
+	// TODO: if score, win state and such
+	return res;
+} // END FUNCTION Update(const float fDeltaTime, bool *bFinished)
 
 /*! Renders the current game that is in session
  *
  *  @returns        ICRESULT        Success/failure/warnings of render
-**/
-ICRESULT GameState::Render(void)
-{
-    //icInput::Instance()->HideCurs();
+ **/
+ice::result GameState::render(void) {
+	// icInput::Instance()->HideCurs();
 
-    ICRESULT res = IC_OK;
+	ice::result res = IC_OK;
 
-    icGXDevice* pDev = m_pContent->GetDevice();
+	ice::render::graphics_device *pDev = content_->get_device();
 
-    // set projection and view matrix
-    pDev->SetProjection(m_Camera.GetProjection());
-    pDev->SetViewMatrix(m_Camera.GetViewMat());
+	// set projection and view matrix
+	pDev->set_projection(camera_.get_projection());
+	pDev->set_view_matrix(camera_.get_view_mat());
 
-    // draw the temporary ground
-    pDev->SetWorldTransform(m_Transform);
-    pDev->SetTexture(0, m_pGroundTex);
-    res |= pDev->DrawIndexedVertBuf(m_pGround,m_pGroundIB);
+	// draw the temporary ground
+	pDev->set_world_transform(transform_);
+	pDev->set_texture(0, ground_tex_);
+	res |= pDev->draw_indexed_vert_buf(ground_, ground_ib_);
 
-    // draw the table
-    res |= m_Table.Render();
+	// draw the table
+	res |= table_.render();
 
-    // draw the paddles
-    res |= m_Paddles[0].Render();
-    res |= m_Paddles[1].Render();
+	// draw the paddles
+	res |= paddles_[0].render();
+	res |= paddles_[1].render();
 
-    // draw the puck
-    res |= m_Puck.Render();
+	// draw the puck
+	res |= puck_.render();
 
-    //pDev->EnableDepthTest(false);
-    //pDev->SetCullMode(IC_CULL_OFF);
-    pDev->SetProjection(pDev->GetOrtho());
-    pDev->SetViewMatrix(m_Transform);
-    //pDev->SetWorldTransform(m_Transform);
+	// pDev->EnableDepthTest(false);
+	// pDev->SetCullMode(IC_CULL_OFF);
+	pDev->set_projection(pDev->get_ortho());
+	pDev->set_view_matrix(transform_);
+	// pDev->SetWorldTransform(m_Transform);
 
-    //icColor b = icColor::BLUE;
-    //int score = 0;
-    //// WTF FONTS
-    //m_Font.Printf(0,0,b,"Player 1: %d", score);
-    //m_Font.Printf(1000,100,b,"Player 2: %d", score);
-    //pDev->EnableDepthTest(true);
+	// icColor b = icColor::BLUE;
+	// int score = 0;
+	//// WTF FONTS
+	// m_Font.Printf(0,0,b,"Player 1: %d", score);
+	// m_Font.Printf(1000,100,b,"Player 2: %d", score);
+	// pDev->EnableDepthTest(true);
 
-    m_wgtScore[PLAYER_ONE]->Render();
-    m_wgtScore[PLAYER_TWO]->Render();
+	wgt_score_[PLAYER_ONE]->render();
+	wgt_score_[PLAYER_TWO]->render();
 
+	ice::math::real sx = (ice::math::real)gApp.get_settings().iScreen_x;
+	ice::math::real sy = (ice::math::real)gApp.get_settings().iScreen_y;
 
-    icReal sx = (icReal)gApp.GetSettings().iScreen_x;
-    icReal sy = (icReal)gApp.GetSettings().iScreen_y;
+	ice::math::real rat = sy / 1024.0f;
+	ice::math::real mx  = sx / 2.0f;
 
-    icReal rat = sy/1024.0f;
-    icReal mx = sx/2.0f;
+	wgt_score_[PLAYER_ONE]->set_pos(ice::math::vec2(sx * 0.85f, sy * 0.20f));
+	wgt_score_[PLAYER_TWO]->set_pos(ice::math::vec2(sx * 0.57f, sy * 0.84f));
 
-    
-    m_wgtScore[PLAYER_ONE]->SetPos(icVector2(sx*0.85f,sy*0.20f));
-    m_wgtScore[PLAYER_TWO]->SetPos(icVector2(sx*0.57f,sy*0.84f));
+	if (font_) {
+		font_->print(ice::math::ivec2(24, (int)sy - 40), ice::math::color::white,
+		             GameMode == GAME_MODE_SINGLE
+		                 ? "Mouse: your paddle   |   Opponent: CPU   |   Esc: pause"
+		                 : "Mouse: player 1   |   Arrow keys: player 2   |   Esc: pause");
+		if (serve_timer_ > 0)
+			font_->print(ice::math::ivec2((int)(sx * 0.43f), (int)(sy * 0.50f)),
+			             ice::math::color::white, "GET READY");
+	}
+	if (score_[PLAYER_ONE] >= WINING_SCORE || score_[PLAYER_TWO] >= WINING_SCORE) {
+		pDev->set_projection(pDev->get_ortho());
+		ice::math::mat4 temp;
+		(temp) = ice::math::mat4(1);
+		pDev->set_view_matrix(temp);
+		pDev->set_world_transform(temp);
+		wgt_win_->render();
+	}
 
-    if(m_pFont){
-        m_pFont->Print(icVector2Int(24,(int)sy-40),icColor::WHITE,GameMode==GAME_MODE_SINGLE?"Mouse: your paddle   |   Opponent: CPU   |   Esc: pause":"Mouse: player 1   |   Arrow keys: player 2   |   Esc: pause");
-        if(m_serveTimer>0)m_pFont->Print(icVector2Int((int)(sx*0.43f),(int)(sy*0.50f)),icColor::WHITE,"GET READY");
-    }
-    if (m_score[PLAYER_ONE] >= WINING_SCORE|| m_score[PLAYER_TWO] >= WINING_SCORE)
-    {
-        pDev->SetProjection(pDev->GetOrtho());
-        icMatrix44 temp;
-        temp.Identity();
-        pDev->SetViewMatrix(temp);
-        pDev->SetWorldTransform(temp);
-        m_wgtWin->Render();
-    }
-
-    return res;
-}// END FUNCTION Render(void)
-
+	return res;
+} // END FUNCTION Render(void)
 
 /*! This gets called when the gamestate gets pushed on the stack
  *  and should reset anything that needs to be reset for each game
-**/
-void GameState::OnPush(void)
-{
-    m_Accumulator = 0;
-    m_PhysicsSteps = 0;
-    m_serveTimer=0.8f;
-    m_fWinTimer=0;
-    // reset physics
-    m_Puck.Reset();
-    m_Paddles[0].Reset();
-    m_Paddles[1].Reset();
+ **/
+void GameState::on_push(void) {
+	accumulator_   = 0;
+	physics_steps_ = 0;
+	serve_timer_   = 0.8f;
+	win_timer_     = 0;
+	// reset physics
+	puck_.reset();
+	paddles_[0].reset();
+	paddles_[1].reset();
 
-    // setup input handlers
-    InputHandler* p0 = m_Paddles[0].GetInputHandler();
-    InputHandler* p1 = m_Paddles[1].GetInputHandler();
+	// setup input handlers
+	InputHandler *p0 = paddles_[0].get_input_handler();
+	InputHandler *p1 = paddles_[1].get_input_handler();
 
-    if (p0) delete p0;
-    if (p1) delete p1;
+	if (p0)
+		delete p0;
+	if (p1)
+		delete p1;
 
-    switch (GameMode)
-    {
-    case GAME_MODE_SINGLE:
-        p0 = new PlayerInput(PLAYER_ONE, m_Puck.GetPhys(), m_Paddles[0].GetPhys());
-        p1 = new AiInput(PLAYER_TWO, m_Puck.GetPhys(), m_Paddles[1].GetPhys());
-        break;
-    case GAME_MODE_TWO:
-        p0 = new PlayerInput(PLAYER_ONE, m_Puck.GetPhys(), m_Paddles[0].GetPhys());
-        p1 = new PlayerInput(PLAYER_TWO, m_Puck.GetPhys(), m_Paddles[1].GetPhys());
-        break;
-    case GAME_MODE_HOST:
-    case GAME_MODE_CLIENT:
-        p0 = new PlayerInput(PLAYER_ONE, m_Puck.GetPhys(), m_Paddles[0].GetPhys());
-        p1 = new NetworkInput(PLAYER_TWO, m_Puck.GetPhys(), m_Paddles[1].GetPhys());
-        break;
-    default:
-        p0 = new PlayerInput(PLAYER_ONE, m_Puck.GetPhys(), m_Paddles[0].GetPhys());
-        p1 = new PlayerInput(PLAYER_TWO, m_Puck.GetPhys(), m_Paddles[1].GetPhys());
-        icWarning("invalid game mode entered!");
-    }
+	switch (GameMode) {
+	case GAME_MODE_SINGLE:
+		p0 = new PlayerInput(PLAYER_ONE, puck_.get_phys(), paddles_[0].get_phys());
+		p1 = new AiInput(PLAYER_TWO, puck_.get_phys(), paddles_[1].get_phys());
+		break;
+	case GAME_MODE_TWO:
+		p0 = new PlayerInput(PLAYER_ONE, puck_.get_phys(), paddles_[0].get_phys());
+		p1 = new PlayerInput(PLAYER_TWO, puck_.get_phys(), paddles_[1].get_phys());
+		break;
+	case GAME_MODE_HOST:
+	case GAME_MODE_CLIENT:
+		p0 = new PlayerInput(PLAYER_ONE, puck_.get_phys(), paddles_[0].get_phys());
+		p1 = new NetworkInput(PLAYER_TWO, puck_.get_phys(), paddles_[1].get_phys());
+		break;
+	default:
+		p0 = new PlayerInput(PLAYER_ONE, puck_.get_phys(), paddles_[0].get_phys());
+		p1 = new PlayerInput(PLAYER_TWO, puck_.get_phys(), paddles_[1].get_phys());
+		ice::warning("invalid game mode entered!");
+	}
 
-    m_Paddles[0].SetInputHandler(p0);
-    m_Paddles[1].SetInputHandler(p1);
+	paddles_[0].set_input_handler(p0);
+	paddles_[1].set_input_handler(p1);
 
-    m_score[PLAYER_ONE] = 0;
-    m_score[PLAYER_TWO] = 0;
+	score_[PLAYER_ONE] = 0;
+	score_[PLAYER_TWO] = 0;
 
-    if (m_wgtScore[PLAYER_TWO])
-        m_wgtScore[PLAYER_TWO]->SetUVs(tl[0],tr[0],bl[0],br[0]);
-    if (m_wgtScore[PLAYER_ONE])
-        m_wgtScore[PLAYER_ONE]->SetUVs(tl[0],tr[0],bl[0],br[0]);
+	if (wgt_score_[PLAYER_TWO])
+		wgt_score_[PLAYER_TWO]->set_u_vs(tl[0], tr[0], bl[0], br[0]);
+	if (wgt_score_[PLAYER_ONE])
+		wgt_score_[PLAYER_ONE]->set_u_vs(tl[0], tr[0], bl[0], br[0]);
 
-    icInput::Instance()->HideCurs();
-}// END FUNCTION OnPush(void)
-
+	ice::input::input::instance()->hide_curs();
+} // END FUNCTION OnPush(void)
 
 /*! This gets called when the gamestate gets popped off the stack
  *  we might not need it
-**/
-void GameState::OnPop(void)
-{
-    icInput::Instance()->ShowCurs();
-}// END FUNCTION OnPop(void)
+ **/
+void GameState::on_pop(void) {
+	ice::input::input::instance()->show_curs();
+} // END FUNCTION OnPop(void)

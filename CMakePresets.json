@@ -1,0 +1,70 @@
+{
+  "version": 2,
+  "configurePresets": [
+    {
+      "name": "desktop-debug",
+      "displayName": "Desktop Debug (C++20)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/desktop-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "BUILD_TESTING": "ON",
+        "ICE_WARNINGS_AS_ERRORS": "ON"
+      }
+    },
+    {
+      "name": "desktop-release",
+      "inherits": "desktop-debug",
+      "binaryDir": "${sourceDir}/build/desktop-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+      }
+    },
+    {
+      "name": "desktop-sanitize",
+      "inherits": "desktop-debug",
+      "binaryDir": "${sourceDir}/build/desktop-sanitize",
+      "cacheVariables": {
+        "ICE_ENABLE_SANITIZERS": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "desktop-debug",
+      "configurePreset": "desktop-debug"
+    },
+    {
+      "name": "desktop-release",
+      "configurePreset": "desktop-release"
+    },
+    {
+      "name": "desktop-sanitize",
+      "configurePreset": "desktop-sanitize"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "desktop-debug",
+      "configurePreset": "desktop-debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "desktop-release",
+      "configurePreset": "desktop-release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "desktop-sanitize",
+      "configurePreset": "desktop-sanitize",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}

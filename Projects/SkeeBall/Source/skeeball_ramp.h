@@ -3,59 +3,59 @@
 
 //////////////////////////////////////////////////////////////////////////////
 // ICE INCLUDES
-#include "Audio/icSound.h"
-#include "Render/icModel.h"
+#include "ice/audio/sound.h"
+#include "ice/render/model.h"
 
-#include "Math/Vector/icVector2.h"
-
-class icContentLoader;
+#include "ice/math/vec2.h"
+namespace ice::assets {
+class content_loader;
+}
 class btDiscreteDynamicsWorld;
 class btTriangleIndexVertexArray;
 class btCollisionShape;
 class btCollisionObject;
 class btMotionState;
 
-//class b2Body;
+// class b2Body;
 
 /*! Provides a puck object
-**/
-class Ramp
-{
+ **/
+class Ramp {
 public:
-    //////////////////////////////////////////////////////////////////////////
-    // LIFECYCLE
-    Ramp(void);
-    ~Ramp(void);
+	//////////////////////////////////////////////////////////////////////////
+	// LIFECYCLE
+	Ramp(void);
+	~Ramp(void);
 
-    ICRESULT Init(icContentLoader* pContent, btDiscreteDynamicsWorld* pWorld);
+	ice::result init(ice::assets::content_loader *pContent, btDiscreteDynamicsWorld *pWorld);
 
-    //////////////////////////////////////////////////////////////////////////
-    // OPERATIONS
-    ICRESULT Update(const float fDeltaTime);
-    ICRESULT Render(void);
+	//////////////////////////////////////////////////////////////////////////
+	// OPERATIONS
+	ice::result update(const float fDeltaTime);
+	ice::result render(void);
 
 private:
-    ICRESULT InitPhysics(btDiscreteDynamicsWorld* pWorld);
+	ice::result init_physics(btDiscreteDynamicsWorld *pWorld);
 
-    icMatrix44          m_Trans;        //! puck transformation matrix
+	ice::math::mat4 trans_; //! puck transformation matrix
 
-    icContentLoader*    m_pContent;
+	ice::assets::content_loader *content_;
 
-    icModel*            m_pTable;           //! Table Object
+	ice::render::model *table_; //! Table Object
 
-    btDiscreteDynamicsWorld*    m_pworld;
+	btDiscreteDynamicsWorld *pworld_;
 
-    btTriangleIndexVertexArray* m_indexVertexArrays;
-    btCollisionShape*           m_colShape;
+	btTriangleIndexVertexArray *index_vertex_arrays_;
+	btCollisionShape           *col_shape_;
 
-    btCollisionObject*          m_colObject;
-    btCollisionObject*          m_colObject2;
-    btCollisionObject*          m_colObject3;
+	btCollisionObject *col_object_;
+	btCollisionObject *col_object2_;
+	btCollisionObject *col_object3_;
 
-    void*                       m_vb;
+	void *vb_;
 
-    icVector3*                  m_verts;
-    int*                        m_ib;
+	ice::math::vec3 *verts_;
+	int             *ib_;
 };
 
 #endif //__SKEE_BALL_RAMP_H__

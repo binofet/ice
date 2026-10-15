@@ -1,35 +1,34 @@
 #ifndef __SKEE_BALL_H__
 #define __SKEE_BALL_H__
 
-
 //////////////////////////////////////////////////////////////////////////////
 // ICE INCLUDES
-#include "Core/Application/icApplication.h"
-#include "Core/Threading/icThread.h"
-#include "Audio/icSoundAL.h"
+#include "ice/audio/sound_al.h"
+#include "ice/platform/application.h"
+#include <atomic>
+#include <thread>
 
-#include "Content/icContentLoader.h"
+#include "ice/assets/content_loader.h"
 
-#include "Render/Font/icFontGL.h"
 #include "arcade_grade.h"
 #include "arcade_ui.h"
+#include "ice/render/gl/font_gl.h"
 
-#include "Util/icSettingsFile.h"
-#include "Util/icStateMachine.h"
-#include "Util/icTime.h"
-
+#include "ice/util/settings_file.h"
+#include "ice/util/state_machine.h"
+#include "ice/util/time.h"
 
 //////////////////////////////////////////////////////////////////////////////
 // LOCAL INCLUDES
 #include "gamestate.h"
+#include "ice/net/companion_link.h"
+#include "ice/net/companion_web.h"
+#include "ice/util/join_qr.h"
+#include "last_game.h"
 #include "main_menu.h"
 #include "pause_menu.h"
-#include "settings_menu.h"
 #include "settings.h"
-#include "last_game.h"
-#include "Network/icCompanionLink.h"
-#include "Network/icCompanionWeb.h"
-#include "Util/icJoinQR.h"
+#include "settings_menu.h"
 
 #ifdef WIIMOTE
 #include "wiimote.h"
@@ -38,157 +37,142 @@
 #ifdef WIIMOTE
 #define CONSOLE_OUTPUT
 
-
-
 #define _SETCOL(flags) SetConsoleTextAttribute(console, flags)
 
-#define COLWHITE			_SETCOL(FOREGROUND_RED|FOREGROUND_GREEN|FOREGROUND_BLUE)
-#define BRIGHT_WHITE	_SETCOL(FOREGROUND_RED|FOREGROUND_GREEN|FOREGROUND_BLUE|FOREGROUND_INTENSITY)
-#define RED				_SETCOL(FOREGROUND_RED)
-#define BRIGHT_RED		_SETCOL(FOREGROUND_RED|FOREGROUND_INTENSITY)
-#define BLUE			_SETCOL(FOREGROUND_BLUE)
-#define BRIGHT_BLUE		_SETCOL(FOREGROUND_BLUE|FOREGROUND_INTENSITY)
-#define GREEN			_SETCOL(FOREGROUND_GREEN)
-#define BRIGHT_GREEN	_SETCOL(FOREGROUND_GREEN|FOREGROUND_INTENSITY)
-#define YELLOW			_SETCOL(FOREGROUND_RED|FOREGROUND_GREEN)
-#define BRIGHT_YELLOW	_SETCOL(FOREGROUND_RED|FOREGROUND_GREEN|FOREGROUND_INTENSITY)
-#define CYAN			_SETCOL(FOREGROUND_BLUE|FOREGROUND_GREEN)
-#define BRIGHT_CYAN		_SETCOL(FOREGROUND_GREEN|FOREGROUND_BLUE|FOREGROUND_INTENSITY)
-#define PURPLE			_SETCOL(FOREGROUND_RED|FOREGROUND_BLUE)
-#define BRIGHT_PURPLE	_SETCOL(FOREGROUND_RED|FOREGROUND_BLUE|FOREGROUND_INTENSITY)
+#define COLWHITE _SETCOL(FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE)
+#define BRIGHT_WHITE                                                                               \
+	_SETCOL(FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY)
+#define red _SETCOL(FOREGROUND_RED)
+#define BRIGHT_RED _SETCOL(FOREGROUND_RED | FOREGROUND_INTENSITY)
+#define blue _SETCOL(FOREGROUND_BLUE)
+#define BRIGHT_BLUE _SETCOL(FOREGROUND_BLUE | FOREGROUND_INTENSITY)
+#define green _SETCOL(FOREGROUND_GREEN)
+#define BRIGHT_GREEN _SETCOL(FOREGROUND_GREEN | FOREGROUND_INTENSITY)
+#define yellow _SETCOL(FOREGROUND_RED | FOREGROUND_GREEN)
+#define BRIGHT_YELLOW _SETCOL(FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_INTENSITY)
+#define CYAN _SETCOL(FOREGROUND_BLUE | FOREGROUND_GREEN)
+#define BRIGHT_CYAN _SETCOL(FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY)
+#define PURPLE _SETCOL(FOREGROUND_RED | FOREGROUND_BLUE)
+#define BRIGHT_PURPLE _SETCOL(FOREGROUND_RED | FOREGROUND_BLUE | FOREGROUND_INTENSITY)
 
-#define BLANK_LINE \
- _T("                                                                             \n")
-
-
+#define BLANK_LINE                                                                                 \
+	_T("                                                                             \n")
 
 #endif // WIIMOTE console helpers
 
 /*! This is the SkeeBall game
-**/
-class SkeeBall : public icApplication
-{
+ **/
+class SkeeBall : public ice::platform::application {
 public:
-    //////////////////////////////////////////////////////////////////////////
-    // LIFECYCLE
-    SkeeBall(void);
-    ~SkeeBall(void);
+	//////////////////////////////////////////////////////////////////////////
+	// LIFECYCLE
+	SkeeBall(void);
+	~SkeeBall(void);
 
-    ICRESULT Cleanup(void);
+	ice::result cleanup(void);
 
-    ICRESULT Init(int argc, char* args[]);
+	ice::result init(int argc, char *args[]);
 
-    //////////////////////////////////////////////////////////////////////////
-    // OPERATIONS
-    ICRESULT Update(void);
-    ICRESULT Render(void);
-    ICRESULT RenderFrame(bool present);
-    void PresentFrame();
-    icWindow* GetMainWindow() const {return m_pMainWin;}
-    ICRESULT Quit(void);
+	//////////////////////////////////////////////////////////////////////////
+	// OPERATIONS
+	ice::result            update(void);
+	ice::result            render(void);
+	ice::result            render_frame(bool present);
+	void                   present_frame();
+	ice::platform::window *get_main_window() const { return main_win_; }
+	ice::result            quit(void);
 
-    const SkeeBallSettings& GetSettings(void) const;
+	const SkeeBallSettings &get_settings(void) const;
 
-    void UpdateSettings(const SkeeBallSettings& settings);
+	void update_settings(const SkeeBallSettings &settings);
 
+	ice::util::state_machine &get_state_machine(void) { return state_machine_; };
 
-    icStateMachine& GetStateMachine(void)
-    {
-        return m_StateMachine;
-    };
-
-    icCompanionLink Companion;
-    icCompanionWeb CompanionWeb;
-    bool BrowserPanel=false;
-    icJoinQR CompanionQR;
-    unsigned CompanionRoundSeen=0;
-    void ToggleBrowser();
-    unsigned CompanionCode=0;
-    bool CompanionFocused=true;
-    bool CompanionPanel=false;
-    std::string CompanionAddresses;
-    void ToggleCompanion();
-    GameState           m_GameState;        //! Main game state
-    MainMenu            m_MainMenu;         //! Main menu state
-    ArcadeUI ui;
-    SettingsMenu        m_SettingsMenu;     //! Settings menu state
-    PauseMenu           m_PauseMenu;        //! Pause menu state
-    LastGame            m_LastGame;
+	ice::net::companion_link Companion;
+	ice::net::companion_web  CompanionWeb;
+	bool                     BrowserPanel = false;
+	ice::util::join_qr       CompanionQR;
+	unsigned                 CompanionRoundSeen = 0;
+	void                     toggle_browser();
+	unsigned                 CompanionCode    = 0;
+	bool                     CompanionFocused = true;
+	bool                     CompanionPanel   = false;
+	std::string              CompanionAddresses;
+	void                     toggle_companion();
+	GameState                game_state_; //! Main game state
+	MainMenu                 main_menu_;  //! Main menu state
+	ArcadeUI                 ui;
+	SettingsMenu             settings_menu_; //! Settings menu state
+	PauseMenu                pause_menu_;    //! Pause menu state
+	LastGame                 last_game_;
 
 #ifdef WIIMOTE
-    // create a wiimote object
+	// create a wiimote object
 	wiimote remote;
 #endif
 
 private:
-    ICRESULT WiiMoteLoop(void*);
+	ice::result wii_mote_loop(void *);
 
-    void ProcessSettings(void);
+	void process_settings(void);
 
+	volatile bool    wiimote;
+	std::atomic_bool playing{false};
 
-    volatile bool wiimote;
-    volatile bool playing;
+	float                        net_timer_;
+	ice::assets::content_loader *content_;
 
+	int last_x_;
+	int last_y_;
 
-    float m_fNetTimer;
-    icContentLoader*    m_Content;
+	ice::util::state_machine state_machine_; //! The game state manager
 
-    int                 m_lastX;
-    int                 m_lastY;
+	ice::util::timer game_time_; //! The time keeper
 
-    icStateMachine      m_StateMachine;     //! The game state manager
+	ArcadeGrade              grade_;
+	ice::render::gl::font_gl font_;
+	ice::render::gl::font_gl pair_font_;
 
-    icTimer             m_GameTime;         //! The time keeper
+	ice::platform::window *main_win_; //! Main window
 
-    ArcadeGrade m_grade;
-    icFontGL            m_font;
-    icFontGL            m_pairFont;
-
-    icWindow*           m_pMainWin;         //! Main window
-
-    icThread*           m_pthread;
-
+	std::jthread pthread_;
 
 #ifdef WIIMOTE
-    HANDLE console;
+	HANDLE console;
 #endif
 
-    icSoundDeviceAL     m_SoundDevice;      //! Audio device
-    icSoundI*           m_BackGroundMusic;  //! Background music object
-    icSoundListener     m_Listener;         //! Devices listener for 3d sound
+	ice::audio::sound_device_al sound_device_;      //! Audio device
+	ice::audio::sound_i        *back_ground_music_; //! Background music object
+	ice::audio::sound_listener  listener_;          //! Devices listener for 3d sound
 
-    SkeeBallSettings         m_Settings;         //! Current settings
-    SkeeBallSettings         m_InitialSettings;  //! Settings when loaded
+	SkeeBallSettings settings_;         //! Current settings
+	SkeeBallSettings initial_settings_; //! Settings when loaded
 
-    icSettingsFile      m_SettingsFile;
+	ice::util::settings_file settings_file_;
 };
-
 
 /*! Get the current settings
  *
  *  @returns        const SkeeBallSettings&      Reference to current settings
-**/
-FORCE_INLINE const SkeeBallSettings& SkeeBall::GetSettings(void) const
-{
-    return m_Settings;
-}// END FUNCTION GetSettings(void) const
-
+ **/
+FORCE_INLINE const SkeeBallSettings &SkeeBall::get_settings(void) const {
+	return settings_;
+} // END FUNCTION GetSettings(void) const
 
 /*! Updates the game/engine settings
  *
  *  @param          settings        Current settings structure
-**/
-FORCE_INLINE void SkeeBall::UpdateSettings(const SkeeBallSettings& settings)
-{
-    m_Settings = settings;
+ **/
+FORCE_INLINE void SkeeBall::update_settings(const SkeeBallSettings &settings) {
+	settings_ = settings;
 
-    if (!m_Settings.bMusic)
-        m_BackGroundMusic->Stop();
+	if (!settings_.bMusic)
+		back_ground_music_->stop();
 
-    icSoundParam params = m_BackGroundMusic->GetParams();
-    params.fVol = m_Settings.fMusic_vol;
-    m_BackGroundMusic->SetParams(params);
+	ice::audio::sound_param params = back_ground_music_->get_params();
+	params.vol                     = settings_.fMusic_vol;
+	back_ground_music_->set_params(params);
 
-}// END FUNCTION UpdateSettings(const SkeeBallSettings& settings)
+} // END FUNCTION UpdateSettings(const SkeeBallSettings& settings)
 
 #endif //__SKEE_BALL_H__

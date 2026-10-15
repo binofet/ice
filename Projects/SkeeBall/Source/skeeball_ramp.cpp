@@ -1,300 +1,261 @@
 
 #include "skeeball_ramp.h"
 
-#include "Content/icContentLoader.h"
-#include "Core/IO/icFile.h"
+#include "ice/assets/content_loader.h"
+#include "ice/io/file.h"
 
-#include "Render/icModel.h"
+#include "ice/render/model.h"
 
-#include "Render/VertBuffer/icVertBuffer.h"
+#include "ice/render/vert_buffer.h"
 
 #include "btBulletDynamicsCommon.h"
 
-
 /*! c'tor
-**/
-Ramp::Ramp(void)
-{
-    m_pTable = NULL;
+ **/
+Ramp::Ramp(void) {
+	table_ = NULL;
 
-    m_verts = NULL;
-    m_ib = NULL;
+	verts_ = NULL;
+	ib_    = NULL;
 
-    m_vb = NULL;
-}// END FUNCTION Ramp(void)
-
+	vb_ = NULL;
+} // END FUNCTION Ramp(void)
 
 /*! d'tor
-**/
-Ramp::~Ramp(void)
-{
-    if (m_verts)
-        delete[] m_verts;
+ **/
+Ramp::~Ramp(void) {
+	if (verts_)
+		delete[] verts_;
 
-    if (m_ib)
-        delete[] m_ib;
+	if (ib_)
+		delete[] ib_;
 
-    if (m_vb)
-        free(m_vb);
-}// END FUNCTION ~Ramp(void)
-
+	if (vb_)
+		free(vb_);
+} // END FUNCTION ~Ramp(void)
 
 /*! Initializes the puck
  *
  *  @param          pContent        Pointer to content loader
  *  @param          pWorld          Pointer to physics world
  *  @returns        ICRESULT        Success/failure of initialization
-**/
-ICRESULT Ramp::Init(icContentLoader* pContent, btDiscreteDynamicsWorld* pWorld)
-{
-    ICRESULT res = IC_OK;
-    if (!pContent)
-        return IC_FAIL_GEN;
+ **/
+ice::result Ramp::init(ice::assets::content_loader *pContent, btDiscreteDynamicsWorld *pWorld) {
+	ice::result res = IC_OK;
+	if (!pContent)
+		return IC_FAIL_GEN;
 
-    m_pContent = pContent;
+	content_ = pContent;
 
-    // load the Ramp model
-    res |= m_pContent->Load("Resource/models/skeeball_table.icm",&m_pTable);
+	// load the Ramp model
+	res |= content_->load("Resource/models/skeeball_table.icm", &table_);
 
-    m_Trans.Identity();
-    m_Trans.RotX(-IC_PI/2.0f);
+	(trans_) = ice::math::mat4(1);
+	(trans_) = glm::rotate(trans_, -IC_PI / 2.0f, ice::math::vec3(1, 0, 0));
 
-    res |= InitPhysics(pWorld);
+	res |= init_physics(pWorld);
 
-    return res;
-}// END FUNCTION Init(icContentLoader* pContent, b2World* pWorld)
-
+	return res;
+} // END FUNCTION Init(icContentLoader* pContent, b2World* pWorld)
 
 /*! Updates the Ramp
  *
  *  @param      fDeltaTime      Elapsed time since last update
  *  @returns    ICRESULT        Success/failure of update
-**/
-ICRESULT Ramp::Update(const float fDeltaTime)
-{
-    return IC_OK;
-}// END FUNCTION Update(const float fDeltaTime)
+ **/
+ice::result Ramp::update(const float fDeltaTime) {
+	return IC_OK;
+} // END FUNCTION Update(const float fDeltaTime)
 
-//static icModel* model;
+// static icModel* model;
 
 /*! Renders the Ramp
  *
  *  @returns        ICRESULT        Success/failure of render
-**/
-ICRESULT Ramp::Render(void)
-{
-    ICRESULT res = IC_OK;
+ **/
+ice::result Ramp::render(void) {
+	ice::result res = IC_OK;
 
-    icMatrix44 temp_mat;
+	ice::math::mat4 temp_mat;
 
-    res = m_pContent->GetDevice()->SetAmbientColor(icColor::BRED);
+	res = content_->get_device()->set_ambient_color(ice::math::color::bred);
 
-    if (m_pworld)
-    {
-        m_colObject->getWorldTransform().getOpenGLMatrix((btScalar*)&temp_mat);
-        temp_mat.Scale(-1.0f,1.0f,1.0f);
-        res |= m_pTable->Render(temp_mat);
+	if (pworld_) {
+		col_object_->getWorldTransform().getOpenGLMatrix(glm::value_ptr(temp_mat));
+		(temp_mat) = glm::scale(temp_mat, ice::math::vec3(-1.0f, 1.0f, 1.0f));
+		res |= table_->render(temp_mat);
 
-        m_colObject2->getWorldTransform().getOpenGLMatrix((btScalar*)&temp_mat);
-        temp_mat.Scale(-1.0f,1.0f,1.0f);
-        res |= m_pTable->Render(temp_mat);
+		col_object2_->getWorldTransform().getOpenGLMatrix(glm::value_ptr(temp_mat));
+		(temp_mat) = glm::scale(temp_mat, ice::math::vec3(-1.0f, 1.0f, 1.0f));
+		res |= table_->render(temp_mat);
 
-        m_colObject3->getWorldTransform().getOpenGLMatrix((btScalar*)&temp_mat);
-        temp_mat.Scale(-1.0f,1.0f,1.0f);
-        res |= m_pTable->Render(temp_mat);
-    }
-    else
-    {
-        temp_mat.Identity();
-        temp_mat.RotX(-IC_PI_HALF);
-        temp_mat.SetPos(-105.422f,0.0f,0.0f);
-        temp_mat.Scale(-1.0f,1.0f,1.0f);
-        m_pTable->Render(temp_mat);
-        temp_mat.Scale(-1.0f,1.0f,1.0f);
+		col_object3_->getWorldTransform().getOpenGLMatrix(glm::value_ptr(temp_mat));
+		(temp_mat) = glm::scale(temp_mat, ice::math::vec3(-1.0f, 1.0f, 1.0f));
+		res |= table_->render(temp_mat);
+	} else {
+		(temp_mat) = ice::math::mat4(1);
+		(temp_mat) = glm::rotate(temp_mat, -IC_PI_HALF, ice::math::vec3(1, 0, 0));
+		ice::math::set_position(temp_mat, ice::math::vec3(-105.422f, 0.0f, 0.0f));
+		(temp_mat) = glm::scale(temp_mat, ice::math::vec3(-1.0f, 1.0f, 1.0f));
+		table_->render(temp_mat);
+		(temp_mat) = glm::scale(temp_mat, ice::math::vec3(-1.0f, 1.0f, 1.0f));
 
-        temp_mat.Scale(-1.0f,1.0f,1.0f);
-        temp_mat.SetPos(0.0f,0.0f,0.0f);
-        m_pTable->Render(temp_mat);
-        temp_mat.Scale(-1.0f,1.0f,1.0f);
+		(temp_mat) = glm::scale(temp_mat, ice::math::vec3(-1.0f, 1.0f, 1.0f));
+		ice::math::set_position(temp_mat, ice::math::vec3(0.0f, 0.0f, 0.0f));
+		table_->render(temp_mat);
+		(temp_mat) = glm::scale(temp_mat, ice::math::vec3(-1.0f, 1.0f, 1.0f));
 
-        temp_mat.Scale(-1.0f,1.0f,1.0f);
-        temp_mat.SetPos(105.422f,0.0f,0.0f);
-        m_pTable->Render(temp_mat);
-    }
+		(temp_mat) = glm::scale(temp_mat, ice::math::vec3(-1.0f, 1.0f, 1.0f));
+		ice::math::set_position(temp_mat, ice::math::vec3(105.422f, 0.0f, 0.0f));
+		table_->render(temp_mat);
+	}
 
-    return res;
-}// END FUNCTION Render(void)
-
-
+	return res;
+} // END FUNCTION Render(void)
 
 /*! Initializes the physics for the Ramp
  *
  *  @param          pWorld          Pointer to physics world
  *  @returns        ICRESULT        Success/failure of physics initialization
-**/
-ICRESULT Ramp::InitPhysics(btDiscreteDynamicsWorld* pWorld)
-{
-    if (!pWorld) return IC_OK;;
+ **/
+ice::result Ramp::init_physics(btDiscreteDynamicsWorld *pWorld) {
+	if (!pWorld)
+		return IC_OK;
+	;
 
+	pworld_ = pWorld;
 
-    m_pworld = pWorld;
+	if (verts_)
+		delete[] verts_;
 
-    if (m_verts)
-        delete[] m_verts;
+	if (ib_)
+		delete[] ib_;
 
-    if (m_ib) 
-        delete[] m_ib;
+	// m_pContent->Load("Resource/models/skeeball_collision.icm",&model);
 
+	//// try to open the model file
+	ice::io::file file;
+	if (ICEFAIL(file.open("Resource/models/skeeball_collision.icm", ICFMREAD_EXISTING))) {
+		ice::warningf("Content loader could not open: %s",
+		              "Resource/models/skeeball_collision.icm");
+		return IC_FAIL_GEN;
+	}
 
-    
-    //m_pContent->Load("Resource/models/skeeball_collision.icm",&model);
+	ice::render::e_model model_header = {0};
 
-    //// try to open the model file
-    icFile file;
-    if (ICEFAIL(file.Open("Resource/models/skeeball_collision.icm", ICFMREAD_EXISTING)))
-    {
-        icWarningf("Content loader could not open: %s", "Resource/models/skeeball_collision.icm");
-        return IC_FAIL_GEN;
-    }
+	size_t sizeread = 0;
 
-    _ICE_MODEL model_header = {0};
+	// read the ice model header
+	if (ICEFAIL(file.read(&model_header, sizeof(ice::render::e_model), &sizeread))) {
+		ice::warningf("Content loader could not read: %s",
+		              "Resource/models/skeeball_collision.icm");
+		return IC_FAIL_GEN;
+	}
 
-    size_t sizeread = 0;
+	verts_ = NULL;
 
-    // read the ice model header
-    if (ICEFAIL(file.Read(&model_header, sizeof(_ICE_MODEL), &sizeread)))
-    {
-        icWarningf("Content loader could not read: %s", "Resource/models/skeeball_collision.icm");
-        return IC_FAIL_GEN;
-    }
+	int totalTriangles = model_header.num_ind / 3;
 
-    
-    m_verts = NULL;
+	int totalVerts = model_header.num_verts;
 
-    int totalTriangles = model_header.numInd/3;
+	verts_ = new ice::math::vec3[model_header.num_verts];
 
-    int totalVerts = model_header.numVerts;
+	ib_ = new int[model_header.num_ind];
 
-    m_verts = new icVector3[model_header.numVerts];
+	vb_ = malloc(sizeof(ice::render::vrtnrm_dif) * model_header.num_verts);
 
-    m_ib = new int [model_header.numInd];
+	size_t read;
+	// CREATE VERTEX BUFFER
+	switch (model_header.model_version) {
+	case ICE_MODEL_FORMAT: {
+		switch (model_header.vert_type) {
+		case ice::render::ic_vert_dif: {
+			ice::render::vrt_dif cur_vert;
+			for (int i = 0; i < model_header.num_verts; ++i) {
+				file.read(&cur_vert, sizeof(ice::render::vrt_dif), &read);
+				verts_[i] = cur_vert.pos;
+			}
+		} break;
+		case ice::render::ic_vert_nrm_dif: {
+			ice::render::vrtnrm_dif cur_vert;
+			for (int i = 0; i < model_header.num_verts; ++i) {
+				file.read(&cur_vert, sizeof(ice::render::vrtnrm_dif), &read);
+				verts_[i] = cur_vert.pos;
+			}
+		} break;
+		default:;
+		}
+	} break;
+	case 101: {
+		switch (model_header.vert_type) {
+		case 2: {
+			ice::render::vrt_dif cur_vert;
+			for (int i = 0; i < model_header.num_verts; ++i) {
+				file.read(&cur_vert, sizeof(ice::render::vrt_dif), &read);
+				verts_[i] = cur_vert.pos;
+			}
+		} break;
+		case 8: {
+			ice::render::vrtnrm_dif cur_vert;
+			for (int i = 0; i < model_header.num_verts; ++i) {
+				file.read(&cur_vert, sizeof(ice::render::vrt_dif), &read);
+				verts_[i] = cur_vert.pos;
+			}
+		} break;
+		default: {
+			ice::render::vrtnrm_dif cur_vert;
+			for (int i = 0; i < model_header.num_verts; ++i) {
+				file.read(&cur_vert, sizeof(ice::render::vrt_dif), &read);
+				verts_[i] = cur_vert.pos;
+			}
+		}
+		}
+	} break;
+	case 100: {
+		file.set_pos(sizeof(ice::render::e_model_100)); // rewind
 
-    m_vb = malloc(sizeof(ICVRTNRM_DIF)*model_header.numVerts);
+		ice::render::vrt_dif cur_vert;
+		for (int i = 0; i < model_header.num_verts; ++i) {
+			file.read(&cur_vert, sizeof(ice::render::vrt_dif), &read);
+			verts_[i] = cur_vert.pos;
+		}
+	} break;
+	default:
+		ice::warningf("Invalid model format: %s", "Resource/models/skeeball_collision.icm");
+		return IC_FAIL_GEN;
+	}
 
-    size_t read;
-    // CREATE VERTEX BUFFER
-    switch(model_header.modelVersion)
-    {
-    case ICE_MODEL_FORMAT:
-        {
-            switch (model_header.vertType)
-            {
-            case IC_VERT_DIF:
-                {
-                    ICVRT_DIF cur_vert;
-                    for (int i=0; i<model_header.numVerts; ++i)
-                    {
-                        file.Read(&cur_vert,sizeof(ICVRT_DIF),&read);
-                        m_verts[i] = cur_vert.pos;
-                    }
-                }break;
-            case IC_VERT_NRM_DIF:
-                {
-                    ICVRTNRM_DIF cur_vert;
-                    for (int i=0; i<model_header.numVerts; ++i)
-                    {
-                        file.Read(&cur_vert,sizeof(ICVRTNRM_DIF),&read);
-                        m_verts[i] = cur_vert.pos;
-                    }
-                }break;
-            default:
-                ;
-            }
-        }break;
-    case 101:
-        {
-            switch (model_header.vertType)
-            {
-            case 2:
-                {
-                    ICVRT_DIF cur_vert;
-                    for (int i=0; i<model_header.numVerts; ++i)
-                    {
-                        file.Read(&cur_vert,sizeof(ICVRT_DIF),&read);
-                        m_verts[i] = cur_vert.pos;
-                    }
-                }break;
-            case 8:
-                {
-                    ICVRTNRM_DIF cur_vert;
-                    for (int i=0; i<model_header.numVerts; ++i)
-                    {
-                        file.Read(&cur_vert,sizeof(ICVRT_DIF),&read);
-                        m_verts[i] = cur_vert.pos;
-                    }
-                }break;
-            default:
-                {
-                    ICVRTNRM_DIF cur_vert;
-                    for (int i=0; i<model_header.numVerts; ++i)
-                    {
-                        file.Read(&cur_vert,sizeof(ICVRT_DIF),&read);
-                        m_verts[i] = cur_vert.pos;
-                    }
-                }
-            }
-        }break;
-    case 100:
-        {
-            file.SetPos(sizeof(_ICE_MODEL_100)); // rewind
+	file.read(ib_, model_header.num_ind * sizeof(int), &read);
 
-            ICVRT_DIF cur_vert;
-            for (int i=0; i<model_header.numVerts; ++i)
-            {
-                file.Read(&cur_vert,sizeof(ICVRT_DIF),&read);
-                m_verts[i] = cur_vert.pos;
-            }
-        }break;
-    default:
-        icWarningf("Invalid model format: %s", "Resource/models/skeeball_collision.icm");
-        return IC_FAIL_GEN;
-    }
+	index_vertex_arrays_ =
+	    new btTriangleIndexVertexArray(totalTriangles, ib_, 3 * sizeof(int), model_header.num_verts,
+	                                   (btScalar *)verts_, sizeof(ice::math::vec3));
 
-    file.Read(m_ib,model_header.numInd*sizeof(int),&read);
+	btVector3 aabbMin(-1000, -1000, -1000), aabbMax(1000, 1000, 1000);
+	col_shape_ = new btBvhTriangleMeshShape(index_vertex_arrays_, true, aabbMin, aabbMax);
 
-    m_indexVertexArrays = new btTriangleIndexVertexArray(totalTriangles,
-        m_ib,
-        3*sizeof(int),
-        model_header.numVerts,(btScalar*)m_verts,sizeof(icVector3));
-    
-    btVector3 aabbMin(-1000,-1000,-1000),aabbMax(1000,1000,1000);
-    m_colShape = new btBvhTriangleMeshShape(m_indexVertexArrays,true,aabbMin,aabbMax);
+	col_object_ = new btCollisionObject();
+	col_object_->setCollisionShape(col_shape_);
 
+	col_object2_ = new btCollisionObject();
+	col_object2_->setCollisionShape(col_shape_);
 
-    m_colObject = new btCollisionObject();
-    m_colObject->setCollisionShape(m_colShape);
-
-    m_colObject2 = new btCollisionObject();
-    m_colObject2->setCollisionShape(m_colShape);
-
-    m_colObject3 = new btCollisionObject();
-    m_colObject3->setCollisionShape(m_colShape);
+	col_object3_ = new btCollisionObject();
+	col_object3_->setCollisionShape(col_shape_);
 
 	btTransform transform;
-    transform.setFromOpenGLMatrix((btScalar*)m_Trans);
-    m_colObject->setWorldTransform(transform);
+	transform.setFromOpenGLMatrix(glm::value_ptr(trans_));
+	col_object_->setWorldTransform(transform);
 
-    transform.setOrigin(btVector3(-105.422f,0.0f,0.0f));
-    m_colObject2->setWorldTransform(transform);
+	transform.setOrigin(btVector3(-105.422f, 0.0f, 0.0f));
+	col_object2_->setWorldTransform(transform);
 
-    transform.setOrigin(btVector3(105.422f,0.0f,0.0f));
-    m_colObject3->setWorldTransform(transform);
+	transform.setOrigin(btVector3(105.422f, 0.0f, 0.0f));
+	col_object3_->setWorldTransform(transform);
 
+	pWorld->addCollisionObject(col_object_);  //, 0x0001, 0x00FF);
+	pWorld->addCollisionObject(col_object2_); //, 0x0001, 0x00FF);
+	pWorld->addCollisionObject(col_object3_); //, 0x0001, 0x00FF);
 
-
-    pWorld->addCollisionObject(m_colObject);//, 0x0001, 0x00FF);
-    pWorld->addCollisionObject(m_colObject2);//, 0x0001, 0x00FF);
-    pWorld->addCollisionObject(m_colObject3);//, 0x0001, 0x00FF);
-
-    return IC_OK;
-}// END FUNCTION InitPhysics(b2World* pWorld)
+	return IC_OK;
+} // END FUNCTION InitPhysics(b2World* pWorld)

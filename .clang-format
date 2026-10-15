@@ -1,0 +1,9 @@
+# Pinned to clang-format 18.1.8; see Tools/Quality/requirements.txt.
+BasedOnStyle: LLVM
+UseTab: ForIndentation
+IndentWidth: 4
+TabWidth: 4
+ColumnLimit: 100
+AccessModifierOffset: -4
+AlignConsecutiveDeclarations: Consecutive
+AlignConsecutiveAssignments: Consecutive

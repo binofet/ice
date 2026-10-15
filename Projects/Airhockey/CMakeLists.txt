@@ -94,7 +94,7 @@ set(SOURCE_FILES
     Source/table.cpp
     Source/table.h)
 
-include_directories( ../../Engine/src ../../Engine/include ../../Engine/3rdparty )
+include_directories( ../../engine/src ../../engine/include ../../engine/3rdparty )
 
 add_executable(Airhockey MACOSX_BUNDLE ${SOURCE_FILES})
 

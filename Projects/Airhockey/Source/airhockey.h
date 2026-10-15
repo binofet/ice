@@ -1,154 +1,140 @@
 #ifndef __AIRHOCKEY_H__
 #define __AIRHOCKEY_H__
 
-
 //////////////////////////////////////////////////////////////////////////////
 // ICE INCLUDES
-#include "Core/Application/icApplication.h"
-#include "Audio/icSoundAL.h"
+#include "ice/audio/sound_al.h"
+#include "ice/platform/application.h"
 
-#include "Content/icContentLoader.h"
+#include "ice/assets/content_loader.h"
 
-#include "Render/Font/icFont.h"
+#include "ice/render/font.h"
 
-#include "Util/icSettingsFile.h"
-#include "Util/icStateMachine.h"
-#include "Util/icTime.h"
+#include "ice/util/settings_file.h"
+#include "ice/util/state_machine.h"
+#include "ice/util/time.h"
 
-#include "Network/icSocket.h"
+#include "ice/net/socket.h"
 
 //////////////////////////////////////////////////////////////////////////////
 // LOCAL INCLUDES
+#include "airhockey_settings.h"
 #include "gamestate.h"
-#include "spinstate.h"
 #include "main_menu.h"
 #include "net_menu.h"
 #include "pause_menu.h"
 #include "settings_menu.h"
-#include "airhockey_settings.h"
+#include "spinstate.h"
 
-#define AIRPORT     24220
-#define AIRPACKET   0x42
+#define AIRPORT 24220
+#define AIRPACKET 0x42
 
-//#define DEBUG_INSTALL
+// #define DEBUG_INSTALL
 
-struct _airpacket
-{
-    _airpacket()
-    {
-        type = AIRPACKET;
-    }
-    uchar  type;
-    icVector2 puck_pos;
-    icVector2 paddle_pos;
-    icVector2 paddle_vel;
-    icReal puck_ang;
-    uchar score[2];
+struct _airpacket {
+	_airpacket() { type = AIRPACKET; }
+	ice::uchar      type;
+	ice::math::vec2 puck_pos;
+	ice::math::vec2 paddle_pos;
+	ice::math::vec2 paddle_vel;
+	ice::math::real puck_ang;
+	ice::uchar      score[2];
 };
 
 /*! This is the airhockey game
-**/
-class Airhockey : public icApplication
-{
+ **/
+class Airhockey : public ice::platform::application {
 public:
-    icWindow* GetMainWindow() const {return m_pMainWin;}
-    //////////////////////////////////////////////////////////////////////////
-    // LIFECYCLE
-    Airhockey(void);
-    ~Airhockey(void);
+	ice::platform::window *get_main_window() const { return main_win_; }
+	//////////////////////////////////////////////////////////////////////////
+	// LIFECYCLE
+	Airhockey(void);
+	~Airhockey(void);
 
-    ICRESULT Cleanup(void);
+	ice::result cleanup(void);
 
-    ICRESULT Init(int argc, char* args[]);
+	ice::result init(int argc, char *args[]);
 
-    //////////////////////////////////////////////////////////////////////////
-    // OPERATIONS
-    ICRESULT Update(void);
-    ICRESULT Render(void);
-    ICRESULT RenderFrame(bool present);
-    void PresentFrame();
-    ICRESULT Quit(void);
+	//////////////////////////////////////////////////////////////////////////
+	// OPERATIONS
+	ice::result update(void);
+	ice::result render(void);
+	ice::result render_frame(bool present);
+	void        present_frame();
+	ice::result quit(void);
 
-    const AirSettings& GetSettings(void) const;
+	const AirSettings &get_settings(void) const;
 
-    void UpdateSettings(const AirSettings& settings);
+	void update_settings(const AirSettings &settings);
 
+	ice::util::state_machine &get_state_machine(void) { return state_machine_; };
 
-    icStateMachine& GetStateMachine(void)
-    {
-        return m_StateMachine;
-    };
+	GameState    game_state_;    //! Main game state
+	SpinState    spin_state_;    //! Spins the table under the menu
+	MainMenu     main_menu_;     //! Main menu state
+	NetMenu      net_menu_;      //! Network menu state
+	SettingsMenu settings_menu_; //! Settings menu state
+	PauseMenu    pause_menu_;    //! Pause menu state
 
-    GameState           m_GameState;        //! Main game state
-    SpinState           m_SpinState;        //! Spins the table under the menu
-    MainMenu            m_MainMenu;         //! Main menu state
-    NetMenu             m_NetMenu;          //! Network menu state
-    SettingsMenu        m_SettingsMenu;     //! Settings menu state
-    PauseMenu           m_PauseMenu;        //! Pause menu state
-
-    int                 m_iGameMode;
-    icSocket            Socket;
-    _airpacket          SendPacket;
-    _airpacket          ReceivePacket;
+	int              i_game_mode_;
+	ice::net::socket Socket;
+	_airpacket       SendPacket;
+	_airpacket       ReceivePacket;
 
 private:
-    void ProcessSettings(void);
+	void process_settings(void);
 
-    float m_fNetTimer;
-    icContentLoader*    m_Content;
+	float                        net_timer_;
+	ice::assets::content_loader *content_;
 
-    icStateMachine      m_StateMachine;     //! The game state manager
+	ice::util::state_machine state_machine_; //! The game state manager
 
-    icTimer             m_GameTime;         //! The time keeper
+	ice::util::timer game_time_; //! The time keeper
 
-    icFontI*            m_pFont;
+	ice::render::font *font_;
 
-    icWindow*           m_pMainWin;         //! Main window
+	ice::platform::window *main_win_; //! Main window
 
-    icSoundDeviceAL     m_SoundDevice;      //! Audio device
-    icSoundI*           m_BackGroundMusic;  //! Background music object
-    icSoundI*           m_IntroClip;        //! Audio Clip
-    icSoundListener     m_Listener;         //! Devices listener for 3d sound
+	ice::audio::sound_device_al sound_device_;      //! Audio device
+	ice::audio::sound_i        *back_ground_music_; //! Background music object
+	ice::audio::sound_i        *intro_clip_;        //! Audio Clip
+	ice::audio::sound_listener  listener_;          //! Devices listener for 3d sound
 
-    AirSettings         m_Settings;         //! Current settings
-    AirSettings         m_InitialSettings;  //! Settings when loaded
+	AirSettings settings_;         //! Current settings
+	AirSettings initial_settings_; //! Settings when loaded
 
-    icSettingsFile      m_SettingsFile;
+	ice::util::settings_file settings_file_;
 };
-
 
 /*! Get the current settings
  *
  *  @returns        const AirSettings&      Reference to current settings
-**/
-FORCE_INLINE const AirSettings& Airhockey::GetSettings(void) const
-{
-    return m_Settings;
-}// END FUNCTION GetSettings(void) const
-
+ **/
+FORCE_INLINE const AirSettings &Airhockey::get_settings(void) const {
+	return settings_;
+} // END FUNCTION GetSettings(void) const
 
 /*! Updates the game/engine settings
  *
  *  @param          settings        Current settings structure
-**/
-FORCE_INLINE void Airhockey::UpdateSettings(const AirSettings& settings)
-{
-    m_Settings = settings;
+ **/
+FORCE_INLINE void Airhockey::update_settings(const AirSettings &settings) {
+	settings_ = settings;
 
-    if (!m_Settings.bMusic)
-        m_BackGroundMusic->Stop();
+	if (!settings_.bMusic)
+		back_ground_music_->stop();
 
-    icSoundParam params = m_BackGroundMusic->GetParams();
-    params.fVol = m_Settings.fMusic_vol;
-    m_BackGroundMusic->SetParams(params);
+	ice::audio::sound_param params = back_ground_music_->get_params();
+	params.vol                     = settings_.fMusic_vol;
+	back_ground_music_->set_params(params);
 
-    if (!m_Settings.bSfx)
-        m_IntroClip->Stop();
+	if (!settings_.bSfx)
+		intro_clip_->stop();
 
-    params = m_IntroClip->GetParams();
-    params.fVol = m_Settings.fSfx_vol;
-    m_IntroClip->SetParams(params);
+	params     = intro_clip_->get_params();
+	params.vol = settings_.fSfx_vol;
+	intro_clip_->set_params(params);
 
-}// END FUNCTION UpdateSettings(const AirSettings& settings)
+} // END FUNCTION UpdateSettings(const AirSettings& settings)
 
 #endif //__AIRHOCKEY_H__

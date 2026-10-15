@@ -3,8 +3,8 @@
 - (void)setActive:(BOOL)active;
 - (void)pointer:(NSInteger)phase x:(float)x y:(float)y;
 - (void)setMotion:(BOOL)motion;
-- (NSString*)calibrate;
+- (NSString *)calibrate;
 - (void)record;
 - (void)replay;
-- (NSString*)status;
+- (NSString *)status;
 @end

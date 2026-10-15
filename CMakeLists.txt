@@ -1,13 +1,11 @@
 cmake_minimum_required(VERSION 3.20)
 project(ice LANGUAGES C CXX)
-set(CMAKE_CXX_STANDARD 11)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
+include(cmake/ICEStandards.cmake)
 if(APPLE)
     enable_language(OBJCXX)
-    set(CMAKE_OBJCXX_STANDARD 11)
 endif()
 add_subdirectory(Platform)
-add_subdirectory(Engine)
+add_subdirectory(engine)
 add_subdirectory(Projects)
 include(CTest)
 if(BUILD_TESTING AND NOT WIN32)
@@ -113,4 +111,32 @@ if(BUILD_TESTING)
     add_executable(ice_scene_animation_tests tests/scene_animation.cpp)
     target_link_libraries(ice_scene_animation_tests PRIVATE ICEAssetRuntime)
     add_test(NAME ice_scene_animation COMMAND ice_scene_animation_tests "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/gltf/SkinProbe" "${CMAKE_CURRENT_SOURCE_DIR}/Projects/EngineTest/Resource/gltf/Fox/Fox.glb")
+endif()
+
+# Adopted targets enforce the shared warning and optional sanitizer policy.
+if(BUILD_TESTING)
+    foreach(target ice_gltf_asset_tests ice_resource_uri_tests ice_scene_animation_tests)
+        ice_strict_target(${target})
+    endforeach()
+endif()
+find_package(Python3 QUIET COMPONENTS Interpreter)
+if(Python3_Interpreter_FOUND)
+    add_custom_target(ice_format_check
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/Tools/Quality/check.py" format
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}" VERBATIM)
+    add_custom_target(ice_lint
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/Tools/Quality/check.py" lint --build-dir "${CMAKE_BINARY_DIR}"
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}" VERBATIM)
+endif()
+
+if(BUILD_TESTING)
+    add_executable(ice_math_tests tests/math.cpp)
+    target_link_libraries(ice_math_tests PRIVATE ice::math)
+    ice_strict_target(ice_math_tests)
+    add_test(NAME ice_math COMMAND ice_math_tests)
+endif()
+
+if(BUILD_TESTING)
+    add_library(ice_public_headers OBJECT tests/public_headers.cpp)
+    target_link_libraries(ice_public_headers PRIVATE ICEngine)
 endif()

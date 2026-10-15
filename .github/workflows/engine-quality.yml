@@ -1,0 +1,39 @@
+name: Engine quality
+on: [push, pull_request]
+jobs:
+  desktop:
+    strategy:
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Linux development libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y clang-18 libgl-dev libglu1-mesa-dev libopenal-dev libx11-dev xvfb
+      - name: Pinned quality tools
+        run: python -m pip install -r Tools/Quality/requirements.txt
+      - name: Configure
+        run: cmake -S . -B build/ci -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DICE_WARNINGS_AS_ERRORS=ON
+      - name: Build public headers, engine, examples and tests
+        run: cmake --build build/ci --parallel 4
+      - name: Regression tests
+        run: ctest --test-dir build/ci --output-on-failure
+      - name: Formatting
+        run: python Tools/Quality/check.py format --all
+      - name: Public API documentation and argument contracts
+        run: python Tools/Quality/api.py --build-dir build/ci
+      - name: Static analysis
+        run: python Tools/Quality/check.py lint --build-dir build/ci
+      - name: Linux native rendering
+        if: runner.os == 'Linux'
+        env:
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          ALSOFT_DRIVERS: 'null'
+        run: |
+          xvfb-run -a build/ci/bin/ice_platform_smoke
+          xvfb-run -a build/ci/bin/ice_render_gl_tests
+          xvfb-run -a build/ci/bin/ice_scene_render_tests "$PWD/tests/data/gltf/RenderProbe/RenderProbe.glb" "$PWD/Projects/EngineTest/ice.project" "$PWD/tests/data/gltf/SkinProbe/SkinProbe.glb"

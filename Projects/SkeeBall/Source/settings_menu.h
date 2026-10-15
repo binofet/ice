@@ -1,14 +1,15 @@
 #pragma once
-#include "Util/icStateMachine.h"
 #include "arcade_ui.h"
-class SettingsMenu : public icState {
+#include "ice/util/state_machine.h"
+class SettingsMenu : public ice::util::state {
 public:
-    ICRESULT Init(icContentLoader*){return IC_OK;}
-    ICRESULT Update(float,bool*);
-    ICRESULT Render();
-    void OnPush();
-    void OnPop(){}
+	ice::result init(ice::assets::content_loader *) { return IC_OK; }
+	ice::result update(float, bool *);
+	ice::result render();
+	void        on_push();
+	void        on_pop() {}
+
 private:
-    ArcadeMenuInput input;
-    std::vector<ArcadeRect> Rows() const;
+	ArcadeMenuInput         input;
+	std::vector<ArcadeRect> rows() const;
 };

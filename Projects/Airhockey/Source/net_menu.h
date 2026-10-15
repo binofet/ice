@@ -1,52 +1,47 @@
 #ifndef __NET_MENU_STATE_H__
 #define __NET_MENU_STATE_H__
 
-
 //////////////////////////////////////////////////////////////////////////////
 // ICE INCLUDES
-#include "Util/icStateMachine.h"
-#include "Content/icContentLoader.h"
-#include "UI/icFrame.h"
-#include "UI/icButton.h"
-
+#include "ice/assets/content_loader.h"
+#include "ice/button.h"
+#include "ice/frame.h"
+#include "ice/util/state_machine.h"
 
 /*! Implements the games main menu
-**/
-class NetMenu : public icState
-{
+ **/
+class NetMenu : public ice::util::state {
 public:
-    //////////////////////////////////////////////////////////////////////////
-    // LIFECYCLE
-    NetMenu(void);
-    ~NetMenu(void);
+	//////////////////////////////////////////////////////////////////////////
+	// LIFECYCLE
+	NetMenu(void);
+	~NetMenu(void);
 
-    ICRESULT Init(icContentLoader* pContentLoader);
+	ice::result init(ice::assets::content_loader *pContentLoader);
 
-    //////////////////////////////////////////////////////////////////////////
-    // OPERATIONS
-    ICRESULT Update(const float fDeltaTime, bool* bFinished);
-    ICRESULT Render(void);
+	//////////////////////////////////////////////////////////////////////////
+	// OPERATIONS
+	ice::result update(const float fDeltaTime, bool *bFinished);
+	ice::result render(void);
 
-    void OnPush(void);
-    void OnPop(void);
+	void on_push(void);
+	void on_pop(void);
 
 private:
-    icContentLoader*    m_pContent;
+	ice::assets::content_loader *content_;
 
-    // renderable objects
-    icFrame*            m_uiFrame;
+	// renderable objects
+	ice::frame *ui_frame_;
 
-    icWidget*           m_wgtNetPlay;
+	ice::widget *wgt_net_play_;
 
-    icButton*           m_btnHost;
-    icButton*           m_btnJoinIP;
-    icButton*           m_btnFind;
-    icButton*           m_btnMainMenu;
+	ice::button *btn_host_;
+	ice::button *btn_join_ip_;
+	ice::button *btn_find_;
+	ice::button *btn_main_menu_;
 
-    icSoundI*           m_pClick;
-    icSoundI*           m_pHover;
+	ice::audio::sound_i *click_;
+	ice::audio::sound_i *hover_;
 };
-
-
 
 #endif //__NET_MENU_STATE_H__

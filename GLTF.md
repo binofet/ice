@@ -8,6 +8,10 @@ wireframe, M isolates a material, C switches helmet/material lab and R reloads.
 P plays/pauses animation, A selects a clip, Left/Right steps by 1/30 second, Up/Down
 adjusts speed from -2x to +2x, O toggles looping, Home rewinds, T shows the authored
 rest pose and B overlays joints/bones. F frames the currently deformed geometry.
+A now crossfades to the next clip over 0.6 seconds. G toggles crossfades versus hard
+cuts; Y selects normalized cycle-phase synchronization versus restarting clips.
+Pause with P before selecting a clip, then H/J scrubs blend weight in 10% steps.
+The inspector shows the outgoing pose, incoming clip and blend percentage.
 A failed import, shader compilation or upload keeps the previous scene usable.
 
 ## Resource identities
@@ -20,7 +24,7 @@ EngineTest's `ice.project` contains a small `[mounts]` section, for example:
 ```ini
 [mounts]
 assets://project/ = ./Resource/
-shaders://engine/ = ../../Engine/Resources/shaders/
+shaders://engine/ = ../../engine/resources/shaders/
 textures://project/ = assets://project/textures/
 
 [search]
@@ -74,7 +78,7 @@ documented contract. These typed loaders are proposals, not implemented features
 `icShader` represents a compiled stage; `icPipeline` represents linked stages, vertex
 layout and render state. `icShaderGL`/`icPipelineGL` implement desktop GLSL. The
 transitional `icProgramGL` keeps SkeeBall's linked-program usage working. Shader
-sources live under `Engine/Resources/shaders` and load through `shaders://project/`,
+sources live under `engine/resources/shaders` and load through `shaders://project/`,
 which falls back to `shaders://engine/` unless the game supplies an override.
 R reload also recompiles them. Objects must be released before their GL context.
 
@@ -119,6 +123,33 @@ converted to four float indices/weights; positive weights normalize during impor
 Malformed indices, zero/negative weights, duplicate channels, invalid times and
 matrix targets fail explicitly. Static and skinned instances can share mesh buffers.
 
+### Local pose blending
+
+`icScenePose::transforms` retains sampled local TRS before matrix/hierarchy evaluation.
+`icBlendScenePoses` interpolates translation/scale and shortest-path quaternion
+rotation, then rebuilds all world transforms and skin palettes. It does not average
+world or joint matrices. Authored matrix nodes stay unchanged; absent animation
+channels use the rest property. Blend weight must be finite and within [0,1].
+Endpoints reproduce the input poses, output may alias an input, and errors preserve
+the previous output. Inputs must come from the same asset; no retargeting is implied.
+
+The EngineTest transition policy keeps both clips advancing during a normal fade.
+With phase synchronization and looping enabled, the outgoing cycle is sampled at
+the incoming clip's normalized phase throughout the transition. This aligns cycle
+timing; it does not infer foot contacts or guarantee foot locking. Restart mode lets
+both clips advance independently from their selected times. The transition envelope
+advances in active playback time independently of speed/direction and pauses with P.
+
+Interrupting a fade snapshots the currently visible local pose and fades from that
+frozen snapshot to the new clip, preserving positional continuity. It does not
+preserve outgoing velocity; inertial blending is a later option. Compatible reloads
+preserve the transition, and changed rigs reset it. Manual H/J inspection pauses
+playback and holds both clip times while changing only the blend weight.
+
+This is a two-pose blend primitive and an inspector transition policy. Layer masks,
+additive animation, state/blend graphs, root-motion extraction and animation events
+are still follow-ups. GPU buffers/shaders are unchanged by this milestone.
+
 The GL backend uses a separate skinned shader variant, with inverse-transpose normals
 of the blended transform and forward-transformed tangents. The palette is uploaded
 per draw; vertex/index buffers remain unchanged during playback. The CPU importer
@@ -131,7 +162,7 @@ from palette positions. Skeleton lines/points overlay the image for inspection.
 `icScenePoseBounds` provides CPU reference deformation for tests and explicit framing;
 it is not evaluated per vertex on every render frame. Scene bounds describe the
 rest pose, not a conservative bound covering every clip. Automatic animation bounds,
-blend graphs/crossfades, root-motion extraction, events, retargeting, morphs and modern
+blend graphs/layers, root-motion extraction, events, retargeting, morphs and modern
 GPU palette storage remain follow-ups. The current CPU evaluator favors clear
 transactional behavior and allocates working arrays; it is not yet a crowd animator.
 
@@ -151,7 +182,8 @@ a real GL display and checks actual pixels for UVs, mirrored culling, alpha sort
 masking, normal maps, channel selection, resized HDR output, weighted skinning,
 mirrored skins and inverse-transpose normals. EngineTest
 `--gltf-smoke <existing-directory>` captures debug modes and all Fox clips,
-verifies paused poses and reload continuity, and exercises rest pose/bones/resize.
+verifies paused poses, blend interruption/endpoints, phase mapping and reload continuity,
+and exercises rest pose/bones/resize.
 
 Checkpoint 2026-10-14: all 14 CTest suites pass on macOS and Linux/spacegoo.
 The graphical pixel suite, viewer inspection/reload/resize suite, legacy EngineTest,

@@ -1,0 +1,42 @@
+{
+  "format": [
+    "engine/include/ice/io/resource_uri.h",
+    "engine/include/ice/animation/scene_animation.h",
+    "engine/include/ice/assets/scene_asset.h",
+    "engine/include/ice/render/scene_camera.h",
+    "engine/include/ice/render/pipeline.h",
+    "engine/include/ice/render/gl/pipeline.h",
+    "engine/include/ice/render/shader.h",
+    "engine/include/ice/render/gl/shader.h",
+    "engine/include/ice/render/gl/render_target.h",
+    "engine/include/ice/render/scene_renderer.h",
+    "engine/src/io/resource_uri.cpp",
+    "engine/src/animation/scene_animation.cpp",
+    "engine/src/assets/scene_asset.cpp",
+    "engine/src/render/scene_camera.cpp",
+    "engine/src/render/gl/scene_renderer_gl.cpp",
+    "engine/src/render/gl/pipeline.cpp",
+    "engine/src/render/gl/shader.cpp",
+    "engine/src/render/gl/render_target.cpp",
+    "Projects/EngineTest/Source/Main.cpp",
+    "Projects/EngineTest/Source/TestApp.cpp",
+    "Projects/EngineTest/Source/TestApp.h",
+    "tests/gltf_asset.cpp",
+    "tests/resource_uri.cpp",
+    "tests/scene_animation.cpp",
+    "tests/scene_render_gl.cpp",
+    "engine/include/ice/math/types.h",
+    "engine/include/ice/math/common_math.h",
+    "tests/math.cpp"
+  ],
+  "lint": [
+    "engine/src/io/resource_uri.cpp",
+    "engine/src/animation/scene_animation.cpp",
+    "engine/src/assets/scene_asset.cpp",
+    "engine/src/render/scene_camera.cpp",
+    "tests/gltf_asset.cpp",
+    "tests/resource_uri.cpp",
+    "tests/scene_animation.cpp",
+    "tests/math.cpp"
+  ]
+}

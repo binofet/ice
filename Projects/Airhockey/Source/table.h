@@ -3,52 +3,52 @@
 
 //////////////////////////////////////////////////////////////////////////////
 // ICE INCLUDES
-#include "Audio/icSound.h"
-#include "Render/icModel.h"
+#include "ice/audio/sound.h"
+#include "ice/render/model.h"
 
-#include "Math/Vector/icVector2.h"
-
-class icContentLoader;
+#include "ice/math/vec2.h"
+namespace ice::assets {
+class content_loader;
+}
 class b2World;
 class b2Body;
 
 /*! Provides a puck object
-**/
-class Table
-{
+ **/
+class Table {
 public:
-    //////////////////////////////////////////////////////////////////////////
-    // LIFECYCLE
-    Table(void);
-    ~Table(void);
+	//////////////////////////////////////////////////////////////////////////
+	// LIFECYCLE
+	Table(void);
+	~Table(void);
 
-    ICRESULT Init(icContentLoader* pContent, b2World* pWorld);
+	ice::result init(ice::assets::content_loader *pContent, b2World *pWorld);
 
-    //////////////////////////////////////////////////////////////////////////
-    // OPERATIONS
-    ICRESULT Update(const float fDeltaTime);
-    ICRESULT Render(void);
+	//////////////////////////////////////////////////////////////////////////
+	// OPERATIONS
+	ice::result update(const float fDeltaTime);
+	ice::result render(void);
 
 private:
-    ICRESULT InitPhysics(b2World* pWorld);
+	ice::result init_physics(b2World *pWorld);
 
-    icMatrix44          m_Trans;        //! puck transformation matrix
+	ice::math::mat4 trans_; //! puck transformation matrix
 
-    icContentLoader*    m_pContent;
+	ice::assets::content_loader *content_;
 
-    icModel*            m_pTable;           //! Table Object
-    icModel*            m_pTable2;
-    icModel*            m_pTable3;
-    icModel*            m_pTable4;
+	ice::render::model *table_; //! Table Object
+	ice::render::model *table2_;
+	ice::render::model *table3_;
+	ice::render::model *table4_;
 
-    b2Body*             m_pWall1;
-    b2Body*             m_pWall2;
-    b2Body*             m_pWall3;
-    b2Body*             m_pWall4;
-    b2Body*             m_pWall5;
-    b2Body*             m_pWall6;
-    b2Body*             m_pWall7;
-    b2Body*             m_pWall8;
+	b2Body *wall1_;
+	b2Body *wall2_;
+	b2Body *wall3_;
+	b2Body *wall4_;
+	b2Body *wall5_;
+	b2Body *wall6_;
+	b2Body *wall7_;
+	b2Body *wall8_;
 };
 
 #endif //__TABLE_H__

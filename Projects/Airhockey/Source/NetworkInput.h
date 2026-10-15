@@ -1,24 +1,20 @@
 #ifndef __NETWORK_INPUT_H__
 #define __NETWORK_INPUT_H__
 
-
 #include "InputHandler.h"
 
-#include "Util/icTime.h"
-
+#include "ice/util/time.h"
 
 /*! Abstract interface for input handling
-**/
-class NetworkInput : public InputHandler
-{
+ **/
+class NetworkInput : public InputHandler {
 public:
-    NetworkInput(int player, b2Body* puck, b2Body* paddle);
+	NetworkInput(int player, b2Body *puck, b2Body *paddle);
 
-    virtual ICRESULT Process(icInput* pInput, float dt);
+	virtual ice::result process(ice::input::input *pInput, float dt);
 
 private:
-
-    icTimer m_timer;
+	ice::util::timer timer_;
 };
 
 #endif //__NETWORK_INPUT_H__

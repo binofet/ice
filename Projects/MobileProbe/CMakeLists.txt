@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 project(ICEMobileProbe LANGUAGES C CXX)
-set(CMAKE_CXX_STANDARD 11)
+include(../../cmake/ICEStandards.cmake)
 if(NOT TARGET ICEPlatformRuntime)
     add_subdirectory(../../Platform platform)
 endif()

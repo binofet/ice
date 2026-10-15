@@ -1,71 +1,67 @@
 #ifndef __SPIN_STATE_H__
 #define __SPIN_STATE_H__
 
-
 //////////////////////////////////////////////////////////////////////////////
 // ICE INCLUDES
-#include "Util/icStateMachine.h"
-#include "Render/icModel.h"
-#include "Content/icContentLoader.h"
-#include "Render/Camera/icCamera.h"
-#include "Render/Camera/icChaseCam.h"
-#include "Render/VertBuffer/icVertBuffer.h"
-#include "Render/IndexBuffer/icIndexBuf.h"
-#include "Render/Texture/icTexture.h"
+#include "ice/assets/content_loader.h"
+#include "ice/render/camera.h"
+#include "ice/render/chase_cam.h"
+#include "ice/render/index_buf.h"
+#include "ice/render/model.h"
+#include "ice/render/texture.h"
+#include "ice/render/vert_buffer.h"
+#include "ice/util/state_machine.h"
 
 //////////////////////////////////////////////////////////////////////////////
 // LOCAL INCLUDES
-#include "puck.h"
 #include "paddle.h"
+#include "puck.h"
 
 #include "../Box2D/Box2D.h"
 
-class SpinState : public icState
-{
+class SpinState : public ice::util::state {
 public:
-    //////////////////////////////////////////////////////////////////////////
-    // LIFECYCLE
-    SpinState(void);
-    ~SpinState(void);
+	//////////////////////////////////////////////////////////////////////////
+	// LIFECYCLE
+	SpinState(void);
+	~SpinState(void);
 
-    ICRESULT Init(icContentLoader* pContentLoader);
+	ice::result init(ice::assets::content_loader *pContentLoader);
 
-    //////////////////////////////////////////////////////////////////////////
-    // OPERATIONS
-    ICRESULT Update(const float fDeltaTime, bool* bFinished);
-    ICRESULT Render(void);
+	//////////////////////////////////////////////////////////////////////////
+	// OPERATIONS
+	ice::result update(const float fDeltaTime, bool *bFinished);
+	ice::result render(void);
 
-    void OnPush(void);
-    void OnPop(void);
+	void on_push(void);
+	void on_pop(void);
 
 private:
-    // cameras
-    icCamera            m_Camera;
+	// cameras
+	ice::render::camera camera_;
 
-    icContentLoader*    m_pContent;
+	ice::assets::content_loader *content_;
 
-    // renderable objects
-    icTexture*          m_pGroundTex;       //! Fire ground (temp)
-    icVertBuffer*       m_pGround;
-    icIndexBuf*         m_pGroundIB;
-    icReal              halfx;
-    icReal              halfy;
-    int                 numrow;
-    int                 numcol;
-    float               edgeDist;
+	// renderable objects
+	ice::render::texture     *ground_tex_; //! Fire ground (temp)
+	ice::render::vert_buffer *ground_;
+	ice::render::index_buf   *ground_ib_;
+	ice::math::real           halfx;
+	ice::math::real           halfy;
+	int                       numrow;
+	int                       numcol;
+	float                     edgeDist;
 
-    icMatrix44          m_Transform;
-    icModel*            m_pTable;           //! Table Object
-    icModel*            m_pTable2;
-    icModel*            m_pTable3;
-    icModel*            m_pTable4;
+	ice::math::mat4     transform_;
+	ice::render::model *table_; //! Table Object
+	ice::render::model *table2_;
+	ice::render::model *table3_;
+	ice::render::model *table4_;
 
-    // camera movement stuff
-    icVector3           cam_pos;
-    icVector3           look_pos;
-    float               org_len;
+	// camera movement stuff
+	ice::math::vec3 cam_pos;
+	ice::math::vec3 look_pos;
+	float           org_len;
 };
-
-
 
 #endif //__SPIN_STATE_H__

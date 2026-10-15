@@ -3,12 +3,13 @@
 
 //////////////////////////////////////////////////////////////////////////////
 // ICE INCLUDES
-#include "Audio/icSound.h"
-#include "Render/icModel.h"
+#include "ice/audio/sound.h"
+#include "ice/render/model.h"
 
-#include "Math/Vector/icVector2.h"
-
-class icContentLoader;
+#include "ice/math/vec2.h"
+namespace ice::assets {
+class content_loader;
+}
 class btDiscreteDynamicsWorld;
 class btTriangleIndexVertexArray;
 class btCollisionShape;
@@ -16,46 +17,43 @@ class btCollisionObject;
 class btMotionState;
 class btRigidBody;
 
-
-class Ball
-{
+class Ball {
 public:
-    //////////////////////////////////////////////////////////////////////////
-    // LIFECYCLE
-    Ball(void);
-    ~Ball(void);
+	//////////////////////////////////////////////////////////////////////////
+	// LIFECYCLE
+	Ball(void);
+	~Ball(void);
 
-    ICRESULT Init(icContentLoader* pContent, btDiscreteDynamicsWorld* pWorld,
-                  const icVector3& pos);
+	ice::result init(ice::assets::content_loader *pContent, btDiscreteDynamicsWorld *pWorld,
+	                 const ice::math::vec3 &pos);
 
-    //////////////////////////////////////////////////////////////////////////
-    // OPERATIONS
-    ICRESULT Update(const float fDeltaTime);
-    ICRESULT Render(void);
+	//////////////////////////////////////////////////////////////////////////
+	// OPERATIONS
+	ice::result update(const float fDeltaTime);
+	ice::result render(void);
 
-    void Enable(bool bEnable);
+	void enable(bool bEnable);
 
-    void SetPos(const icVector3& pos);
+	void set_pos(const ice::math::vec3 &pos);
 
-    void GetMat(icMatrix44* mat);
+	void get_mat(ice::math::mat4 *mat);
 
-    btRigidBody*                m_body;
+	btRigidBody *body_;
 
 private:
-    ICRESULT InitPhysics(btDiscreteDynamicsWorld* pWorld, const icVector3& pos);
+	ice::result init_physics(btDiscreteDynamicsWorld *pWorld, const ice::math::vec3 &pos);
 
-    icContentLoader*    m_pContent;
+	ice::assets::content_loader *content_;
 
-    static icModel*             m_pBallModel;
+	static ice::render::model *m_pBallModel;
 
-    btDiscreteDynamicsWorld*    m_world;
+	btDiscreteDynamicsWorld *world_;
 
-    static btCollisionShape*    m_sphereShape;
+	static btCollisionShape *m_sphereShape;
 
+	btMotionState *motion_state_;
 
-    btMotionState*              m_motionState;
-
-    bool                        m_bInWorld;
+	bool in_world_;
 };
 
 #endif //__BALL_H__

@@ -1,54 +1,50 @@
 #ifndef __MAIN_MENU_STATE_H__
 #define __MAIN_MENU_STATE_H__
 
-
 //////////////////////////////////////////////////////////////////////////////
 // ICE INCLUDES
-#include "Util/icStateMachine.h"
-#include "Content/icContentLoader.h"
-#include "UI/icFrame.h"
-#include "UI/icButton.h"
-
-
-class icSoundI;
+#include "ice/assets/content_loader.h"
+#include "ice/button.h"
+#include "ice/frame.h"
+#include "ice/util/state_machine.h"
+namespace ice::audio {
+class sound_i;
+}
 
 /*! Implements the games main menu
-**/
-class MainMenu : public icState
-{
+ **/
+class MainMenu : public ice::util::state {
 public:
-    //////////////////////////////////////////////////////////////////////////
-    // LIFECYCLE
-    MainMenu(void);
-    ~MainMenu(void);
+	//////////////////////////////////////////////////////////////////////////
+	// LIFECYCLE
+	MainMenu(void);
+	~MainMenu(void);
 
-    ICRESULT Init(icContentLoader* pContentLoader);
+	ice::result init(ice::assets::content_loader *pContentLoader);
 
-    //////////////////////////////////////////////////////////////////////////
-    // OPERATIONS
-    ICRESULT Update(const float fDeltaTime, bool* bFinished);
-    ICRESULT Render(void);
+	//////////////////////////////////////////////////////////////////////////
+	// OPERATIONS
+	ice::result update(const float fDeltaTime, bool *bFinished);
+	ice::result render(void);
 
-    void OnPush(void);
-    void OnPop(void);
+	void on_push(void);
+	void on_pop(void);
 
-    bool SkipUpdate;
+	bool SkipUpdate;
 
 private:
-    icContentLoader*    m_pContent;
+	ice::assets::content_loader *content_;
 
-    // renderable objects
-    icFrame*            m_uiFrame;
-    icButton*           m_btnOnePlayer;
-    icButton*           m_btnTwoPlayer;
-    icButton*           m_btnNetPlay;
-    icButton*           m_btnSettings;
-    icButton*           m_btnExit;
+	// renderable objects
+	ice::frame  *ui_frame_;
+	ice::button *btn_one_player_;
+	ice::button *btn_two_player_;
+	ice::button *btn_net_play_;
+	ice::button *btn_settings_;
+	ice::button *btn_exit_;
 
-    icSoundI*           m_pHover;
-    icSoundI*           m_pClick;
+	ice::audio::sound_i *hover_;
+	ice::audio::sound_i *click_;
 };
-
-
 
 #endif //__MAIN_MENU_STATE_H__

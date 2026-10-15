@@ -1,37 +1,34 @@
 #ifndef __INPUT_HANDLER_H__
 #define __INPUT_HANDLER_H__
 
-
-#include "Math/Vector/icVector2.h"
-
-
-class icInput;
+#include "ice/math/vec2.h"
+namespace ice::input {
+class input;
+}
 class b2Body;
 
-#define PLAYER_ONE  0
-#define PLAYER_TWO  1
+#define PLAYER_ONE 0
+#define PLAYER_TWO 1
 
 /*! Abstract interface for input handling
-**/
-class InputHandler
-{
+ **/
+class InputHandler {
 public:
-    InputHandler(int player, b2Body* puck, b2Body* paddle)
-    {
-        m_i32Player = player;
-        m_Puck = puck;
-        m_Paddle = paddle;
-    };
+	InputHandler(int player, b2Body *puck, b2Body *paddle) {
+		player_ = player;
+		puck_   = puck;
+		paddle_ = paddle;
+	};
 
-    virtual ~InputHandler() {}
-    virtual void ResetTarget() {}
-    virtual void PrepareFrame(icInput*) {}
-    virtual ICRESULT Process(icInput* pInput, float dt)=0;
+	virtual ~InputHandler() {}
+	virtual void        reset_target() {}
+	virtual void        prepare_frame(ice::input::input *) {}
+	virtual ice::result process(ice::input::input *pInput, float dt) = 0;
 
 protected:
-    int     m_i32Player;
-    b2Body* m_Puck;
-    b2Body* m_Paddle;
+	int     player_;
+	b2Body *puck_;
+	b2Body *paddle_;
 };
 
 #endif //__INPUT_HANDLER_H__

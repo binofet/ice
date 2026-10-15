@@ -1,13 +1,26 @@
 #include "arcade_grade.h"
-#include "Core/icGlobals.h"
+#include "ice/globals.h"
 #include <cstdlib>
-void ArcadeGrade::Release(){shader.Release();if(texture)glDeleteTextures(1,&texture);texture=0;w=h=0;attempted=false;}
-void ArcadeGrade::Apply(int width,int height){
-    if(width<=0||height<=0)return;
-    if(!attempted){
-        attempted=true;if(std::getenv("ICE_DISABLE_SHADERS")){icPrintf("Arcade GLSL disabled; fixed-function fallback");return;}
-        const char* vertex="#version 120\nvarying vec2 uv;void main(){uv=gl_MultiTexCoord0.xy;gl_Position=gl_Vertex;}";
-        const char* fragment=R"GLSL(#version 120
+void ArcadeGrade::release() {
+	shader.release();
+	if (texture)
+		glDeleteTextures(1, &texture);
+	texture = 0;
+	w = h     = 0;
+	attempted = false;
+}
+void ArcadeGrade::apply(int width, int height) {
+	if (width <= 0 || height <= 0)
+		return;
+	if (!attempted) {
+		attempted = true;
+		if (std::getenv("ICE_DISABLE_SHADERS")) {
+			ice::printf("Arcade GLSL disabled; fixed-function fallback");
+			return;
+		}
+		const char *vertex   = "#version 120\nvarying vec2 uv;void "
+		                       "main(){uv=gl_MultiTexCoord0.xy;gl_Position=gl_Vertex;}";
+		const char *fragment = R"GLSL(#version 120
 uniform sampler2D scene;
 uniform vec2 pixel;
 varying vec2 uv;
@@ -27,19 +40,54 @@ void main(){
  c*=1.0-0.12*dot(d,d);
  gl_FragColor=vec4(clamp(c,0.0,1.0),1.0);
 })GLSL";
-        std::string log;if(!shader.Compile(vertex,fragment,log)){icWarningf("Arcade shader fallback: %s",log.c_str());return;}
-        icPrintf("Arcade GLSL 1.20 linked: color grade / highlight glow / vignette");
-    }
-    if(!shader.Valid())return;
-    GLint previousProgram=0,active=0;glGetIntegerv(GL_CURRENT_PROGRAM,&previousProgram);glGetIntegerv(GL_ACTIVE_TEXTURE,&active);glActiveTexture(GL_TEXTURE0);
-    glPushAttrib(GL_ALL_ATTRIB_BITS);
-    if(!texture)glGenTextures(1,&texture);glBindTexture(GL_TEXTURE_2D,texture);
-    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
-    if(w!=width||h!=height){w=width;h=height;glTexImage2D(GL_TEXTURE_2D,0,GL_RGB,w,h,0,GL_RGB,GL_UNSIGNED_BYTE,nullptr);}
-    glCopyTexSubImage2D(GL_TEXTURE_2D,0,0,0,0,0,w,h);
-    glDisable(GL_DEPTH_TEST);glDisable(GL_LIGHTING);glDisable(GL_BLEND);glDisable(GL_CULL_FACE);glDisable(GL_SCISSOR_TEST);glDisable(GL_ALPHA_TEST);glDepthMask(GL_FALSE);
-    shader.Bind();glUniform1i(shader.Uniform("scene"),0);glUniform2f(shader.Uniform("pixel"),1.0f/w,1.0f/h);
-    glBegin(GL_QUADS);glTexCoord2f(0,0);glVertex2f(-1,-1);glTexCoord2f(1,0);glVertex2f(1,-1);glTexCoord2f(1,1);glVertex2f(1,1);glTexCoord2f(0,1);glVertex2f(-1,1);glEnd();
-    glUseProgram(previousProgram);glPopAttrib();glActiveTexture(active);
+		std::string log;
+		if (!shader.compile(vertex, fragment, log)) {
+			ice::warningf("Arcade shader fallback: %s", log.c_str());
+			return;
+		}
+		ice::printf("Arcade GLSL 1.20 linked: color grade / highlight glow / vignette");
+	}
+	if (!shader.valid())
+		return;
+	GLint previousProgram = 0, active = 0;
+	glGetIntegerv(GL_CURRENT_PROGRAM, &previousProgram);
+	glGetIntegerv(GL_ACTIVE_TEXTURE, &active);
+	glActiveTexture(GL_TEXTURE0);
+	glPushAttrib(GL_ALL_ATTRIB_BITS);
+	if (!texture)
+		glGenTextures(1, &texture);
+	glBindTexture(GL_TEXTURE_2D, texture);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	if (w != width || h != height) {
+		w = width;
+		h = height;
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, w, h, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
+	}
+	glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, w, h);
+	glDisable(GL_DEPTH_TEST);
+	glDisable(GL_LIGHTING);
+	glDisable(GL_BLEND);
+	glDisable(GL_CULL_FACE);
+	glDisable(GL_SCISSOR_TEST);
+	glDisable(GL_ALPHA_TEST);
+	glDepthMask(GL_FALSE);
+	shader.bind();
+	glUniform1i(shader.uniform("scene"), 0);
+	glUniform2f(shader.uniform("pixel"), 1.0f / w, 1.0f / h);
+	glBegin(GL_QUADS);
+	glTexCoord2f(0, 0);
+	glVertex2f(-1, -1);
+	glTexCoord2f(1, 0);
+	glVertex2f(1, -1);
+	glTexCoord2f(1, 1);
+	glVertex2f(1, 1);
+	glTexCoord2f(0, 1);
+	glVertex2f(-1, 1);
+	glEnd();
+	glUseProgram(previousProgram);
+	glPopAttrib();
+	glActiveTexture(active);
 }
