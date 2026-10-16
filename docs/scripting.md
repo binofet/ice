@@ -204,13 +204,24 @@ The module opens base, math, string, table and UTF-8 libraries only. It removes:
   `getmetatable` and `setmetatable`.
 - String bytecode dumping, pattern matching (`find`, `match`, `gmatch`,
   `gsub`) and binary packing/unpacking.
-- `math.random` and `math.randomseed`; a future deterministic random service should
-  have explicit host state instead of ambient entropy.
 - `table.move`, `insert`, `remove` and `sort`. Sparse table boundaries can drive
   very large native loops without proportional allocation or bytecode hook calls;
   scripts can express these algorithms with instruction-budgeted Lua loops.
 
 `tostring` accepts only scalar values, avoiding table/function pointer formatting.
+`math.random` uses Lua's original PRNG, including real values in `[0,1)`, integer
+intervals and full-range integers with `math.random(0)`. Each private VM starts at
+the fixed seed pair `(0,0)` before executing its source chunk. Its random stream
+persists between calls. `math.randomseed(first[, second])` accepts exactly one or
+two Lua integer seeds, returns the two seeds used and defaults the second seed to
+zero. Strings, floating-point seed values and the zero-argument ambient-entropy
+form are rejected. With this pinned Lua version, equal explicit seeds and call
+sequences reproduce the same stream; a new VM repeats the default stream.
+Network authoring scripts run on the authority and publish their generated data;
+clients do not rerun the PRNG to reconstruct those results. This is a simulation
+helper, not a cryptographic random service. Native integer-interval rejection
+sampling, like other C library work, is outside the VM instruction counter.
+
 `string.format` accepts one format string and at most 32 number/string values;
 each string argument, format and final result is limited to 4096 bytes. Internal
 Lua strings can contain binary bytes; the UTF-8 boundary rules still apply when
@@ -244,8 +255,10 @@ twenty-object loop with forty collected commands, registry validation, expired
 capabilities/regrants, host exceptions/rejection/invalid records, quota exhaustion,
 same-program reentry and protected host-result allocation failure. Formatter tests
 cover RGB hex, scalar/binary strings, exact argument/result limits, rejected native
-pointers/large widths/types and protected allocation failure. CTest needs no GPU
-or device.
+pointers/large widths/types and protected allocation failure. PRNG tests collect
+500 random-colored/positioned objects, compare independent/reseeded streams and
+exercise integer boundaries and invalid seed/interval fault isolation. CTest
+needs no GPU or device.
 
 ## Lua distribution notice
 

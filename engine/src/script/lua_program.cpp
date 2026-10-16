@@ -143,6 +143,18 @@ int scalar_tostring(lua_State *vm) {
 	}
 	return 1;
 }
+int explicit_randomseed(lua_State *vm) {
+	const int arguments = lua_gettop(vm);
+	if (arguments < 1 || arguments > 2)
+		return luaL_error(vm, "randomseed requires one or two explicit integer seeds");
+	for (int index = 1; index <= arguments; ++index)
+		if (!lua_isinteger(vm, index))
+			return luaL_error(vm, "randomseed accepts integer seeds only");
+	lua_pushvalue(vm, lua_upvalueindex(1));
+	lua_insert(vm, 1);
+	lua_call(vm, arguments, 2);
+	return 2;
+}
 int scalar_format(lua_State *vm) {
 	const int arguments = lua_gettop(vm);
 	if (arguments < 1 || arguments > 33 || lua_type(vm, 1) != LUA_TSTRING)
@@ -204,8 +216,15 @@ int open_libraries(lua_State *vm) {
 	lua_setfield(vm, -2, "tostring");
 	lua_pop(vm, 1);
 	luaL_requiref(vm, LUA_MATHLIBNAME, luaopen_math, 1);
-	static const char *const removed_math[]{"random", "randomseed", nullptr};
-	remove_fields(vm, removed_math);
+	// Upstream initially seeds from ambient entropy. Replace that state before
+	// executing any source, then retain its shared PRNG in both original closures.
+	lua_getfield(vm, -1, "randomseed");
+	lua_pushinteger(vm, 0);
+	lua_pushinteger(vm, 0);
+	lua_call(vm, 2, 0);
+	lua_getfield(vm, -1, "randomseed");
+	lua_pushcclosure(vm, explicit_randomseed, 1);
+	lua_setfield(vm, -2, "randomseed");
 	lua_pop(vm, 1);
 	luaL_requiref(vm, LUA_STRLIBNAME, luaopen_string, 1);
 	lua_getfield(vm, -1, "format");

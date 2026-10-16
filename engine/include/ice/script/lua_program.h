@@ -71,6 +71,7 @@ struct lua_limits {
 /// Call returns owned outputs only on complete success. VM globals/upvalues can change
 /// before an error; execution/budget/output errors permanently fault this instance.
 /// Prepare a separate candidate and replace ownership after success for safe reload.
+/// Each VM starts Lua's PRNG at seed (0,0); scripts can reseed with explicit integers.
 /// This limits cooperative script resources; it is not process isolation against VM bugs.
 class lua_program {
 public:

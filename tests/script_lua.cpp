@@ -59,7 +59,7 @@ function libraries(input)
   for _, name in ipairs(names) do assert(_G[name] == nil, name) end
   assert(string.dump == nil and type(string.format) == 'function' and string.find == nil)
   assert(string.match == nil and string.gmatch == nil and string.gsub == nil)
-  assert(string.pack == nil and math.random == nil and math.randomseed == nil)
+  assert(string.pack == nil and type(math.random) == 'function' and type(math.randomseed) == 'function')
   assert(table.move == nil and table.insert == nil and table.remove == nil and table.sort == nil)
   return { value = tostring(input.value), length = #table.concat({'a','b'}) }
 end
@@ -461,6 +461,121 @@ function empty(input) return {} end
 	auto host_allocation = host_memory->call("run", {}, large_output);
 	CHECK(!host_allocation && host_allocation.error().code == error_code::memory_limit &&
 	      host_memory->faulted());
+	const std::string random_source = R"lua(
+local startup = math.random()
+function sample(input)
+  if input.seed ~= nil then
+    if input.second ~= nil then math.randomseed(input.seed,input.second)
+    else math.randomseed(input.seed) end
+  end
+  return {startup=startup,unit=math.random(),die=math.random(6),byte=math.random(0,255),
+          signed=math.random(0),full=math.random(math.mininteger,math.maxinteger)}
+end
+function seeds(input)
+  local first,second=math.randomseed(input.first,input.second)
+  return {first=first,second=second}
+end
+function extremes(input)
+  return {low=math.random(math.mininteger,math.mininteger),
+          high=math.random(math.maxinteger,math.maxinteger),one=math.random(1),
+          negative=math.random(-17,-3)}
+end
+function generate(input)
+  for i=1,input.count do
+    host.invoke{command='drop',shape='teapot',x=math.random(-1000,1000)/100,
+                y=2+5*math.random(),z=math.random(-1000,1000)/100}
+    host.invoke{command='color',value=string.format('#%02x%02x%02x',
+                math.random(0,255),math.random(0,255),math.random(0,255))}
+  end
+  return {count=input.count}
+end
+function empty(input) return {} end
+)lua";
+	auto              random_first = prepare(random_source), random_second = prepare(random_source);
+	CHECK(random_first && random_second);
+	auto default_first  = random_first->call("sample", {});
+	auto default_second = random_second->call("sample", {});
+	CHECK(default_first && default_second && *default_first == *default_second);
+	const double unit = std::get<double>(default_first->at("unit"));
+	CHECK(unit >= 0 && unit < 1);
+	CHECK(std::get<std::int64_t>(default_first->at("die")) >= 1 &&
+	      std::get<std::int64_t>(default_first->at("die")) <= 6);
+	CHECK(std::get<std::int64_t>(default_first->at("byte")) >= 0 &&
+	      std::get<std::int64_t>(default_first->at("byte")) <= 255);
+	auto advanced_first  = random_first->call("sample", {});
+	auto advanced_second = random_second->call("sample", {});
+	CHECK(advanced_first && advanced_second && *advanced_first == *advanced_second &&
+	      *advanced_first != *default_first);
+	auto zero_seed =
+	    random_first->call("sample", {{"seed", std::int64_t(0)}, {"second", std::int64_t(0)}});
+	CHECK(zero_seed && std::get<double>(zero_seed->at("unit")) ==
+	                       std::get<double>(default_first->at("startup")));
+	const scalar_record seed{{"seed", std::int64_t(12345)}, {"second", std::int64_t(-6789)}};
+	auto                seeded_first  = random_first->call("sample", seed);
+	auto                seeded_again  = random_first->call("sample", seed);
+	auto                seeded_second = random_second->call("sample", seed);
+	CHECK(seeded_first && seeded_again && seeded_second && *seeded_first == *seeded_again &&
+	      *seeded_first == *seeded_second);
+	auto different = random_second->call("sample", {{"seed", std::int64_t(54321)}});
+	CHECK(different && *different != *seeded_first);
+	auto single_seed = random_first->call("sample", {{"seed", std::int64_t(12345)}});
+	auto zero_second =
+	    random_first->call("sample", {{"seed", std::int64_t(12345)}, {"second", std::int64_t(0)}});
+	CHECK(single_seed && zero_second && *single_seed == *zero_second);
+	auto returned_seeds =
+	    random_first->call("seeds", {{"first", std::numeric_limits<std::int64_t>::min()},
+	                                 {"second", std::numeric_limits<std::int64_t>::max()}});
+	CHECK(returned_seeds &&
+	      std::get<std::int64_t>(returned_seeds->at("first")) ==
+	          std::numeric_limits<std::int64_t>::min() &&
+	      std::get<std::int64_t>(returned_seeds->at("second")) ==
+	          std::numeric_limits<std::int64_t>::max());
+	auto extremes = random_first->call("extremes", {});
+	CHECK(extremes &&
+	      std::get<std::int64_t>(extremes->at("low")) == std::numeric_limits<std::int64_t>::min() &&
+	      std::get<std::int64_t>(extremes->at("high")) ==
+	          std::numeric_limits<std::int64_t>::max() &&
+	      std::get<std::int64_t>(extremes->at("one")) == 1);
+	CHECK(std::get<std::int64_t>(extremes->at("negative")) >= -17 &&
+	      std::get<std::int64_t>(extremes->at("negative")) <= -3);
+	events.clear();
+	auto random_scene = prepare(random_source);
+	CHECK(random_scene &&
+	      random_scene->call("generate", {{"count", std::int64_t(500)}}, collecting));
+	CHECK(events.size() == 1000);
+	colors.clear();
+	std::set<std::array<double, 3>> positions;
+	for (std::size_t index = 0; index < 500; ++index) {
+		const auto &drop = events[index * 2];
+		CHECK(std::get<std::string>(drop.at("command")) == "drop" &&
+		      std::get<std::string>(drop.at("shape")) == "teapot");
+		const double x = std::get<double>(drop.at("x")), y = std::get<double>(drop.at("y")),
+		             z = std::get<double>(drop.at("z"));
+		CHECK(x >= -10 && x <= 10 && y >= 2 && y < 7 && z >= -10 && z <= 10);
+		positions.insert({x, y, z});
+		const auto &color = std::get<std::string>(events[index * 2 + 1].at("value"));
+		CHECK(color.size() == 7 && color[0] == '#');
+		colors.insert(color);
+	}
+	CHECK(positions.size() == 500 && colors.size() > 490);
+	// Invalid native calls fault only their private VM; a separate working owner
+	// keeps its stream/state and can still execute. Error handling stays protected.
+	for (const auto &expression :
+	     {"math.randomseed()", "math.randomseed(1,2,3)", "math.randomseed({})",
+	      "math.randomseed(true)", "math.randomseed('1')", "math.randomseed(1.0)",
+	      "math.randomseed(1,1.5)", "math.randomseed(1,nil)", "math.randomseed(1,{})",
+	      "math.random(1,2,3)", "math.random({})", "math.random(true)", "math.random(1.5)",
+	      "math.random(-1)", "math.random(3,2)"}) {
+		auto invalid_random =
+		    prepare(std::string("function run(input) ") + expression + " return {} end",
+		            {64 * 1024, 1000, 4096});
+		CHECK(invalid_random);
+		auto invalid = invalid_random->call("run", {});
+		CHECK(!invalid && invalid.error().code == error_code::runtime &&
+		      invalid.error().uri == uri && invalid_random->faulted());
+		CHECK(invalid_random->call("run", {}).error().code == error_code::faulted);
+		CHECK(random_first->call("empty", {}) && !random_first->faulted());
+	}
 	std::puts(
 	    "Lua passed: protected source/calls, scalar boundaries, budgets, fault/reload ownership");
 	return 0;
