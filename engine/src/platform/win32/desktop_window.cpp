@@ -3,6 +3,7 @@
 #define NOMINMAX
 #endif
 #include "../desktop_window_internal.h"
+#include "../physical_key_internal.h"
 #include <algorithm>
 #include <map>
 #include <vector>
@@ -15,6 +16,7 @@ namespace ice::platform::detail {
 namespace {
 class win32_window;
 std::map<HWND, win32_window *> windows;
+win32_window                  *relative_owner = nullptr;
 key_modifiers                  modifiers() {
     key_modifiers result = 0;
     if (GetKeyState(VK_SHIFT) < 0)
@@ -102,7 +104,7 @@ bool utf8(const std::wstring &text, std::string &result) {
 class win32_window final : public desktop_window {
 public:
 	~win32_window() override {
-		cancel_text_input();
+		cancel_input();
 		if (native_)
 			DestroyWindow(native_);
 	}
@@ -138,7 +140,7 @@ public:
 	}
 	void show(bool visible) override {
 		if (!visible)
-			cancel_text_input();
+			cancel_input();
 		ShowWindow(native_, visible ? SW_SHOW : SW_HIDE);
 	}
 	bool resize(int width, int height) override {
@@ -187,8 +189,80 @@ public:
 		return {native_window_kind::win32, reinterpret_cast<std::uintptr_t>(native_), nullptr,
 		        nullptr};
 	}
+	relative_pointer_kind relative_pointer_capability() const override {
+		return relative_pointer_kind::native;
+	}
 
 private:
+	void cancel_native_physical_input() override {
+		pointer_valid_ = false;
+		buttons_       = 0;
+		if (!relative_ && GetCapture() == native_)
+			ReleaseCapture();
+	}
+	ice::expected<void, window_diagnostic>
+	change_pointer_mode(ice::platform::pointer_mode mode) override {
+		if (mode == ice::platform::pointer_mode::normal) {
+			if (relative_owner == this) {
+				relative_owner = nullptr;
+				relative_      = false;
+				RAWINPUTDEVICE device{1, 2, RIDEV_REMOVE, nullptr};
+				RegisterRawInputDevices(&device, 1, sizeof(device));
+				ClipCursor(nullptr);
+				if (GetCapture() == native_)
+					ReleaseCapture();
+				ShowCursor(TRUE);
+				SetCursor(LoadCursorW(nullptr, IDC_ARROW));
+				pointer_valid_ = false;
+			}
+			return {};
+		}
+		if (!focused_ || !IsWindowVisible(native_) || IsIconic(native_) ||
+		    (relative_owner && relative_owner != this))
+			return ice::unexpected(window_diagnostic{
+			    "Relative pointer capture requires the focused visible Win32 window"});
+		RECT bounds{};
+		if (!GetClientRect(native_, &bounds) || bounds.right <= 0 || bounds.bottom <= 0)
+			return ice::unexpected(window_diagnostic{"Window has no pointer capture area"});
+		POINT top{bounds.left, bounds.top}, bottom{bounds.right, bounds.bottom};
+		ClientToScreen(native_, &top);
+		ClientToScreen(native_, &bottom);
+		RECT           clip{top.x, top.y, bottom.x, bottom.y};
+		RAWINPUTDEVICE device{1, 2, 0, native_};
+		if (!RegisterRawInputDevices(&device, 1, sizeof(device)))
+			return ice::unexpected(window_diagnostic{"Win32 raw mouse registration failed"});
+		SetCapture(native_);
+		if (GetCapture() != native_ || !ClipCursor(&clip)) {
+			device.dwFlags    = RIDEV_REMOVE;
+			device.hwndTarget = nullptr;
+			RegisterRawInputDevices(&device, 1, sizeof(device));
+			if (GetCapture() == native_)
+				ReleaseCapture();
+			return ice::unexpected(window_diagnostic{"Win32 pointer confinement failed"});
+		}
+		ShowCursor(FALSE);
+		SetCursor(nullptr);
+		POINT position{};
+		if (GetCursorPos(&position) && ScreenToClient(native_, &position)) {
+			auto scale = extent().scale;
+			pointer_x_ = double(position.x) / scale;
+			pointer_y_ = double(position.y) / scale;
+		}
+		relative_      = true;
+		relative_owner = this;
+		pointer_valid_ = false;
+		return {};
+	}
+	void post_pointer(platform_event event) {
+		event.modifiers = modifiers();
+		if (!platform_events::post(std::move(event)))
+			cancel_input();
+	}
+	void pointer_position(platform_event &event, LPARAM packed) {
+		const float scale = extent().scale;
+		event.x           = double(static_cast<short>(LOWORD(packed))) / scale;
+		event.y           = double(static_cast<short>(HIWORD(packed))) / scale;
+	}
 	void cancel_native_text_input() override {
 		high_surrogate_ = 0;
 		composing_      = false;
@@ -281,6 +355,9 @@ private:
 	HWND                    native_         = nullptr;
 	RECT                    windowed_{};
 	bool                    fullscreen_ = false;
+	bool                    relative_ = false, pointer_valid_ = false;
+	double                  pointer_x_ = 0, pointer_y_ = 0;
+	unsigned                buttons_ = 0;
 	static LRESULT CALLBACK procedure(HWND window, UINT message, WPARAM first, LPARAM second) {
 		auto *owner = reinterpret_cast<win32_window *>(GetWindowLongPtrW(window, GWLP_USERDATA));
 		if (message == WM_NCCREATE) {
@@ -296,7 +373,95 @@ private:
 			owner->focused_ = true;
 		if (message == WM_KILLFOCUS) {
 			owner->focused_ = false;
-			owner->cancel_native_text_input();
+			owner->cancel_input();
+		}
+		if ((message == WM_KEYDOWN || message == WM_SYSKEYDOWN || message == WM_KEYUP ||
+		     message == WM_SYSKEYUP) &&
+		    owner->focused_) {
+			platform_event event{platform_event_type::physical_key, owner->id(), 0};
+			event.key       = first == VK_PAUSE ? physical_key::pause
+			                                    : win32_physical_key(unsigned((second >> 16) & 255),
+			                                                         (second & (LPARAM(1) << 24)) != 0);
+			event.pressed   = message == WM_KEYDOWN || message == WM_SYSKEYDOWN;
+			event.repeat    = event.pressed && (second & (LPARAM(1) << 30)) != 0;
+			event.modifiers = modifiers();
+			if (event.key != physical_key::unknown && !platform_events::post(std::move(event)))
+				owner->cancel_input();
+		}
+		if ((message == WM_LBUTTONDOWN || message == WM_LBUTTONUP || message == WM_RBUTTONDOWN ||
+		     message == WM_RBUTTONUP || message == WM_MBUTTONDOWN || message == WM_MBUTTONUP ||
+		     message == WM_XBUTTONDOWN || message == WM_XBUTTONUP) &&
+		    owner->focused_) {
+			platform_event event{platform_event_type::pointer_button, owner->id(), 0};
+			event.button =
+			    (message == WM_LBUTTONDOWN || message == WM_LBUTTONUP)   ? mouse_button::primary
+			    : (message == WM_RBUTTONDOWN || message == WM_RBUTTONUP) ? mouse_button::secondary
+			    : (message == WM_MBUTTONDOWN || message == WM_MBUTTONUP) ? mouse_button::middle
+			    : HIWORD(first) == XBUTTON1                              ? mouse_button::back
+			                                                             : mouse_button::forward;
+			event.pressed = message == WM_LBUTTONDOWN || message == WM_RBUTTONDOWN ||
+			                message == WM_MBUTTONDOWN || message == WM_XBUTTONDOWN;
+			const unsigned bit = 1u << static_cast<unsigned>(event.button);
+			if (event.pressed) {
+				owner->buttons_ |= bit;
+				SetCapture(window);
+			} else
+				owner->buttons_ &= ~bit;
+			owner->pointer_position(event, second);
+			owner->post_pointer(std::move(event));
+			if (!owner->buttons_ && !owner->relative_ && GetCapture() == window)
+				ReleaseCapture();
+			return message == WM_XBUTTONDOWN || message == WM_XBUTTONUP ? TRUE : 0;
+		}
+		if (message == WM_MOUSEMOVE && owner->focused_ && !owner->relative_) {
+			platform_event event{platform_event_type::pointer_move, owner->id(), 0};
+			owner->pointer_position(event, second);
+			if (owner->pointer_valid_) {
+				event.delta_x = event.x - owner->pointer_x_;
+				event.delta_y = event.y - owner->pointer_y_;
+			}
+			owner->pointer_x_     = event.x;
+			owner->pointer_y_     = event.y;
+			owner->pointer_valid_ = true;
+			owner->post_pointer(std::move(event));
+		}
+		if (message == WM_INPUT && owner->focused_ && owner->relative_) {
+			RAWINPUT   input{};
+			UINT       size     = sizeof(input);
+			const UINT received = GetRawInputData(reinterpret_cast<HRAWINPUT>(second), RID_INPUT,
+			                                      &input, &size, sizeof(RAWINPUTHEADER));
+			if (received == UINT(-1) || received < sizeof(RAWINPUTHEADER) + sizeof(RAWMOUSE))
+				owner->cancel_input();
+			else if (input.header.dwType == RIM_TYPEMOUSE &&
+			         !(input.data.mouse.usFlags & MOUSE_MOVE_ABSOLUTE)) {
+				platform_event event{platform_event_type::pointer_move, owner->id(), 0};
+				event.x           = owner->pointer_x_;
+				event.y           = owner->pointer_y_;
+				event.delta_x     = input.data.mouse.lLastX;
+				event.delta_y     = input.data.mouse.lLastY;
+				event.delta_units = pointer_delta_unit::device_counts;
+				owner->post_pointer(std::move(event));
+			}
+		}
+		if ((message == WM_MOUSEWHEEL || message == WM_MOUSEHWHEEL) && owner->focused_) {
+			platform_event event{platform_event_type::scroll, owner->id(), 0};
+			auto           amount = double(static_cast<short>(HIWORD(first))) / WHEEL_DELTA;
+			if (message == WM_MOUSEWHEEL)
+				event.scroll_y = amount;
+			else
+				event.scroll_x = amount;
+			owner->post_pointer(std::move(event));
+			return 0;
+		}
+		if ((owner->relative_ && (message == WM_MOVE || message == WM_SIZE)) ||
+		    (message == WM_CAPTURECHANGED && (owner->relative_ || owner->buttons_) &&
+		     reinterpret_cast<HWND>(second) != window) ||
+		    message == WM_CANCELMODE || (message == WM_SHOWWINDOW && !first) ||
+		    (message == WM_SIZE && first == SIZE_MINIMIZED))
+			owner->cancel_input();
+		if (message == WM_SETCURSOR && owner->relative_) {
+			SetCursor(nullptr);
+			return TRUE;
 		}
 		if ((message == WM_KEYDOWN || message == WM_SYSKEYDOWN) && owner->focused_) {
 			// A surrogate pair belongs to one translated key action. Never carry an

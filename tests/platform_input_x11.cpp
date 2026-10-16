@@ -1,8 +1,10 @@
 #include "ice/platform/desktop_window.h"
+#include <X11/XKBlib.h>
 #include <X11/Xlib.h>
 #include <X11/keysym.h>
 #include <algorithm>
 #include <cstdio>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -36,9 +38,8 @@ std::vector<platform_event> collect(Display *display) {
 	return result;
 }
 
-bool send_key(Display *display, Window window, KeySym symbol, int type, unsigned modifiers,
-              Time time) {
-	const KeyCode code = XKeysymToKeycode(display, symbol);
+bool send_code(Display *display, Window window, KeyCode code, int type, unsigned modifiers,
+               Time time) {
 	if (!code)
 		return false;
 	XEvent event{};
@@ -54,6 +55,48 @@ bool send_key(Display *display, Window window, KeySym symbol, int type, unsigned
 	return XSendEvent(display, window, False, type == KeyPress ? KeyPressMask : KeyReleaseMask,
 	                  &event) != 0;
 }
+bool send_key(Display *display, Window window, KeySym symbol, int type, unsigned modifiers,
+              Time time) {
+	return send_code(display, window, XKeysymToKeycode(display, symbol), type, modifiers, time);
+}
+
+KeyCode physical_w(Display *display) {
+	KeyCode result = 0;
+	if (auto *keyboard = XkbGetKeyboard(display, XkbAllComponentsMask, XkbUseCoreKbd)) {
+		if (keyboard->names && keyboard->names->keys)
+			for (unsigned code = keyboard->min_key_code; code <= keyboard->max_key_code; ++code)
+				if (std::string_view(keyboard->names->keys[code].name, 4) == "AD02")
+					result = static_cast<KeyCode>(code);
+		XkbFreeKeyboard(keyboard, XkbAllComponentsMask, True);
+	}
+	return result;
+}
+class remapped_key {
+public:
+	remapped_key(Display *display, KeyCode code) : display_(display), code_(code) {
+		previous_ = XGetKeyboardMapping(display_, code_, 1, &count_);
+		if (previous_ && count_ > 0) {
+			std::vector<KeySym> symbols(static_cast<std::size_t>(count_), NoSymbol);
+			symbols[0] = XK_z;
+			if (symbols.size() > 1)
+				symbols[1] = XK_Z;
+			XChangeKeyboardMapping(display_, code_, count_, symbols.data(), 1);
+		}
+	}
+	~remapped_key() {
+		if (previous_) {
+			XChangeKeyboardMapping(display_, code_, count_, previous_, 1);
+			XFree(previous_);
+		}
+	}
+	bool valid() const { return previous_ && count_ > 0; }
+
+private:
+	Display *display_;
+	KeyCode  code_;
+	int      count_    = 0;
+	KeySym  *previous_ = nullptr;
+};
 
 bool stroke(Display *display, Window window, KeySym symbol, unsigned modifiers, Time time) {
 	return send_key(display, window, symbol, KeyPress, modifiers, time) &&
@@ -123,6 +166,31 @@ int main() {
 	int    revert  = 0;
 	XGetInputFocus(display, &focused, &revert);
 	CHECK(focused == first_native);
+	// This isolated server's physical AD02 position produces z after a temporary
+	// layout change. Text follows the layout; physical W must retain its position.
+	const auto w = physical_w(display);
+	CHECK(w != 0);
+	{
+		remapped_key remap(display, w);
+		CHECK(remap.valid());
+		(void)collect(display);
+		CHECK(send_code(display, first_native, w, KeyPress, 0, 80));
+		CHECK(send_code(display, first_native, w, KeyRelease, 0, 81));
+		events    = collect(display);
+		auto text = actions(events);
+		CHECK(text.size() == 1 && committed(text[0], first_id, "z"));
+		bool down = false, up = false;
+		for (const auto &event : events)
+			if (event.type == platform_event_type::physical_key && event.window == first_id) {
+				CHECK(event.key == physical_key::w);
+				if (event.pressed)
+					down = true;
+				else
+					up = true;
+			}
+		CHECK(down && up);
+	}
+	(void)collect(display);
 
 	CHECK(stroke(display, first_native, XK_a, 0, 100));
 	CHECK(stroke(display, first_native, XK_b, ShiftMask, 110));
@@ -198,6 +266,57 @@ int main() {
 	CHECK(stroke(display, second_native, XK_b, 0, 520));
 	input = actions(collect(display));
 	CHECK(input.size() == 1 && committed(input[0], second_id, "b"));
+	XSetInputFocus(display, first_native, RevertToPointerRoot, CurrentTime);
+	(void)collect(display);
+	CHECK((*first)->relative_pointer_capability() == relative_pointer_kind::warp);
+	CHECK(!(*second)->set_pointer_mode(pointer_mode::relative));
+	CHECK((*first)->set_pointer_mode(pointer_mode::relative));
+	(void)collect(display); // Consume the initial center warp without synthetic motion.
+	(*first)->enable_text_input(false);
+	events = collect(display);
+	CHECK((*first)->pointer_mode() == pointer_mode::relative);
+	bool text_only = false;
+	for (const auto &event : events)
+		if (event.type == platform_event_type::input_cancelled && event.window == first_id)
+			text_only = event.cancellation == input_cancellation::text;
+	CHECK(text_only);
+	CHECK(XGetWindowAttributes(display, first_native, &attributes));
+	XWarpPointer(display, None, first_native, 0, 0, 0, 0, attributes.width / 2 + 7,
+	             attributes.height / 2 + 3);
+	events         = collect(display);
+	double delta_x = 0, delta_y = 0;
+	bool   moved = false;
+	for (const auto &event : events)
+		if (event.type == platform_event_type::pointer_move && event.window == first_id) {
+			CHECK(event.delta_units == pointer_delta_unit::logical);
+			delta_x += event.delta_x;
+			delta_y += event.delta_y;
+			moved = true;
+		}
+	CHECK(moved && delta_x == 7 && delta_y == 3);
+	XSetInputFocus(display, second_native, RevertToPointerRoot, CurrentTime);
+	events = collect(display);
+	CHECK((*first)->pointer_mode() == pointer_mode::normal);
+	CHECK(contains(events, platform_event_type::input_cancelled, first_id));
+	XSetInputFocus(display, first_native, RevertToPointerRoot, CurrentTime);
+	(void)collect(display);
+	CHECK((*first)->set_pointer_mode(pointer_mode::relative));
+	(*first)->show(false);
+	CHECK((*first)->pointer_mode() == pointer_mode::normal);
+	(void)collect(display);
+	CHECK(!(*first)->set_pointer_mode(pointer_mode::relative));
+	(*first)->show();
+	(void)collect(display);
+	XSetInputFocus(display, first_native, RevertToPointerRoot, CurrentTime);
+	(void)collect(display);
+	CHECK((*first)->set_pointer_mode(pointer_mode::relative));
+	(void)collect(display);
+	CHECK((*first)->resize(400, 240));
+	events = collect(display);
+	CHECK((*first)->pointer_mode() == pointer_mode::normal);
+	CHECK(contains(events, platform_event_type::input_cancelled, first_id));
+	XSetInputFocus(display, second_native, RevertToPointerRoot, CurrentTime);
+	(void)collect(display);
 	first->reset();
 	events = collect(display);
 	CHECK(contains(events, platform_event_type::window_retired, first_id));
@@ -205,6 +324,7 @@ int main() {
 	CHECK(stroke(display, second_native, XK_b, 0, 530));
 	input = actions(collect(display));
 	CHECK(input.size() == 1 && committed(input[0], second_id, "b"));
-	std::puts("Native X11 input passed: two-window commits/edit routing, modifiers, repeat, "
-	          "focus/disable cancellation and independent retirement");
+	std::puts("Native X11 input passed: layout-independent physical W/text z, two-window "
+	          "commits/edit routing, modifiers/repeat, warp motion without synthetic jumps, "
+	          "focus/hide/resize capture release and independent retirement");
 }

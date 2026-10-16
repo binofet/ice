@@ -5,6 +5,21 @@ lists on Metal and OpenGL 4.1 core. It uses the same logical device ownership,
 shader URI snapshots, uniform block and sampled image contracts as procedural
 drawing. It does not create a camera, simulation, material model or application.
 
+The CPU camera API in `ice/render/camera.h` belongs to `ice::assets` and needs no
+renderer or window. A `camera_pose` contains world position and a camera-to-world
+quaternion: local +X is right, +Y is up and -Z is forward. `look_at_pose` constructs
+that pose; `make_camera_view` validates it and builds perspective or orthographic
+matrices for an explicit drawable size and clip-depth convention. Perspective FOV
+uses radians; orthographic extent is the full vertical span in world units.
+
+The returned `camera_view` carries eye, basis vectors and an inverse view-projection.
+`camera_ray` unprojects normalized top-left coordinates in [0,1]. Its origin lies
+on the near plane, its direction has unit length, and its finite length reaches
+the far plane for either projection. Use that segment for bounded picking casts.
+Invalid poses, degenerate look-at axes, singular/unrepresentable matrices and clip
+ranges that lose a finite far plane return diagnostics. These factories do not
+select an active camera, own input or alter authored scene state.
+
 ## Authored resources
 
 `mesh_data` owns CPU vertices and uint32 indices. A vertex contains two

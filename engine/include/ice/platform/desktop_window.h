@@ -85,8 +85,21 @@ public:
 	void enable_text_input(bool enabled = true);
 	/// Return whether this window accepts native text/IME input.
 	bool text_input_enabled() const { return text_input_enabled_; }
-	/// Discard current native preedit and emit input_cancelled without committing text.
+	/// Discard current native preedit and emit text-only input_cancelled without committing text.
+	/// Physical held controls and relative capture remain active.
 	void cancel_text_input();
+	/// Release relative capture, discard native preedit and cancel all held input for this window.
+	void cancel_input();
+	/// Set cursor behavior while focused/visible. Relative mode never implicitly steals focus;
+	/// failure preserves the effective mode. Focus/hide/close/overflow release capture without
+	/// automatically reacquiring it. All calls and queries belong on the UI thread.
+	ice::expected<void, window_diagnostic> set_pointer_mode(ice::platform::pointer_mode mode);
+	/// Return effective behavior, consuming pending native cancellation on the UI thread.
+	ice::platform::pointer_mode pointer_mode() const;
+	/// Report the backend path, including an explicit warp fallback or unsupported capability.
+	virtual relative_pointer_kind relative_pointer_capability() const {
+		return relative_pointer_kind::unavailable;
+	}
 	/// Update the logical candidate anchor; reject nonfinite/out-of-bounds values unchanged.
 	bool set_text_input_rect(const text_input_rect &rect);
 	/// Return the last accepted text caret/candidate anchor.
@@ -99,13 +112,22 @@ protected:
 	virtual void text_input_changed() {}
 	/// Discard native preedit after focus/hide/disable or an explicit client cancellation.
 	virtual void cancel_native_text_input() {}
+	/// Reset native held-key/repeat/pointer tracking after all-input cancellation, independently of
+	/// IME.
+	virtual void cancel_native_physical_input() {}
+	/// Change native cursor ownership. Normal mode must be safe during shutdown and focus loss.
+	virtual ice::expected<void, window_diagnostic>
+	change_pointer_mode(ice::platform::pointer_mode mode);
 
 private:
-	desktop_window(const desktop_window &other)            = delete;
-	desktop_window &operator=(const desktop_window &other) = delete;
-	window_id       id_                                    = 0;
-	bool            close_requested_                       = false;
-	bool            text_input_enabled_                    = false;
-	text_input_rect text_input_rect_;
+	desktop_window(const desktop_window &other)                        = delete;
+	desktop_window             &operator=(const desktop_window &other) = delete;
+	window_id                   id_                                    = 0;
+	bool                        close_requested_                       = false;
+	bool                        text_input_enabled_                    = false;
+	text_input_rect             text_input_rect_;
+	ice::platform::pointer_mode pointer_mode_     = ice::platform::pointer_mode::normal;
+	std::uint64_t               cancellation_all_ = 0, cancellation_window_ = 0;
+	void                        refresh_input_cancellation();
 };
 } // namespace ice::platform

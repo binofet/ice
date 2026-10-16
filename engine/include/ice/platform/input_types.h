@@ -1,0 +1,148 @@
+#pragma once
+#include <cstdint>
+namespace ice::platform {
+/// Layout-independent keyboard positions, using USB HID keyboard-page usage values.
+/// Letter names describe US-QWERTY positions only; committed text comes from the text/IME path.
+enum class physical_key : std::uint16_t {
+	unknown = 0,
+	a       = 4,
+	b,
+	c,
+	d,
+	e,
+	f,
+	g,
+	h,
+	i,
+	j,
+	k,
+	l,
+	m,
+	n,
+	o,
+	p,
+	q,
+	r,
+	s,
+	t,
+	u,
+	v,
+	w,
+	x,
+	y,
+	z,
+	digit_1,
+	digit_2,
+	digit_3,
+	digit_4,
+	digit_5,
+	digit_6,
+	digit_7,
+	digit_8,
+	digit_9,
+	digit_0,
+	enter,
+	escape,
+	backspace,
+	tab,
+	space,
+	minus,
+	equal,
+	left_bracket,
+	right_bracket,
+	backslash,
+	non_us_hash,
+	semicolon,
+	apostrophe,
+	grave,
+	comma,
+	period,
+	slash,
+	caps_lock,
+	f1,
+	f2,
+	f3,
+	f4,
+	f5,
+	f6,
+	f7,
+	f8,
+	f9,
+	f10,
+	f11,
+	f12,
+	print_screen,
+	scroll_lock,
+	pause,
+	insert,
+	home,
+	page_up,
+	delete_forward,
+	end,
+	page_down,
+	right,
+	left,
+	down,
+	up,
+	num_lock,
+	keypad_divide,
+	keypad_multiply,
+	keypad_minus,
+	keypad_plus,
+	keypad_enter,
+	keypad_1,
+	keypad_2,
+	keypad_3,
+	keypad_4,
+	keypad_5,
+	keypad_6,
+	keypad_7,
+	keypad_8,
+	keypad_9,
+	keypad_0,
+	keypad_period,
+	non_us_backslash,
+	application,
+	power,
+	keypad_equal,
+	f13,
+	f14,
+	f15,
+	f16,
+	f17,
+	f18,
+	f19,
+	f20,
+	f21,
+	f22,
+	f23,
+	f24,
+	left_control = 224,
+	left_shift,
+	left_alt,
+	left_super,
+	right_control,
+	right_shift,
+	right_alt,
+	right_super
+};
+/// Stable mouse button identity, independent of native button numbering.
+enum class mouse_button : std::uint8_t { none, primary, secondary, middle, back, forward };
+/// Window-owned cursor behavior; relative capture is explicitly requested while focused/visible.
+enum class pointer_mode { normal, relative };
+/// Available relative-motion path. Native does not promise unaccelerated hardware counts.
+enum class relative_pointer_kind { unavailable, native, warp };
+/// Relative displacement units; raw device counts are deliberately not mislabeled as UI pixels.
+enum class pointer_delta_unit { logical, device_counts };
+/// Whether cancellation resets all held input or only marked/composing text.
+enum class input_cancellation { all, text };
+/// Validate one defined physical keyboard position; unknown is a sentinel, not a pressable key.
+constexpr bool valid_physical_key(physical_key key) {
+	auto value = static_cast<std::uint16_t>(key);
+	return (value >= 4 && value <= 115) || (value >= 224 && value <= 231);
+}
+/// Validate a pressable mouse button; none is a sentinel.
+constexpr bool valid_mouse_button(mouse_button button) {
+	return button >= mouse_button::primary && button <= mouse_button::forward;
+}
+} // namespace ice::platform

@@ -48,9 +48,57 @@ than commit it. The stream permits 1024 events, 256 KiB total text and 4096 byte
 text event. Overflow discards the batch and emits application-scope input cancellation.
 Consumers should clear marked text for their window or application-wide cancellation.
 Clipboard shortcuts are actions only; clipboard ownership/transfers are not implemented.
-These adapters provide input/preedit, not a rich-editor surrounding-document or reconversion
-model. Pointer/capture and physical held-key/device routing into the shared host are
-subsequent work; mobile probes already feed touch/sensor devices into that host.
+These adapters provide insertion/preedit, without a rich-editor surrounding-document or
+reconversion model. Text-only cancellation carries `input_cancellation::text`: disabling
+text while navigating does not release physical keys or pointer capture.
+
+## Physical controls and relative pointer capture
+
+The same per-window stream carries `physical_key` down/up, `pointer_button`, `pointer_move`
+and `scroll`. Physical keys identify keyboard positions using USB-HID-style values; `w`
+means the US-QWERTY W position even when another layout produces a different character.
+Use committed UTF-8 for text. Both paths remain independent, and physical controls work
+with text input disabled. AppKit maps native key positions, Win32 maps scan codes and
+X11 maps XKB key names; unavailable positions remain `unknown`, with no character-based
+guess. Keyboard-repeat events are marked, and key-up is never a repeat.
+
+Pointer positions use logical client units from the top-left. Relative deltas are positive
+right/down; the first normal-position sample after cancellation starts with zero delta.
+`delta_units` distinguishes logical displacement from Win32 raw device counts, so camera
+sensitivity must account for that distinction. Scroll intent is positive right/up;
+`precise_scroll` distinguishes precise logical UI units from nominal wheel steps.
+
+Request `window.set_pointer_mode(pointer_mode::relative)` only for a focused, visible
+window and handle its diagnostic on failure. The request never steals focus. Query
+`relative_pointer_capability()` for the available path and `pointer_mode()` for effective
+state. Relative capture belongs to that window; there is no root-window hook or global
+input monitor. The native implementations are:
+
+| Platform | Relative path | Reported delta units |
+| --- | --- | --- |
+| AppKit | Cursor/mouse disassociation with balanced cursor hiding, native event deltas | Logical; not a promise of unaccelerated counts |
+| Win32 | Focused-window raw mouse input, cursor confinement and capture | Device counts |
+| X11 | Explicit confined pointer-grab/center-warp fallback, synthetic warp events suppressed | Logical; not XI2 raw input |
+
+Focus loss, hide, minimize, close, destruction, all-input cancellation and queue overflow
+release capture and reset native held/repeat state. Win32 move/resize and X11 geometry
+changes also release capture rather than retain stale confinement/warp coordinates.
+Returning to a window never captures automatically. `cancel_input()` releases all input;
+`cancel_text_input()` only discards composition. Consumers must reset their held controls
+for `input_cancellation::all`, including application-scope cancellation, and preserve them
+for text-only cancellation. No synthetic key-up sequence is promised after cancellation.
+
+All capture requests, queries and event pumping belong on the UI thread. Posting an
+invalid/overflowing event marks cancellation under the queue lock; native cursor operations
+are deferred to UI pumping or the effective mode query. This also releases capture if an
+application fails to poll the cancellation notification. Pointer payloads must be finite
+and have absolute values no greater than one billion; physical events need a nonzero
+window, a defined key/button identity and a valid displacement-unit tag.
+
+The shared host's `device_input` reuses optional typed `physical_key`/`mouse_button`
+fields alongside existing contact codes. This does not create another polling system or
+automatically bridge desktop events into a host device. Application input policy owns that
+routing; existing mobile probes continue feeding their own touch/sensor devices.
 
 ## Validation
 
@@ -61,7 +109,20 @@ ctest --test-dir build/desktop --output-on-failure
 build/desktop/bin/ice_window_smoke
 # On a headless Linux test machine:
 xvfb-run -a build/desktop/bin/ice_window_smoke
+# Native X11 key/text and capture regression; use its own display server:
+xvfb-run -a build/desktop/ice_platform_input_x11_tests
+# Native AppKit physical-input regression via LaunchServices:
+open -n -W build/desktop/ice_platform_physical_macos_tests.app
 ```
+
+The physical-input CPU regression exercises typed mappings, text-only versus all-input
+cancellation, finite payload rejection, window routing and bounded-queue capture release.
+The AppKit fixture uses only its own windows, native queued keys and responder events; it
+checks independent physical/text delivery and focus/overflow/hide/close capture release.
+Run it through LaunchServices so its application can activate. Exit 77 means native focus
+or capture was unavailable and is a skip, not a passing hardware result. The isolated X11
+fixture temporarily remaps its server's physical W position to produce text `z`, restores
+the mapping, and exercises real focus, pointer warps and capture release on hide/resize.
 
 The window module requires X11 development headers/libraries on Linux and the Windows
 10 SDK with user32/gdi32/imm32 on Windows. Enabling the separate OpenGL renderer also requires

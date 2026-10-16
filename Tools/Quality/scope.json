@@ -85,7 +85,19 @@
     "engine/src/audio/android_capture.cpp",
     "tests/audio_capture.cpp",
     "engine/include/ice/core/sha256.h",
-    "tests/sha256.cpp"
+    "tests/sha256.cpp",
+    "engine/include/ice/render/camera.h",
+    "engine/src/render/camera.cpp",
+    "tests/camera.cpp",
+    "engine/include/ice/platform/input_types.h",
+    "engine/include/ice/platform/platform_events.h",
+    "engine/include/ice/platform/host.h",
+    "engine/src/platform/platform_events.cpp",
+    "engine/src/platform/physical_key_internal.h",
+    "engine/src/platform/input_cancellation_internal.h",
+    "tests/platform_physical_input.cpp",
+    "tests/platform_physical_input_macos.mm",
+    "tests/platform_input_x11.cpp"
   ],
   "lint": [
     "tests/mesh.cpp",
@@ -129,17 +141,25 @@
     "tests/script_lua.cpp",
     "engine/src/audio/capture.cpp",
     "tests/audio_capture.cpp",
-    "tests/sha256.cpp"
+    "tests/sha256.cpp",
+    "engine/src/render/camera.cpp",
+    "tests/camera.cpp",
+    "engine/src/platform/platform_events.cpp",
+    "tests/platform_physical_input.cpp"
   ],
   "lint_platform": {
     "Darwin": [
       "engine/src/render/metal/device.mm",
       "engine/src/render/gl/macos.mm",
       "tests/metal.cpp",
-      "tests/metal_layer.mm"
+      "tests/metal_layer.mm",
+      "engine/src/platform/macos/desktop_window.mm",
+      "tests/platform_physical_input_macos.mm"
     ],
     "Linux": [
-      "engine/src/render/gl/x11.cpp"
+      "engine/src/render/gl/x11.cpp",
+      "engine/src/platform/x11/desktop_window.cpp",
+      "tests/platform_input_x11.cpp"
     ]
   }
 }

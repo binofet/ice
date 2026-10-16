@@ -1,4 +1,5 @@
 #pragma once
+#include "ice/platform/input_types.h"
 #include <atomic>
 #include <cstdint>
 #include <deque>
@@ -63,6 +64,11 @@ struct device_input {
 	/// Motion: natural device axes, X right/Y top/Z out; acceleration is specific force
 	/// in m/s^2 including gravity (+Z when stationary face-up), gyro is rad/s.
 	float x = 0, y = 0, z = 0, w = 0;
+	/// Optional shared physical keyboard position; unknown retains an adapter's legacy contact
+	/// code.
+	physical_key key = physical_key::unknown;
+	/// Optional mouse button identity; none retains ordinary touch/contact semantics.
+	mouse_button button = mouse_button::none;
 };
 /// Host-thread callbacks. Surface/device references are borrowed for the call; callbacks must not
 /// mutate the host.

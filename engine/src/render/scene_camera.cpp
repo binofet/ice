@@ -42,6 +42,16 @@ camera_view scene_camera::view(int width, int height, clip_depth depth) const {
 	view.projection = depth == clip_depth::zero_to_one
 	                      ? glm::perspectiveRH_ZO(3.14159265f / 4, aspect, near_plane, far_plane)
 	                      : glm::perspectiveRH_NO(3.14159265f / 4, aspect, near_plane, far_plane);
+	// Keep the orbit helper's established float transforms while exposing the same basis
+	// and picking metadata as an explicitly positioned camera.
+	view.eye                     = glm::make_vec3(eye);
+	const auto world_rotation    = glm::transpose(ice::math::mat3(view.view));
+	view.right                   = world_rotation[0];
+	view.up                      = world_rotation[1];
+	view.forward                 = -world_rotation[2];
+	view.inverse_view_projection = ice::math::mat4(
+	    glm::inverse(ice::math::dmat4(view.projection) * ice::math::dmat4(view.view)));
+	view.depth = depth;
 	return view;
 }
 

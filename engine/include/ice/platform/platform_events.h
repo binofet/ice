@@ -1,4 +1,5 @@
 #pragma once
+#include "ice/platform/input_types.h"
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -9,7 +10,8 @@ using window_id = std::uint64_t;
 /// Zero denotes application scope. A native root window is not required.
 constexpr window_id application_scope = 0;
 
-/// Window/application lifecycle, native text, interpreted editing and cancellation categories.
+/// Window/application lifecycle, native text/editing, physical controls and cancellation
+/// categories.
 enum class platform_event_type {
 	window_registered,
 	window_retired,
@@ -22,7 +24,11 @@ enum class platform_event_type {
 	text_committed,
 	text_composition,
 	edit_command,
-	input_cancelled
+	input_cancelled,
+	physical_key,
+	pointer_button,
+	pointer_move,
+	scroll
 };
 
 /// Native interpreted editing action; composition navigation does not produce these actions.
@@ -83,12 +89,30 @@ struct platform_event {
 	std::string text{};
 	/// Interpreted action, meaningful only for edit_command events.
 	ice::platform::edit_command command = ice::platform::edit_command::none;
-	/// Modifier state for input_activity, text and edit-command events.
+	/// Modifier state for keyboard, text/editing, pointer and scroll events.
 	key_modifiers modifiers = 0;
 	/// True for an OS keyboard-repeat action.
 	bool repeat = false;
 	/// Selection within preedit text, measured in UTF-8 bytes on code-point boundaries.
 	std::size_t selection_start = 0, selection_length = 0;
+	/// Physical keyboard position for physical_key events; independent of text/IME activation.
+	ice::platform::physical_key key = ice::platform::physical_key::unknown;
+	/// Button for pointer_button events, independent of native button numbering.
+	mouse_button button = mouse_button::none;
+	/// Down/up transition for physical_key and pointer_button events.
+	bool pressed = false;
+	/// Pointer position in logical client units from top-left; not changed by relative-mode warps.
+	double x = 0, y = 0;
+	/// Relative pointer displacement, positive right/down. First normal sample is zero.
+	double delta_x = 0, delta_y = 0;
+	/// Logical UI units normally; native raw relative input may explicitly report device counts.
+	pointer_delta_unit delta_units = pointer_delta_unit::logical;
+	/// Scroll intent, positive right/up; nominal wheel steps or precise logical UI units below.
+	double scroll_x = 0, scroll_y = 0;
+	/// True means precise logical UI units (AppKit points); false means nominal wheel steps.
+	bool precise_scroll = false;
+	/// Scope for input_cancelled; text-only cancellation does not reset physical controls/capture.
+	input_cancellation cancellation = input_cancellation::all;
 };
 
 /// A bounded application event stream. Poll once, then route by window ID.
@@ -99,10 +123,13 @@ public:
 	static window_id allocate_window_id();
 	/// Append an event to the bounded application stream; route by window ID after polling.
 	static void post(platform_event_type type, window_id window = application_scope);
-	/// Append a native/injected action, validating UTF-8, text bounds and preedit selection.
+	/// Append a native/injected action, validating UTF-8, bounds, physical identities and finite
+	/// pointer payloads. Physical actions require a nonzero window routing identity.
 	/// The stream holds at most 1024 events and 256 KiB of text. Overflow clears queued
 	/// actions and delivers application-scope input_cancelled before accepting new input.
-	/// False denotes rejection; callers must cancel native composition after rejection.
+	/// False denotes rejection and schedules all-input cancellation. Native adapters must release
+	/// capture/discard composition after rejection; UI pumping or the effective pointer query also
+	/// consumes cancellation independently of whether an application polls the notification.
 	static bool post(platform_event event);
 	/// Consume one queued lifecycle notification without blocking.
 	static bool poll(platform_event &event);

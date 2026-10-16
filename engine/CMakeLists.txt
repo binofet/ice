@@ -7,6 +7,7 @@ add_library(ICEAssetRuntime STATIC
     src/animation/scene_animation.cpp
     src/assets/scene_asset.cpp
     src/assets/gltf_readers.cpp
+    src/render/camera.cpp
     src/render/scene_camera.cpp)
 add_library(ice::assets ALIAS ICEAssetRuntime)
 target_link_libraries(ICEAssetRuntime PUBLIC ice::math ice::uri ice::expected)

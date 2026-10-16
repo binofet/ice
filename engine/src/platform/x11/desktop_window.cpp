@@ -1,6 +1,8 @@
 #include "../desktop_window_internal.h"
+#include "../physical_key_internal.h"
 #include "../text_input_internal.h"
 #include "ice/core/utf8.h"
+#include <X11/XKBlib.h>
 #include <X11/Xatom.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
@@ -22,6 +24,7 @@ struct connection {
 	Atom                           protocols    = 0;
 	XIM                            input_method = nullptr;
 	std::map<Window, x11_window *> windows;
+	std::array<physical_key, 256>  keys{};
 	~connection() {
 		if (input_method)
 			XCloseIM(input_method);
@@ -29,6 +32,17 @@ struct connection {
 			XCloseDisplay(display);
 	}
 };
+void load_physical_keys(connection &owner) {
+	owner.keys.fill(physical_key::unknown);
+	if (auto *keyboard = XkbGetKeyboard(owner.display, XkbAllComponentsMask, XkbUseCoreKbd)) {
+		if (keyboard->names && keyboard->names->keys)
+			for (unsigned code = keyboard->min_key_code;
+			     code <= keyboard->max_key_code && code < owner.keys.size(); ++code)
+				owner.keys[code] =
+				    x11_physical_key(std::string_view(keyboard->names->keys[code].name, 4));
+		XkbFreeKeyboard(keyboard, XkbAllComponentsMask, True);
+	}
+}
 std::weak_ptr<connection> current;
 key_modifiers             modifiers(unsigned state) {
     key_modifiers result = 0;
@@ -141,7 +155,7 @@ public:
 	}
 	~x11_window() override {
 		destroying_ = true;
-		cancel_text_input();
+		cancel_input();
 		if (input_context_)
 			XDestroyIC(input_context_);
 		connection_->windows.erase(native_);
@@ -155,7 +169,7 @@ public:
 		if (visible)
 			XMapWindow(connection_->display, native_);
 		else {
-			cancel_text_input();
+			cancel_input();
 			XUnmapWindow(connection_->display, native_);
 		}
 		XFlush(connection_->display);
@@ -194,13 +208,21 @@ public:
 	native_window_handle native_handle() const override {
 		return {native_window_kind::x11, std::uintptr_t(native_), nullptr, connection_->display};
 	}
+	relative_pointer_kind relative_pointer_capability() const override {
+		return relative_pointer_kind::warp;
+	}
 	void event(const XEvent &event) {
 		if (event.type == ClientMessage && event.xclient.format == 32 &&
 		    event.xclient.message_type == connection_->protocols &&
 		    Atom(event.xclient.data.l[0]) == connection_->close)
 			request_close();
-		if (event.type == ConfigureNotify)
+		if (event.type == ConfigureNotify) {
+			// A pending warp belongs to the previous client geometry. Release capture
+			// instead of interpreting that synthetic position as camera movement.
+			if (relative_)
+				cancel_input();
 			platform_events::post(platform_event_type::window_resized, id());
+		}
 		if (event.type == FocusIn) {
 			focused_ = true;
 			text_input_changed();
@@ -208,13 +230,50 @@ public:
 		}
 		if (event.type == FocusOut) {
 			focused_ = false;
-			cancel_native_text_input();
+			cancel_input();
 			if (input_context_)
 				XUnsetICFocus(input_context_);
 			platform_events::post(platform_event_type::focus_lost, id());
 		}
 		if (event.type == KeyPress)
 			key_press(event.xkey);
+		if (event.type == UnmapNotify) {
+			focused_ = false;
+			cancel_input();
+			pointer_valid_ = false;
+		}
+		if (event.type == EnterNotify || event.type == LeaveNotify)
+			pointer_valid_ = false;
+		if ((event.type == ButtonPress || event.type == ButtonRelease) && focused_) {
+			unsigned       button = event.xbutton.button;
+			platform_event input{platform_event_type::pointer_button, id(), 0};
+			input.x         = event.xbutton.x;
+			input.y         = event.xbutton.y;
+			input.modifiers = modifiers(event.xbutton.state);
+			input.pressed   = event.type == ButtonPress;
+			if (button >= 4 && button <= 7) {
+				if (!input.pressed)
+					return;
+				input.type = platform_event_type::scroll;
+				if (button <= 5)
+					input.scroll_y = button == 4 ? 1 : -1;
+				else
+					input.scroll_x = button == 6 ? -1 : 1;
+			} else {
+				input.button = button == 1   ? mouse_button::primary
+				               : button == 2 ? mouse_button::middle
+				               : button == 3 ? mouse_button::secondary
+				               : button == 8 ? mouse_button::back
+				               : button == 9 ? mouse_button::forward
+				                             : mouse_button::none;
+				if (input.button == mouse_button::none)
+					return;
+			}
+			if (!platform_events::post(std::move(input)))
+				cancel_input();
+		}
+		if (event.type == MotionNotify && focused_)
+			pointer_motion(event.xmotion);
 		if (event.type == DestroyNotify) {
 			connection_->windows.erase(native_);
 			native_ = 0;
@@ -222,11 +281,14 @@ public:
 		}
 	}
 	void prepare_key_event(const XEvent &event) {
+		if (!focused_)
+			return;
 		if (event.type == KeyPress) {
 			modifiers_ = modifiers(event.xkey.state);
 			repeated_  = event.xkey.keycode < pressed_.size() && pressed_[event.xkey.keycode];
 			if (event.xkey.keycode < pressed_.size())
 				pressed_[event.xkey.keycode] = true;
+			post_physical(event.xkey, true, repeated_);
 		}
 		if (event.type == KeyRelease && event.xkey.keycode < pressed_.size()) {
 			bool repeated = false;
@@ -236,8 +298,10 @@ public:
 				repeated = next.type == KeyPress && next.xkey.keycode == event.xkey.keycode &&
 				           next.xkey.time == event.xkey.time;
 			}
-			if (!repeated)
+			if (!repeated) {
 				pressed_[event.xkey.keycode] = false;
+				post_physical(event.xkey, false, false);
+			}
 		}
 	}
 	void flush_input_cancel() {
@@ -248,11 +312,122 @@ public:
 	}
 
 private:
+	void cancel_native_physical_input() override {
+		pressed_.fill(false);
+		pointer_valid_ = false;
+	}
+	void post_physical(const XKeyEvent &native, bool pressed, bool repeated) {
+		if (native.keycode >= connection_->keys.size())
+			return;
+		auto key = connection_->keys[native.keycode];
+		if (key == physical_key::unknown)
+			return;
+		platform_event input{platform_event_type::physical_key, id(), 0};
+		input.key       = key;
+		input.pressed   = pressed;
+		input.repeat    = repeated;
+		input.modifiers = modifiers(native.state);
+		if (!platform_events::post(std::move(input)))
+			cancel_input();
+	}
+	void pointer_motion(const XMotionEvent &native) {
+		platform_event input{platform_event_type::pointer_move, id(), 0};
+		input.modifiers = modifiers(native.state);
+		if (relative_) {
+			if (warp_pending_ && native.x == warp_x_ && native.y == warp_y_) {
+				warp_pending_ = false;
+				last_x_       = warp_x_;
+				last_y_       = warp_y_;
+				return;
+			}
+			input.x       = anchor_x_;
+			input.y       = anchor_y_;
+			input.delta_x = native.x - last_x_;
+			input.delta_y = native.y - last_y_;
+			last_x_       = native.x;
+			last_y_       = native.y;
+			if (!warp_pending_)
+				warp_pointer();
+		} else {
+			input.x = native.x;
+			input.y = native.y;
+			if (pointer_valid_) {
+				input.delta_x = native.x - last_x_;
+				input.delta_y = native.y - last_y_;
+			}
+			last_x_        = native.x;
+			last_y_        = native.y;
+			pointer_valid_ = true;
+		}
+		if (!platform_events::post(std::move(input)))
+			cancel_input();
+	}
+	void warp_pointer() {
+		warp_pending_ = true;
+		XWarpPointer(connection_->display, None, native_, 0, 0, 0, 0, warp_x_, warp_y_);
+		XFlush(connection_->display);
+	}
+	ice::expected<void, window_diagnostic>
+	change_pointer_mode(ice::platform::pointer_mode mode) override {
+		if (mode == ice::platform::pointer_mode::normal) {
+			if (relative_) {
+				relative_      = false;
+				warp_pending_  = false;
+				pointer_valid_ = false;
+				XUngrabPointer(connection_->display, CurrentTime);
+				if (hidden_cursor_) {
+					XFreeCursor(connection_->display, hidden_cursor_);
+					hidden_cursor_ = 0;
+				}
+				XFlush(connection_->display);
+			}
+			return {};
+		}
+		XWindowAttributes attributes{};
+		if (!native_ || !focused_ ||
+		    !XGetWindowAttributes(connection_->display, native_, &attributes) ||
+		    attributes.map_state != IsViewable)
+			return ice::unexpected(window_diagnostic{
+			    "Relative pointer capture requires the focused visible X11 window"});
+		const char empty  = 0;
+		auto       bitmap = XCreateBitmapFromData(connection_->display, native_, &empty, 1, 1);
+		if (!bitmap)
+			return ice::unexpected(window_diagnostic{"X11 could not create the capture cursor"});
+		XColor black{};
+		hidden_cursor_ =
+		    XCreatePixmapCursor(connection_->display, bitmap, bitmap, &black, &black, 0, 0);
+		XFreePixmap(connection_->display, bitmap);
+		if (!hidden_cursor_ ||
+		    XGrabPointer(connection_->display, native_, False,
+		                 ButtonPressMask | ButtonReleaseMask | PointerMotionMask, GrabModeAsync,
+		                 GrabModeAsync, native_, hidden_cursor_, CurrentTime) != GrabSuccess) {
+			if (hidden_cursor_)
+				XFreeCursor(connection_->display, hidden_cursor_);
+			hidden_cursor_ = 0;
+			return ice::unexpected(window_diagnostic{"X11 warp-relative pointer grab failed"});
+		}
+		Window   root = 0, child = 0;
+		int      root_x = 0, root_y = 0, local_x = 0, local_y = 0;
+		unsigned mask = 0;
+		XQueryPointer(connection_->display, native_, &root, &child, &root_x, &root_y, &local_x,
+		              &local_y, &mask);
+		anchor_x_ = local_x;
+		anchor_y_ = local_y;
+		warp_x_   = attributes.width / 2;
+		warp_y_   = attributes.height / 2;
+		last_x_   = warp_x_;
+		last_y_   = warp_y_;
+		XEvent stale{};
+		while (XCheckTypedWindowEvent(connection_->display, native_, MotionNotify, &stale)) {
+		}
+		relative_ = true;
+		warp_pointer();
+		return {};
+	}
 	void cancel_native_text_input() override {
 		cancelling_ = true;
 		preedit_.clear();
 		composing_ = false;
-		pressed_.fill(false);
 		if (input_context_) {
 			char *discarded = Xutf8ResetIC(input_context_);
 			if (discarded)
@@ -415,7 +590,8 @@ private:
 			XGetICValues(input_context_, XNFilterEvents, &filter, nullptr);
 			XSelectInput(connection_->display, native_,
 			             StructureNotifyMask | FocusChangeMask | ExposureMask | KeyPressMask |
-			                 KeyReleaseMask | filter);
+			                 KeyReleaseMask | ButtonPressMask | ButtonReleaseMask |
+			                 PointerMotionMask | EnterWindowMask | LeaveWindowMask | filter);
 		} else
 			std::fprintf(stderr,
 			             "ICE X11: no input context; native ASCII lookup fallback active\n");
@@ -473,10 +649,13 @@ private:
 	XIC  input_context_ = nullptr;
 	bool focused_ = false, composing_ = false, cancelling_ = false, cancel_pending_ = false,
 	     destroying_ = false, repeated_ = false;
-	bool                        candidate_warning_ = false;
-	key_modifiers               modifiers_         = 0;
-	std::string                 preedit_;
-	std::array<bool, 256>       pressed_{};
+	bool                  candidate_warning_ = false;
+	key_modifiers         modifiers_         = 0;
+	std::string           preedit_;
+	std::array<bool, 256> pressed_{};
+	bool                  relative_ = false, pointer_valid_ = false, warp_pending_ = false;
+	int    warp_x_ = 0, warp_y_ = 0, last_x_ = 0, last_y_ = 0, anchor_x_ = 0, anchor_y_ = 0;
+	Cursor hidden_cursor_ = 0;
 	std::shared_ptr<connection> connection_;
 	Window                      native_ = 0;
 };
@@ -507,6 +686,7 @@ create_desktop_window(const desktop_window_options &options) {
 		}
 		if (!shared->input_method)
 			std::fprintf(stderr, "ICE X11: XIM unavailable; native ASCII lookup fallback active\n");
+		load_physical_keys(*shared);
 		current = shared;
 	}
 	Window native =
@@ -517,7 +697,8 @@ create_desktop_window(const desktop_window_options &options) {
 		return ice::unexpected(window_diagnostic{"X11 window creation failed"});
 	XSelectInput(shared->display, native,
 	             StructureNotifyMask | FocusChangeMask | ExposureMask | KeyPressMask |
-	                 KeyReleaseMask);
+	                 KeyReleaseMask | ButtonPressMask | ButtonReleaseMask | PointerMotionMask |
+	                 EnterWindowMask | LeaveWindowMask);
 	XSetWMProtocols(shared->display, native, &shared->close, 1);
 	XStoreName(shared->display, native, options.title.c_str());
 	XChangeProperty(shared->display, native, XInternAtom(shared->display, "_NET_WM_NAME", False),
@@ -535,6 +716,10 @@ void pump_desktop_events() {
 	while (XPending(shared->display)) {
 		XEvent event;
 		XNextEvent(shared->display, &event);
+		if (event.type == MappingNotify) {
+			XRefreshKeyboardMapping(&event.xmapping);
+			load_physical_keys(*shared);
+		}
 		auto owner = shared->windows.find(event.xany.window);
 		if (owner != shared->windows.end())
 			owner->second->prepare_key_event(event);

@@ -1,18 +1,8 @@
 #pragma once
 
 #include "ice/assets/scene_asset.h"
+#include "ice/render/camera.h"
 namespace ice::render {
-/// Normalized depth convention selected by the consumer/backend; handedness remains right-handed.
-enum class clip_depth { zero_to_one, negative_one_to_one };
-/// CPU camera transforms, independent of a graphics device or presentation surface.
-struct camera_view {
-	/// Right-handed world-to-camera transform, with +Y up and forward along -Z.
-	ice::math::mat4 view{1};
-	/// Camera-to-clip transform using the requested explicit depth convention.
-	ice::math::mat4 projection{1};
-	/// Requested drawable pixel dimensions used for aspect ratio.
-	int width = 1, height = 1;
-};
 /// Right-handed orbit camera. Consumers select clip depth explicitly; viewport orientation
 /// and presentation transforms belong to the backend/surface rather than global GLM flags.
 class scene_camera {

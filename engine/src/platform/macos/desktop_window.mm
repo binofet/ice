@@ -1,11 +1,14 @@
 #include "../desktop_window_internal.h"
+#include "../physical_key_internal.h"
 #import <AppKit/AppKit.h>
+#import <CoreGraphics/CoreGraphics.h>
 #include <algorithm>
 #include <cstring>
 #include <vector>
 
 namespace {
 std::vector<ice::platform::desktop_window *> windows;
+ice::platform::desktop_window               *relative_owner = nullptr;
 ice::platform::key_modifiers                 modifiers(NSEventModifierFlags flags) {
     using namespace ice::platform;
     key_modifiers result = 0;
@@ -30,7 +33,11 @@ std::size_t utf8_offset(NSString *text, NSUInteger offset) {
 	return [[text substringToIndex:offset] lengthOfBytesUsingEncoding:NSUTF8StringEncoding];
 }
 } // namespace
-@interface ICEDesktopTextView : NSView <NSTextInputClient>
+@interface ICEDesktopTextView : NSView <NSTextInputClient> {
+	std::array<bool, 256> physicalPressed_;
+	NSPoint               pointerPosition_;
+	BOOL                  pointerValid_;
+}
 @property(nonatomic, assign) ice::platform::desktop_window *owner;
 @property(nonatomic, copy) NSString                        *marked;
 @property(nonatomic) NSRange                                selection;
@@ -38,6 +45,8 @@ std::size_t utf8_offset(NSString *text, NSUInteger offset) {
 @property(nonatomic) BOOL                                   repeated;
 @property(nonatomic, strong) NSTextInputContext            *context;
 - (void)cancelPreedit;
+- (void)resetPointer;
+- (void)cancelPhysical;
 @end
 @implementation ICEDesktopTextView
 - (BOOL)acceptsFirstResponder {
@@ -51,12 +60,166 @@ std::size_t utf8_offset(NSString *text, NSUInteger offset) {
 	return self.context;
 }
 - (void)mouseDown:(NSEvent *)event {
-	(void)event;
 	[self.window makeFirstResponder:self];
+	[self pointerButton:event pressed:YES];
+}
+- (BOOL)acceptsFirstMouse:(NSEvent *)event {
+	(void)event;
+	return YES;
+}
+- (void)mouseUp:(NSEvent *)event {
+	[self pointerButton:event pressed:NO];
+}
+- (void)rightMouseDown:(NSEvent *)event {
+	[self pointerButton:event pressed:YES];
+}
+- (void)rightMouseUp:(NSEvent *)event {
+	[self pointerButton:event pressed:NO];
+}
+- (void)otherMouseDown:(NSEvent *)event {
+	[self pointerButton:event pressed:YES];
+}
+- (void)otherMouseUp:(NSEvent *)event {
+	[self pointerButton:event pressed:NO];
+}
+- (void)pointerButton:(NSEvent *)native pressed:(BOOL)pressed {
+	if (!self.owner || !self.window.isKeyWindow)
+		return;
+	using namespace ice::platform;
+	const mouse_button buttons[]{mouse_button::primary, mouse_button::secondary,
+	                             mouse_button::middle, mouse_button::back, mouse_button::forward};
+	mouse_button       button = mouse_button::none;
+	// Left/right event types carry their identity explicitly. Factory-created
+	// NSEvents may leave buttonNumber at zero even for a right-button event.
+	if (native.type == NSEventTypeLeftMouseDown || native.type == NSEventTypeLeftMouseUp)
+		button = mouse_button::primary;
+	else if (native.type == NSEventTypeRightMouseDown || native.type == NSEventTypeRightMouseUp)
+		button = mouse_button::secondary;
+	else if (native.buttonNumber >= 0 && native.buttonNumber < 5)
+		button = buttons[native.buttonNumber];
+	if (button == mouse_button::none)
+		return;
+	NSPoint        point = [self convertPoint:native.locationInWindow fromView:nil];
+	platform_event event{platform_event_type::pointer_button, self.owner->id(), 0};
+	event.button    = button;
+	event.pressed   = pressed;
+	event.x         = point.x;
+	event.y         = self.bounds.size.height - point.y;
+	event.modifiers = modifiers(native.modifierFlags);
+	if (!platform_events::post(std::move(event)))
+		self.owner->cancel_input();
+}
+- (void)resetPointer {
+	pointerValid_ = NO;
+}
+- (void)cancelPhysical {
+	[self resetPointer];
+	physicalPressed_.fill(false);
+}
+- (void)mouseMoved:(NSEvent *)native {
+	if (!self.owner || !self.window.isKeyWindow)
+		return;
+	using namespace ice::platform;
+	NSPoint point = [self convertPoint:native.locationInWindow fromView:nil];
+	point.y       = self.bounds.size.height - point.y;
+	platform_event event{platform_event_type::pointer_move, self.owner->id(), 0};
+	if (self.owner->pointer_mode() == pointer_mode::relative) {
+		if (!pointerValid_) {
+			pointerPosition_ = point;
+			pointerValid_    = YES;
+		}
+		event.x       = pointerValid_ ? pointerPosition_.x : point.x;
+		event.y       = pointerValid_ ? pointerPosition_.y : point.y;
+		event.delta_x = native.deltaX;
+		event.delta_y = native.deltaY;
+	} else {
+		event.x = point.x;
+		event.y = point.y;
+		if (pointerValid_) {
+			event.delta_x = point.x - pointerPosition_.x;
+			event.delta_y = point.y - pointerPosition_.y;
+		}
+		pointerPosition_ = point;
+		pointerValid_    = YES;
+	}
+	event.modifiers = modifiers(native.modifierFlags);
+	if (!platform_events::post(std::move(event)))
+		self.owner->cancel_input();
+}
+- (void)mouseDragged:(NSEvent *)event {
+	[self mouseMoved:event];
+}
+- (void)rightMouseDragged:(NSEvent *)event {
+	[self mouseMoved:event];
+}
+- (void)otherMouseDragged:(NSEvent *)event {
+	[self mouseMoved:event];
+}
+- (void)scrollWheel:(NSEvent *)native {
+	if (!self.owner || !self.window.isKeyWindow)
+		return;
+	ice::platform::platform_event event{ice::platform::platform_event_type::scroll,
+	                                    self.owner->id(), 0};
+	// AppKit's positive horizontal wheel delta is leftward; the shared intent is rightward.
+	event.scroll_x       = -native.scrollingDeltaX;
+	event.scroll_y       = native.scrollingDeltaY;
+	event.precise_scroll = native.hasPreciseScrollingDeltas;
+	event.modifiers      = modifiers(native.modifierFlags);
+	if (!ice::platform::platform_events::post(std::move(event)))
+		self.owner->cancel_input();
+}
+- (void)physicalKey:(NSEvent *)native pressed:(BOOL)pressed {
+	if (!self.owner || !self.window.isKeyWindow)
+		return;
+	auto key = ice::platform::detail::mac_physical_key(native.keyCode);
+	if (key == ice::platform::physical_key::unknown)
+		return;
+	if (native.keyCode < physicalPressed_.size())
+		physicalPressed_[native.keyCode] = pressed;
+	ice::platform::platform_event event{ice::platform::platform_event_type::physical_key,
+	                                    self.owner->id(), 0};
+	event.key       = key;
+	event.pressed   = pressed;
+	event.repeat    = pressed && native.type == NSEventTypeKeyDown && native.isARepeat;
+	event.modifiers = modifiers(native.modifierFlags);
+	if (!ice::platform::platform_events::post(std::move(event)))
+		self.owner->cancel_input();
+}
+- (void)keyUp:(NSEvent *)native {
+	[self physicalKey:native pressed:NO];
+}
+- (void)flagsChanged:(NSEvent *)native {
+	using enum ice::platform::physical_key;
+	auto                 key  = ice::platform::detail::mac_physical_key(native.keyCode);
+	NSEventModifierFlags mask = 0;
+	if (key == left_shift || key == right_shift)
+		mask = NSEventModifierFlagShift;
+	if (key == left_control || key == right_control)
+		mask = NSEventModifierFlagControl;
+	if (key == left_alt || key == right_alt)
+		mask = NSEventModifierFlagOption;
+	if (key == left_super || key == right_super)
+		mask = NSEventModifierFlagCommand;
+	if (key == caps_lock)
+		mask = NSEventModifierFlagCapsLock;
+	if (!mask || native.keyCode >= physicalPressed_.size())
+		return;
+	// AppKit reports Caps Lock's toggle, not a held-key release. Publish a complete
+	// physical action; the actual latched state remains in event.modifiers.
+	if (key == caps_lock) {
+		[self physicalKey:native pressed:YES];
+		[self physicalKey:native pressed:NO];
+		return;
+	}
+	BOOL pressed = (native.modifierFlags & mask) != 0;
+	if (key != caps_lock && pressed)
+		pressed = !physicalPressed_[native.keyCode];
+	[self physicalKey:native pressed:pressed];
 }
 - (void)keyDown:(NSEvent *)event {
 	if (!self.owner || !self.window.isKeyWindow)
 		return;
+	[self physicalKey:event pressed:YES];
 	self.modifiers = modifiers(event.modifierFlags);
 	self.repeated  = event.isARepeat;
 	ice::platform::platform_event activity{ice::platform::platform_event_type::input_activity,
@@ -250,11 +413,14 @@ std::size_t utf8_offset(NSString *text, NSUInteger offset) {
 }
 - (void)windowDidResignKey:(NSNotification *)notification {
 	(void)notification;
-	[self.owner->native_handle().view
-	        ? (__bridge ICEDesktopTextView *)self.owner->native_handle().view
-	        : nil cancelPreedit];
+	self.owner->cancel_input();
+	[(__bridge ICEDesktopTextView *)self.owner->native_handle().view cancelPhysical];
 	ice::platform::platform_events::post(ice::platform::platform_event_type::focus_lost,
 	                                     self.owner->id());
+}
+- (void)windowDidMiniaturize:(NSNotification *)notification {
+	(void)notification;
+	self.owner->cancel_input();
 }
 - (void)windowDidResize:(NSNotification *)notification {
 	(void)notification;
@@ -285,9 +451,10 @@ public:
 		view_        = [[ICEDesktopTextView alloc] initWithFrame:native.contentView.bounds];
 		view_.owner  = this;
 		view_.marked = @"";
-		view_.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-		view_.wantsLayer       = YES;
-		native.contentView     = view_;
+		view_.autoresizingMask         = NSViewWidthSizable | NSViewHeightSizable;
+		view_.wantsLayer               = YES;
+		native.contentView             = view_;
+		native.acceptsMouseMovedEvents = YES;
 		[native makeFirstResponder:view_];
 		delegate_        = [ICEDesktopDelegate new];
 		delegate_.owner  = this;
@@ -295,7 +462,7 @@ public:
 		windows.push_back(this);
 	}
 	~appkit_window() override {
-		cancel_text_input();
+		cancel_input();
 		view_.owner = nullptr;
 		std::erase(windows, this);
 		native_.delegate = nil;
@@ -305,7 +472,7 @@ public:
 		if (visible)
 			[native_ makeKeyAndOrderFront:nil];
 		else {
-			cancel_text_input();
+			cancel_input();
 			[native_ orderOut:nil];
 		}
 	}
@@ -330,8 +497,34 @@ public:
 		        reinterpret_cast<std::uintptr_t>((__bridge void *)native_),
 		        (__bridge void *)native_.contentView, nullptr};
 	}
+	relative_pointer_kind relative_pointer_capability() const override {
+		return relative_pointer_kind::native;
+	}
 
 private:
+	ice::expected<void, window_diagnostic>
+	change_pointer_mode(ice::platform::pointer_mode mode) override {
+		if (mode == ice::platform::pointer_mode::normal) {
+			if (relative_owner == this) {
+				CGAssociateMouseAndMouseCursorPosition(true);
+				[NSCursor unhide];
+				relative_owner = nullptr;
+				[view_ resetPointer];
+			}
+			return {};
+		}
+		if (!native_.isKeyWindow || !native_.isVisible || native_.isMiniaturized ||
+		    (relative_owner && relative_owner != this))
+			return ice::unexpected(window_diagnostic{
+			    "Relative pointer capture requires the focused visible AppKit window"});
+		if (CGAssociateMouseAndMouseCursorPosition(false) != kCGErrorSuccess)
+			return ice::unexpected(
+			    window_diagnostic{"AppKit could not enable native relative pointer input"});
+		[NSCursor hide];
+		relative_owner = this;
+		[view_ resetPointer];
+		return {};
+	}
 	void text_input_changed() override {
 		if (text_input_enabled() && native_.isKeyWindow) {
 			[native_ makeFirstResponder:view_];
@@ -341,6 +534,7 @@ private:
 		[view_.context invalidateCharacterCoordinates];
 	}
 	void                         cancel_native_text_input() override { [view_ cancelPreedit]; }
+	void                         cancel_native_physical_input() override { [view_ cancelPhysical]; }
 	ICEDesktopTextView *__strong view_;
 	NSWindow *__strong           native_;
 	ICEDesktopDelegate *__strong delegate_;
