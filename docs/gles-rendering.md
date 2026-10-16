@@ -67,10 +67,12 @@ is for imported EGL images: owned-target/capture operations reject it, and Metal
 pipeline creation returns an unsupported diagnostic rather than mapping it to
 UNORM. Imported output is a native attachment, not a new sampled texture view.
 
-This is a reusable renderer/adapter foundation. It does not yet replace the Quest
-probe, create OpenXR sessions, submit stereo layers, implement multiview/MSAA or
-provide composition depth. Later integration must preserve the probe's existing
-acquire/timeout/flush/release, anchor-change and lifecycle behavior. A physics-free
+This is a reusable renderer/adapter foundation. The optional Android XR host in
+`examples/xr/android/Host.cmake` now reuses it for the lab and application clients,
+retaining acquire/timeout/flush/release, anchor-change and lifecycle ownership.
+That extraction is compile/link checked; its physical Quest regression remains a
+separate acceptance gate. Multiview/MSAA and runtime composition depth are not
+implemented. A physics-free
 saved scene consumer proves a presentation boundary; it is not a restriction
 against future client prediction, controllers or reconciliation.
 

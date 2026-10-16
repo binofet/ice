@@ -1,10 +1,12 @@
 # ICE XR Lab
 
 This optional Android NativeActivity is the first native OpenXR hardware probe for
-Quest 3. It uses the Khronos OpenXR loader directly, with a small **separate GLES3
-renderer**. The desktop OpenGL 4.1 backend does not run on Android. Vulkan and the
-shared ICE renderer will replace the probe renderer after device/session ownership
-has been exercised on hardware.
+Quest 3. It uses the Khronos OpenXR loader with the shared ICE **OpenGL ES**
+renderer and an optional `ice::xr_android_host` adapter. The desktop OpenGL 4.1
+profile does not run on Android. The adapter owns native stereo, anchoring and
+private push-to-talk; each client owns its scene, resources and application clock.
+The shared-renderer extraction has Android compile/link and native Linux GLES
+proof; the historical hardware record below predates this extraction.
 
 The scene has a tracked stereo view, floor tiles, two gold pillars and a rotating
 teal cube above a plinth. Walk or lean gently to check parallax. This is a stationary
@@ -40,9 +42,11 @@ retains coordinates and logs the loss of known physical continuity; persistent
 spatial anchors are a future capability.
 
 GPU work is bounded: two eyes, at most 1600×1600 each, one sample, at most eight
-runtime swapchain images per eye, a fixed cube mesh and at most 17 cube draws per eye.
+runtime swapchain images per eye, a fixed cube mesh and at most 17 indexed cube draws per eye.
 Color images belong to the runtime; the app acquires, waits, renders, flushes and
-releases before submitting its projection layer. Availability checks never release
+releases before submitting its projection layer. Runtime sRGB color remains borrowed;
+the renderer owns only its local FBO/depth attachments. The same waited acquisition
+lease is expired before native release. Availability checks never release
 an image after a timeout: ownership is retained and the same image is retried in
 later paced frames. No external art is downloaded.
 The candlelit typewriter/ribbon-microphone scene belongs to a later Ignition slice.

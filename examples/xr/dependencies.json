@@ -7,7 +7,7 @@
     "sha256": "622419d2f6741c3443a3beb4779af0764318edd01830de967f24c741ebcded73",
     "license": "Apache-2.0 OR MIT",
     "selected_license": "Apache-2.0",
-    "scope": "Optional Android XR probe only; headers and arm64-v8a loader extracted into build/xr-deps"
+    "scope": "Optional Android XR host/lab clients; headers and arm64-v8a loader extracted into verified build caches"
   },
   "glm": {
     "version": "1.0.3",
