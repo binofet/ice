@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ice/core/expected.h"
+#include "ice/physics/character3d.h"
 #include "ice/physics/types.h"
 #include <memory>
 #include <optional>
@@ -32,6 +33,9 @@ struct world3d_description {
 	std::uint32_t max_bodies = 4096;
 	/// Retained contact transitions per tick, in [1,65536].
 	std::uint32_t max_contact_events = 8192;
+	/// Character slot budget in [0,65536]; zero disables characters. Their proxies also consume
+	/// max_bodies, so the effective character capacity is the smaller of these budgets.
+	std::uint32_t max_characters = 64;
 };
 /// Owned body construction data; native shape/body pointers never escape the world.
 struct body3d_description {
@@ -117,6 +121,25 @@ public:
 	                                         bool              reset_velocity = true);
 	/// Apply a center-of-mass impulse in kilogram-meters/second; only dynamic bodies accept it.
 	ice::expected<void, diagnostic> apply_impulse(body_id body, const math::vec3 &impulse);
+	/// Prepare a +Y-up capsule motor and protected collision proxy; failure preserves live actors.
+	ice::expected<character_id, diagnostic>
+	create_character(const character3d_description &description = {});
+	/// Retire the character and its proxy; stale/foreign character IDs are rejected.
+	ice::expected<void, diagnostic> erase_character(character_id character);
+	/// Copy motor/support state without advancing simulation; available after world faults.
+	ice::expected<character3d_snapshot, diagnostic> inspect_character(character_id character) const;
+	/// Replace horizontal motion and latch jump with logical OR; no fixed tick is performed.
+	/// A queued attempt is consumed once at the next tick, even when airborne or jumping disabled.
+	ice::expected<void, diagnostic> set_character_intent(character_id              character,
+	                                                     const character3d_intent &intent);
+	/// Clear requested horizontal motion and any queued jump; retain physical vertical velocity.
+	/// Available after world faults so releasing input never requires simulation recovery.
+	ice::expected<void, diagnostic> cancel_character_intent(character_id character);
+	/// Set feet position/velocity and clear input. Contact support is invalidated until the next
+	/// tick. This is an explicit teleport, not a collision sweep or a kinematic platform API.
+	ice::expected<void, diagnostic>
+	teleport_character(character_id character, const math::vec3 &position,
+	                   const math::vec3 &linear_velocity = math::vec3{0});
 	/// Advance exactly one configured tick. Native errors may have partially advanced state and
 	/// fault this world; no physical rollback is implied by a failure diagnostic.
 	ice::expected<step_report, diagnostic> step();
@@ -124,8 +147,10 @@ public:
 	/// Events may name bodies explicitly retired since contact; inspect rejects those stale IDs.
 	std::span<const contact_event> contacts() const;
 	/// Query the closest nonsensor hit without stepping; a zero/invalid ray is rejected.
+	/// Every ignored handle must be live in this world; at most max_bodies may be supplied.
 	ice::expected<std::optional<ray_hit3d>, diagnostic>
-	ray_cast(const math::vec3 &origin, const math::vec3 &displacement) const;
+	ray_cast(const math::vec3 &origin, const math::vec3 &displacement,
+	         std::span<const body_id> ignored = {}) const;
 	/// Process-local non-reusing world identity; zero for a moved-from world.
 	std::uint64_t identity() const;
 	/// Number of successfully completed fixed ticks.
@@ -134,6 +159,8 @@ public:
 	float time_step() const;
 	/// Number of currently live bodies.
 	std::uint32_t body_count() const;
+	/// Number of live characters, excluding retired native objects awaiting contact cleanup.
+	std::uint32_t character_count() const;
 
 private:
 	struct implementation;

@@ -1,0 +1,8 @@
+include_guard(GLOBAL)
+include("${CMAKE_CURRENT_LIST_DIR}/ICEStandards.cmake")
+get_filename_component(ICE_INPUT_ROOT "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
+add_library(ICEInputRuntime STATIC "${ICE_INPUT_ROOT}/engine/src/input/actions.cpp")
+add_library(ice::input ALIAS ICEInputRuntime)
+target_include_directories(ICEInputRuntime PUBLIC "${ICE_INPUT_ROOT}/engine/include")
+target_link_libraries(ICEInputRuntime PUBLIC ice::platform ice::expected)
+ice_strict_target(ICEInputRuntime)

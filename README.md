@@ -41,6 +41,7 @@ though the optional companion protocol tests use local sockets. Select
 | --- | --- |
 | `ice::platform` | Explicit host, lifecycle, surfaces, input devices and window event stream |
 | `ice::window` | Native AppKit/Win32/X11 windows, independent of a GPU device |
+| `ice::input` | CPU [semantic actions and contexts](docs/input-actions.md), independent source contributions and explicit tick frames |
 | `ice::math` | Pinned GLM configuration and direct types |
 | `ice::uri` | URI parsing, providers and ordered project mounts |
 | `ice::assets` | CPU glTF import, animation/skinning, primitive meshes and camera math |

@@ -103,6 +103,11 @@ The host distinguishes held inputs by device, surface, kind, contact, physical k
 button together. Distinct typed controls may use contact zero; a release/change must preserve
 the matching typed identity. The default `unknown`/`none` fields preserve legacy contacts.
 
+The CPU-only [semantic action reducer](docs/input-actions.md) maps this existing event stream
+or explicitly supplied virtual controls into context-selected button/axis frames. It owns no
+additional OS queue or capture policy. Desktop device identities remain aggregate, and
+touch/XR adapters are not yet connected to the shared virtual-sample surface.
+
 ## Validation
 
 ```sh

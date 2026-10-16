@@ -11,6 +11,7 @@
 #include "ice/core/expected.h"
 #include "ice/core/utf8.h"
 #include "ice/data/document.h"
+#include "ice/input/actions.h"
 #include "ice/input/companion.h"
 #include "ice/input/companion_room.h"
 #include "ice/io/resource_uri.h"
@@ -20,6 +21,7 @@
 #include "ice/physics/world2d.h"
 #endif
 #ifdef ICE_HAS_PHYSICS_3D
+#include "ice/physics/character3d.h"
 #include "ice/physics/world3d.h"
 #endif
 #include "ice/net/companion_link.h"

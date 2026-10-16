@@ -99,7 +99,12 @@
     "tests/platform_physical_input_macos.mm",
     "tests/platform_input_x11.cpp",
     "engine/src/platform/host.cpp",
-    "tests/host_runtime.cpp"
+    "tests/host_runtime.cpp",
+    "engine/include/ice/input/actions.h",
+    "engine/src/input/actions.cpp",
+    "tests/input_actions.cpp",
+    "engine/include/ice/physics/character3d.h",
+    "tests/character3d.cpp"
   ],
   "lint": [
     "tests/mesh.cpp",
@@ -149,7 +154,10 @@
     "engine/src/platform/platform_events.cpp",
     "tests/platform_physical_input.cpp",
     "engine/src/platform/host.cpp",
-    "tests/host_runtime.cpp"
+    "tests/host_runtime.cpp",
+    "engine/src/input/actions.cpp",
+    "tests/input_actions.cpp",
+    "tests/character3d.cpp"
   ],
   "lint_platform": {
     "Darwin": [
