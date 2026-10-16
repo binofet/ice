@@ -159,10 +159,10 @@ bool exercise(backend_kind backend, const std::filesystem::path &root, image &pa
 	CHECK(foreign_text);
 	missing_text[2].sampled_image = foreign_text->get();
 	CHECK(!(*gpu)->render_offscreen(frame_batch{missing_text}, 63, 31));
-	std::vector<draw_item> too_many(4097, items[0]);
+	std::vector<draw_item> too_many(131073, items[0]);
 	CHECK(!(*gpu)->render_offscreen(frame_batch{too_many}, 63, 31));
 	std::vector<std::byte> block(4096);
-	too_many.assign(1025, draw_item{scene->get(), geometry->get(), block, nullptr});
+	too_many.assign(16385, draw_item{scene->get(), geometry->get(), block, nullptr});
 	CHECK(!(*gpu)->render_offscreen(frame_batch{too_many}, 63, 31));
 	CHECK(!(*gpu)->render_offscreen(
 	    frame_batch{items, {0, 0, 0, std::numeric_limits<float>::quiet_NaN()}}, 63, 31));

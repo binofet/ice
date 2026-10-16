@@ -1,3 +1,4 @@
+#include "ice/core/sha256.h"
 #include "ice/data/json.h"
 // Compile supported public APIs together as an external consumer.
 #include "ice/animation/scene_animation.h"

@@ -1,7 +1,10 @@
 #include "ice/script/lua_program.h"
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <limits>
+#include <set>
+#include <stdexcept>
 #include <type_traits>
 #include <utility>
 
@@ -54,7 +57,7 @@ function libraries(input)
                  'dofile','print','warn','collectgarbage','pcall','xpcall',
                  'getmetatable','setmetatable'}
   for _, name in ipairs(names) do assert(_G[name] == nil, name) end
-  assert(string.dump == nil and string.format == nil and string.find == nil)
+  assert(string.dump == nil and type(string.format) == 'function' and string.find == nil)
   assert(string.match == nil and string.gmatch == nil and string.gsub == nil)
   assert(string.pack == nil and math.random == nil and math.randomseed == nil)
   assert(table.move == nil and table.insert == nil and table.remove == nil and table.sort == nil)
@@ -81,6 +84,7 @@ function echo(input) return input end
 function empty(input) return {} end
 )lua");
 	CHECK(program && memory->reads == 1);
+	const std::string working_source = memory->source;
 	CHECK(program->source_uri() == uri && !program->faulted());
 	CHECK(program->memory_bytes() > 0 && program->memory_bytes() <= lua_limits{}.memory_bytes);
 	const scalar_record input{{"text", std::string("hello")},
@@ -108,6 +112,84 @@ function empty(input) return {} end
 	result = program->call("libraries", {{"value", false}});
 	CHECK(result && std::get<std::string>(result->at("value")) == "false");
 	CHECK(program->call("empty", {})->empty());
+	const std::string format_source = R"lua(
+function run(input)
+  local values = {}
+  for i=1,input.count or 0 do values[i] = input.value end
+  return {text=string.format(input.format,table.unpack(values))}
+end
+function rgb(input) return {text=string.format('#%02x%02x%02x',0,127,255)} end
+function scalars(input)
+  return {text=string.format('%s %d %.2f %q %%',42,-7,1.25,'a"b')}
+end
+function binary(input)
+  return {size=#string.format('%s',string.char(0,255))}
+end
+function bad_table(input) return {text=string.format('%s',{})} end
+function bad_function(input) return {text=string.format('%s',function() end)} end
+function bad_boolean(input) return {text=string.format('%s',true)} end
+function bad_nil(input) return {text=string.format('%s',nil)} end
+function no_format(input) return {text=string.format()} end
+function numeric_format(input) return {text=string.format(42)} end
+function max_values(input)
+  local t={} for i=1,32 do t[i]=1 end
+  return {text=string.format(string.rep('%d',32),table.unpack(t))}
+end
+function too_many(input)
+  local t={} for i=1,33 do t[i]=1 end
+  return {text=string.format(string.rep('%d',33),table.unpack(t))}
+end
+function long_format(input) return {text=string.format(string.rep('x',4097))} end
+function long_value(input) return {text=string.format('%s',string.rep('x',4097))} end
+function long_output(input) return {text=string.format('x%s',string.rep('x',4096))} end
+function quoted_output(input) return {text=string.format('%q',string.rep('\0',4096))} end
+function allocate(input)
+  local t={} for i=1,32 do t[i]=string.rep('x',4096) end
+  return {text=string.format(string.rep('%s',32),table.unpack(t))}
+end
+)lua";
+	auto              formatting    = prepare(format_source);
+	CHECK(formatting);
+	CHECK(std::get<std::string>(formatting->call("rgb", {})->at("text")) == "#007fff");
+	CHECK(std::get<std::string>(formatting->call("scalars", {})->at("text")) ==
+	      "42 -7 1.25 \"a\\\"b\" %");
+	CHECK(std::get<std::int64_t>(formatting->call("binary", {})->at("size")) == 2);
+	CHECK(std::get<std::string>(formatting->call("max_values", {})->at("text")) ==
+	      std::string(32, '1'));
+	CHECK(std::get<std::string>(
+	          formatting->call("run", {{"format", std::string(4096, 'x')}})->at("text")) ==
+	      std::string(4096, 'x'));
+	CHECK(std::get<std::string>(formatting
+	                                ->call("run", {{"format", std::string("%s")},
+	                                               {"count", std::int64_t(1)},
+	                                               {"value", std::string(4096, 'x')}})
+	                                ->at("text")) == std::string(4096, 'x'));
+	CHECK(std::get<std::string>(formatting
+	                                ->call("run", {{"format", std::string(64, '%')},
+	                                               {"count", std::int64_t(32)},
+	                                               {"value", std::int64_t(1)}})
+	                                ->at("text")) == std::string(32, '%'));
+	for (const auto &format : {"%p", "%99p", "%100d", "%.100f", "%2147483647d", "%n", "%"}) {
+		auto candidate = prepare(format_source, {64 * 1024, 10000, 256 * 1024});
+		CHECK(candidate);
+		auto rejected = candidate->call("run", {{"format", std::string(format)},
+		                                        {"count", std::int64_t(1)},
+		                                        {"value", std::string("private")}});
+		CHECK(!rejected && rejected.error().code == error_code::runtime && candidate->faulted());
+	}
+	for (const auto &function :
+	     {"bad_table", "bad_function", "bad_boolean", "bad_nil", "no_format", "numeric_format",
+	      "too_many", "long_format", "long_value", "long_output", "quoted_output"}) {
+		auto candidate = prepare(format_source, {64 * 1024, 10000, 256 * 1024});
+		CHECK(candidate);
+		auto rejected = candidate->call(function, {});
+		CHECK(!rejected && rejected.error().code == error_code::runtime && candidate->faulted());
+	}
+	auto format_memory = prepare(format_source, {64 * 1024, 10000, 256 * 1024});
+	CHECK(format_memory);
+	auto format_allocation = format_memory->call("allocate", {});
+	CHECK(!format_allocation && format_allocation.error().code == error_code::memory_limit &&
+	      format_memory->faulted() && format_memory->memory_bytes() <= 64 * 1024);
 
 	// Host validation does not enter Lua or fault/mutate the existing VM.
 	for (const auto &name : {"", "a.b", "1function", "has space"}) {
@@ -139,8 +221,7 @@ function empty(input) return {} end
 	CHECK(result && std::get<std::int64_t>(result->at("count")) == 102);
 
 	// Preparation is isolated: every bad candidate leaves the old program callable.
-	const std::string working_source = memory->source;
-	auto              syntax         = prepare("function unfinished(");
+	auto syntax = prepare("function unfinished(");
 	CHECK(!syntax && syntax.error().code == error_code::compile && syntax.error().uri == uri);
 	CHECK(syntax.error().message.find("test.lua") != std::string::npos);
 	auto startup = prepare("error('startup failure')");
@@ -153,7 +234,11 @@ function empty(input) return {} end
 	CHECK(!prepare(std::string(1024 * 1024 + 1, ' ')));
 	CHECK(!prepare("return", {63 * 1024, 100, 100}));
 	CHECK(!prepare("return", {64 * 1024, 0, 100}));
-	CHECK(!prepare("return", {64 * 1024, 10000001, 100}));
+	CHECK(!prepare("return", {64 * 1024, 1000000001, 100}));
+	CHECK(!prepare("return", {1024 * 1024 * 1024 + 1, 100, 100}));
+	CHECK(prepare("return", {1024 * 1024 * 1024, 1000000000, 100, 1000000}));
+	CHECK(lua_limits{}.memory_bytes == 64 * 1024 * 1024 && lua_limits{}.instructions == 10000000 &&
+	      lua_limits{}.host_calls == 65536);
 	CHECK(!prepare("return", {64 * 1024, 100, 0}));
 	CHECK(!prepare("return", {64 * 1024, 100, 2}));
 	auto compiler_memory =
@@ -209,6 +294,173 @@ function empty(input) return {} end
 	CHECK(replacement->call("empty", {}).error().code == error_code::faulted);
 	CHECK(std::get<bool>(spinning->call("empty", {})->at("recovered")));
 	CHECK(program->call("update", input));
+	// Host functions are generic scalar capabilities. This collector knows commands;
+	// the VM knows nothing about shapes, circles, colors or scene publication.
+	std::vector<scalar_record>         events;
+	const std::array<host_function, 1> collecting{
+	    {{"invoke",
+	      [&](const scalar_record &arguments) -> ice::expected<scalar_record, diagnostic> {
+		      events.push_back(arguments);
+		      return scalar_record{{"accepted", true}, {"index", std::int64_t(events.size())}};
+	      }}}};
+	const std::string host_source = R"lua(
+local saved
+function circle(input)
+  for i=0,19 do
+    local angle = i*math.pi*2/20
+    local result = host.invoke{command='drop', shape='teapot', x=3*math.cos(angle), y=3, z=3*math.sin(angle)}
+    assert(result.accepted)
+    local r=math.floor(127.5+127.5*math.sin(angle))
+    local g=math.floor(127.5+127.5*math.sin(angle+2.094395102))
+    local b=math.floor(127.5+127.5*math.sin(angle+4.188790205))
+    host.invoke{command='color', value=string.format('#%02x%02x%02x',r,g,b)}
+  end
+  return {count=20}
+end
+function save(input) saved=host.invoke; return saved(input) end
+function retained(input) return saved(input) end
+function once(input) return host.invoke(input) end
+function many(input) for i=1,input.count do host.invoke{index=i} end return {} end
+function invalid(input) return host.invoke{nested={}} end
+function extras(input) return host.invoke({}, {}) end
+function bad_final(input) host.invoke(input); return {bad={}} end
+function empty(input) return {} end
+)lua";
+	auto              hosted      = prepare(host_source);
+	CHECK(hosted && hosted->call("circle", {}, collecting));
+	CHECK(events.size() == 40);
+	std::set<std::string> colors;
+	for (std::size_t index = 0; index < 20; ++index) {
+		const auto &drop = events[index * 2];
+		CHECK(std::get<std::string>(drop.at("command")) == "drop");
+		CHECK(std::get<std::string>(drop.at("shape")) == "teapot");
+		const auto x = std::get<double>(drop.at("x")), z = std::get<double>(drop.at("z"));
+		CHECK(std::abs(x * x + z * z - 9) < 1e-9 && std::get<std::int64_t>(drop.at("y")) == 3);
+		colors.insert(std::get<std::string>(events[index * 2 + 1].at("value")));
+	}
+	CHECK(colors.size() == 20);
+	// A retained closure resolves the new call's grant, never the old callback.
+	int first_calls = 0, second_calls = 0;
+	{
+		const std::array<host_function, 1> first{
+		    {{"invoke",
+		      [&](const scalar_record &arguments) -> ice::expected<scalar_record, diagnostic> {
+			      ++first_calls;
+			      return arguments;
+		      }}}};
+		CHECK(hosted->call("save", {{"value", std::int64_t(7)}}, first));
+	}
+	const std::array<host_function, 1> second{
+	    {{"invoke",
+	      [&](const scalar_record &arguments) -> ice::expected<scalar_record, diagnostic> {
+		      ++second_calls;
+		      return arguments;
+	      }}}};
+	CHECK(hosted->call("retained", {{"value", std::int64_t(8)}}, second));
+	CHECK(first_calls == 1 && second_calls == 1);
+	auto absent = hosted->call("retained", {});
+	CHECK(!absent && absent.error().code == error_code::host_error && hosted->faulted());
+	CHECK(first_calls == 1 && second_calls == 1);
+
+	auto registry = prepare(host_source);
+	CHECK(registry);
+	const auto echo_host =
+	    [](const scalar_record &arguments) -> ice::expected<scalar_record, diagnostic> {
+		return arguments;
+	};
+	const std::array<host_function, 2> duplicate{{{"invoke", echo_host}, {"invoke", echo_host}}};
+	CHECK(registry->call("empty", {}, duplicate).error().code == error_code::invalid_input);
+	const std::array<host_function, 1> bad_name{{{"not.valid", echo_host}}};
+	CHECK(registry->call("empty", {}, bad_name).error().code == error_code::invalid_input);
+	const std::array<host_function, 1> no_handler{{{"invoke", {}}}};
+	CHECK(registry->call("empty", {}, no_handler).error().code == error_code::invalid_input);
+	std::vector<host_function> too_many;
+	for (unsigned index = 0; index < 33; ++index)
+		too_many.push_back({"function_" + std::to_string(index), echo_host});
+	CHECK(registry->call("empty", {}, too_many).error().code == error_code::invalid_input);
+	CHECK(!registry->faulted() && registry->call("empty", {}));
+	for (const auto &function : {"invalid", "extras"}) {
+		auto candidate = prepare(host_source);
+		CHECK(candidate);
+		auto invalid_host = candidate->call(function, {}, second);
+		CHECK(!invalid_host && invalid_host.error().code == error_code::host_error &&
+		      candidate->faulted());
+	}
+	CHECK(second_calls == 1); // Bad Lua records never invoke the host.
+	const std::array<host_function, 1> throwing{
+	    {{"invoke", [](const scalar_record &) -> ice::expected<scalar_record, diagnostic> {
+		      throw std::runtime_error("private exception");
+	      }}}};
+	auto exception = prepare(host_source);
+	CHECK(exception);
+	auto exception_result = exception->call("once", {}, throwing);
+	CHECK(!exception_result && exception_result.error().code == error_code::host_error &&
+	      exception_result.error().message.find("private exception") == std::string::npos);
+	const std::array<host_function, 1> rejected{
+	    {{"invoke", [](const scalar_record &) -> ice::expected<scalar_record, diagnostic> {
+		      return ice::unexpected(
+		          diagnostic{error_code::invalid_input, "ignored://host", "Rejected candidate"});
+	      }}}};
+	auto rejected_program = prepare(host_source);
+	CHECK(rejected_program);
+	auto rejected_result = rejected_program->call("once", {}, rejected);
+	CHECK(!rejected_result && rejected_result.error().code == error_code::host_error &&
+	      rejected_result.error().uri == uri &&
+	      rejected_result.error().message == "Rejected candidate");
+	const std::array<host_function, 1> bad_record{
+	    {{"invoke", [](const scalar_record &) -> ice::expected<scalar_record, diagnostic> {
+		      return scalar_record{{"bad", std::monostate{}}};
+	      }}}};
+	auto bad_host = prepare(host_source);
+	CHECK(bad_host &&
+	      bad_host->call("once", {}, bad_record).error().code == error_code::host_error);
+	int                                quota_calls = 0;
+	const std::array<host_function, 1> counted{
+	    {{"invoke", [&](const scalar_record &) -> ice::expected<scalar_record, diagnostic> {
+		      ++quota_calls;
+		      return scalar_record{};
+	      }}}};
+	auto quota = prepare(host_source, {256 * 1024, 100000, 256 * 1024, 128});
+	CHECK(quota && quota->call("many", {{"count", std::int64_t(128)}}, counted));
+	CHECK(quota_calls == 128);
+	auto exceeded = quota->call("many", {{"count", std::int64_t(129)}}, counted);
+	CHECK(!exceeded && exceeded.error().code == error_code::host_call_limit && quota_calls == 256);
+	CHECK(quota->faulted());
+	auto disabled = prepare(host_source, {256 * 1024, 100000, 256 * 1024, 0});
+	CHECK(disabled &&
+	      disabled->call("once", {}, counted).error().code == error_code::host_call_limit);
+	CHECK(quota_calls == 256);
+	CHECK(!prepare(host_source, {256 * 1024, 100000, 256 * 1024, 1000001}));
+	auto generous = prepare(host_source);
+	CHECK(generous && generous->call("many", {{"count", std::int64_t(129)}}, counted));
+	CHECK(quota_calls == 385);
+	// A failed final result cannot erase collector side effects. The app owns and
+	// discards that candidate rather than publishing it on this failed call.
+	events.clear();
+	auto staged = prepare(host_source);
+	CHECK(staged &&
+	      staged->call("bad_final", {}, collecting).error().code == error_code::invalid_output);
+	CHECK(events.size() == 1 && staged->faulted());
+	bool                               reentry_rejected = false;
+	auto                               reentrant        = prepare(host_source);
+	const std::array<host_function, 1> recursive{
+	    {{"invoke", [&](const scalar_record &) -> ice::expected<scalar_record, diagnostic> {
+		      reentry_rejected = !reentrant->call("empty", {});
+		      return scalar_record{};
+	      }}}};
+	CHECK(reentrant && reentrant->call("once", {}, recursive) && reentry_rejected &&
+	      !reentrant->faulted());
+	// Output marshalling can allocate in Lua but must not longjmp across callback owners.
+	const std::array<host_function, 1> large_output{
+	    {{"invoke", [&](const scalar_record &) -> ice::expected<scalar_record, diagnostic> {
+		      return large_input;
+	      }}}};
+	auto host_memory =
+	    prepare("function run(input) return host.invoke({}) end", {64 * 1024, 10000, 256 * 1024});
+	CHECK(host_memory);
+	auto host_allocation = host_memory->call("run", {}, large_output);
+	CHECK(!host_allocation && host_allocation.error().code == error_code::memory_limit &&
+	      host_memory->faulted());
 	std::puts(
 	    "Lua passed: protected source/calls, scalar boundaries, budgets, fault/reload ownership");
 	return 0;

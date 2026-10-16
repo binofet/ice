@@ -27,15 +27,15 @@ inline bool valid_options(const pipeline_options &options) {
 	       (!options.depth_write || options.depth_test);
 }
 template <typename batch> ice::expected<void, diagnostic> validate_batch_shape(const batch &input) {
-	if (input.draws.size() > 4096)
-		return ice::unexpected(diagnostic{"Frame exceeds 4096 draws"});
+	if (input.draws.size() > 131072)
+		return ice::unexpected(diagnostic{"Frame exceeds 131072 draws"});
 	for (float component : input.clear_color)
 		if (!std::isfinite(component) || component < 0 || component > 1)
 			return ice::unexpected(diagnostic{"Frame clear color must be finite normalized RGBA"});
 	std::size_t bytes = 0;
 	for (const auto &item : input.draws) {
 		if (!item.pipeline || item.uniforms.size() > 4096 ||
-		    item.uniforms.size() > 4 * 1024 * 1024 - bytes)
+		    item.uniforms.size() > 64 * 1024 * 1024 - bytes)
 			return ice::unexpected(
 			    diagnostic{"Null pipeline or frame uniform byte budget exceeded"});
 		bytes += item.uniforms.size();

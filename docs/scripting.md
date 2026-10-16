@@ -83,6 +83,78 @@ is returned; no Lua stack view or table reference escapes. The host still valida
 component-specific types/ranges and object-handle generations before committing.
 This API alone never mutates the scene or increments its revision.
 
+## Call-scoped host capabilities
+
+The optional third argument to `call` is `std::span<const host_function>`. Each
+entry has a unique ASCII identifier `name` and a synchronous
+`invoke(const scalar_record&) -> expected<scalar_record, diagnostic>` callback.
+At most 32 functions are registered for a call. Lua sees only their declared
+`host.<name>(one_scalar_table) -> scalar_table` entries, not native pointers.
+The same UTF-8, finite-number, null/integer and record budgets apply both ways.
+The registry is validated before entering Lua; invalid/duplicate/empty handlers
+leave the VM unchanged. Capabilities are available during a named call, not during
+preparation's top-level chunk execution.
+
+```cpp
+std::vector<ice::script::scalar_record> candidate_commands;
+const std::array<ice::script::host_function, 1> hosts{{
+    {"invoke", [&](const ice::script::scalar_record& arguments)
+        -> ice::expected<ice::script::scalar_record, ice::script::diagnostic> {
+        // Apply command schemas/permissions and stage against a candidate scene.
+        // Do not mutate the active native scene from inside this callback.
+        candidate_commands.push_back(arguments);
+        return ice::script::scalar_record{{"accepted", true}};
+    }}
+}};
+auto output = program.call("run", {}, hosts);
+if (!output) {
+    candidate_commands.clear(); // The app owns and discards its partial candidate.
+} else {
+    // Validate the whole candidate, prepare native resources once, then publish.
+}
+```
+
+```lua
+function run(input)
+    for i = 0, 19 do
+        local angle = i * 2 * math.pi / 20
+        host.invoke{ command = 'drop', shape = 'sphere',
+                     x = 3 * math.cos(angle), y = 3, z = 3 * math.sin(angle) }
+    end
+    return { count = 20 }
+end
+```
+
+`lua_limits.host_calls` defaults to 65,536 attempted callbacks per named call and
+allows 0..1,000,000; zero disables invocation. Exceeding it produces `host_call_limit`.
+Invalid Lua host arguments, rejected/throwing callbacks and invalid callback
+outputs produce `host_error`. These failures are sticky for the complete call
+and permanently fault its VM. A caught Lua error cannot make an earlier failed
+host operation publish successfully, even if a future library profile adds error
+catching. The current restricted profile still excludes `pcall`/`xpcall`.
+
+Callbacks and their registry are borrowed only until `call` returns. A retained
+Lua closure stores its Lua-owned name; dispatch resolves that name through a
+stable VM context into the CURRENT call's registry. A later call without the
+matching grant cannot invoke an expired callback or retain authority. Saved Lua
+tables can retain Lua data, never the caller's `std::function` or call-stack pointer.
+
+Native callbacks run outside the Lua instruction/heap budget. They must enforce
+their own bounded work/storage, avoid blocking and avoid the Lua API. Do not
+reenter, move or destroy the executing program or mutate its callback registry.
+Same-program reentry is rejected before Lua. Exceptions are caught without exposing
+native exception text. The pure C++ helper builds owned inputs, invokes the host
+and retains owned outputs before returning to the C-compatible trampoline. Only
+then does that trampoline marshal Lua data or raise errors, so Lua's `longjmp`
+never skips callback input/result destructors. Marshalling allocation failures
+remain inside the protected call.
+
+This is a capability/collection bridge, not cross-command atomicity. A callback
+that mutates native state cannot be rolled back by Lua. Apps must stage changes,
+validate every generated command/handle and prepare resources before publishing
+their transaction. Script failure can occur after any number of successful host
+callbacks; never publish their partial candidate just because those callbacks ran.
+
 VM globals/upvalues can mutate before a runtime, budget or output-contract error.
 Such errors fault the instance, and later calls return `faulted` without executing.
 There is no claim to roll back arbitrary Lua state. A rejected host name/input is
@@ -106,10 +178,11 @@ Explicit null is rejected: Lua `nil` removes a table field, so absent keys stay
 absent. Nested tables, sequences, functions, threads and userdata cannot cross this
 first profile. Component-schema validation is a separate host step.
 
-Defaults are an 8 MiB Lua allocation cap, 100,000 instructions per top-level chunk
-execution/call and 256 KiB source. Allowed configurations are 64 KiB..64 MiB heap,
-1..10,000,000 instructions and 1 byte..1 MiB source. The allocator charges its own
-alignment headers and retained allocation capacity; shrinking cannot accidentally
+Defaults are a 64 MiB Lua allocation cap, 10,000,000 instructions per top-level chunk
+execution/call, 256 KiB source and 65,536 host calls per named call. Allowed configurations
+are 64 KiB..1 GiB heap, 1..1,000,000,000 instructions, 1 byte..1 MiB source and
+0..1,000,000 host calls. The allocator charges its own alignment headers and
+retained allocation capacity; shrinking cannot accidentally
 free accounting budget while retaining the old physical block. Values are process
 allocator request sizes, excluding allocator-internal overhead and process RSS.
 Output-copy and resolver host allocations are outside the VM cap. Host allocation
@@ -129,7 +202,7 @@ The module opens base, math, string, table and UTF-8 libraries only. It removes:
 
 - `load`, `loadfile`, `dofile`, `collectgarbage`, `print`, `warn`, `pcall`, `xpcall`,
   `getmetatable` and `setmetatable`.
-- String bytecode dumping, formatting, pattern matching (`find`, `match`, `gmatch`,
+- String bytecode dumping, pattern matching (`find`, `match`, `gmatch`,
   `gsub`) and binary packing/unpacking.
 - `math.random` and `math.randomseed`; a future deterministic random service should
   have explicit host state instead of ambient entropy.
@@ -138,8 +211,19 @@ The module opens base, math, string, table and UTF-8 libraries only. It removes:
   scripts can express these algorithms with instruction-budgeted Lua loops.
 
 `tostring` accepts only scalar values, avoiding table/function pointer formatting.
+`string.format` accepts one format string and at most 32 number/string values;
+each string argument, format and final result is limited to 4096 bytes. Internal
+Lua strings can contain binary bytes; the UTF-8 boundary rules still apply when
+returning them to the host. Pointer conversions (`%p`), non-scalar values and
+metamethod formatting are unavailable. The original Lua formatter checks its
+two-digit width/precision grammar. Quoting (`%q`) can expand an input byte to four
+output bytes, so a call's temporary output can approach 516 KiB before the final
+4096-byte result check; the configured VM heap applies throughout. Errors fault
+the instance like any other failed Lua execution. This bounded native helper is
+outside the bytecode instruction counter, as are the other C library helpers.
 The `io`, `os`, `debug`, `package` and coroutine libraries are not linked/opened;
-`require` is absent. There are no filesystem, process, network or native host calls.
+`require` is absent. There are no filesystem, process or network calls. Native host
+functions exist only when explicitly granted through a call's bounded registry.
 The profile intentionally excludes metatable/finalizer construction and Lua-level
 error-catching, so script code cannot swallow a budget error and keep retrying.
 Internal tables/functions still exist as normal Lua implementation objects.
@@ -155,7 +239,13 @@ oversized Lua error objects do not invoke user `tostring` or leak native address
 `tests/script_lua.cpp` exercises repeated state, signed/unsigned boundaries, restricted
 libraries, source-only loading, compile/runtime errors, infinite loops, allocation
 exhaustion, malformed/large/nonfinite outputs, rejected host inputs, failed reload
-candidates and recovery by ownership replacement. CTest needs no GPU or device.
+candidates and recovery by ownership replacement. It also covers a generated
+twenty-object loop with forty collected commands, registry validation, expired
+capabilities/regrants, host exceptions/rejection/invalid records, quota exhaustion,
+same-program reentry and protected host-result allocation failure. Formatter tests
+cover RGB hex, scalar/binary strings, exact argument/result limits, rejected native
+pointers/large widths/types and protected allocation failure. CTest needs no GPU
+or device.
 
 ## Lua distribution notice
 

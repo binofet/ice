@@ -90,7 +90,7 @@ struct draw_item {
 	const texture *sampled_image = nullptr;
 };
 /// Ordered one-pass batch, clearing color/depth exactly once before any draw.
-/// Up to 4096 draws and four MiB of aggregate uniform bytes. Invalid items reject the whole batch
+/// Up to 131072 draws and 64 MiB of aggregate uniform bytes. Invalid items reject the whole batch
 /// before modifying a target. Empty batches only clear. Blend/depth state belongs to each pipeline.
 struct frame_batch {
 	/// Borrowed draw/resource descriptions, valid throughout synchronous encoding/submission.

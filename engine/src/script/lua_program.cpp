@@ -10,6 +10,7 @@ extern "C" {
 #include <cstdlib>
 #include <limits>
 #include <new>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -43,7 +44,8 @@ bool valid_input(const scalar_record &input) {
 		return false;
 	std::size_t bytes = 0;
 	for (const auto &[name, value] : input) {
-		if (name.empty() || !ice::core::valid_utf8_text(name, max_name) || value.index() == 0)
+		if (name.empty() || !ice::core::valid_utf8_text(name, max_name) || value.index() == 0 ||
+		    value.valueless_by_exception())
 			return false;
 		bytes += name.size() + sizeof(double);
 		if (const auto *number = std::get_if<double>(&value); number && !std::isfinite(*number))
@@ -108,9 +110,14 @@ struct instruction_budget {
 	std::uint64_t remaining = 0;
 	bool          exhausted = false;
 };
+struct call_context;
+struct vm_context {
+	instruction_budget instructions;
+	call_context      *active = nullptr;
+};
 void instruction_hook(lua_State *vm, lua_Debug *debug) {
 	(void)debug;
-	auto *budget = *static_cast<instruction_budget **>(lua_getextraspace(vm));
+	auto *budget = &(*static_cast<vm_context **>(lua_getextraspace(vm)))->instructions;
 	if (!budget->remaining) {
 		budget->exhausted = true;
 		luaL_error(vm, "Lua instruction budget exhausted");
@@ -136,6 +143,51 @@ int scalar_tostring(lua_State *vm) {
 	}
 	return 1;
 }
+int scalar_format(lua_State *vm) {
+	const int arguments = lua_gettop(vm);
+	if (arguments < 1 || arguments > 33 || lua_type(vm, 1) != LUA_TSTRING)
+		return luaL_error(vm, "format requires a string and at most 32 scalar values");
+	for (int index = 1; index <= arguments; ++index) {
+		const auto type = lua_type(vm, index);
+		if (type == LUA_TSTRING) {
+			if (lua_rawlen(vm, index) > max_string)
+				return luaL_error(vm, "format string arguments exceed 4096 bytes");
+		} else if (type != LUA_TNUMBER)
+			return luaL_error(vm, "format accepts only strings and numbers");
+	}
+	std::size_t size   = 0;
+	const char *format = lua_tolstring(vm, 1, &size);
+	// In particular, Lua's %p also exposes the address of a STRING. Scalar-only
+	// arguments alone do not prevent native pointer disclosure. Let upstream check
+	// the complete width/precision grammar after this bounded conversion scan.
+	for (std::size_t index = 0; index < size; ++index) {
+		if (format[index] != '%')
+			continue;
+		if (++index < size && format[index] == '%')
+			continue;
+		while (index < size &&
+		       (format[index] == '-' || format[index] == '+' || format[index] == ' ' ||
+		        format[index] == '#' || format[index] == '.' ||
+		        (format[index] >= '0' && format[index] <= '9')))
+			++index;
+		if (index == size ||
+		    !(format[index] == 'c' || format[index] == 'd' || format[index] == 'i' ||
+		      format[index] == 'u' || format[index] == 'o' || format[index] == 'x' ||
+		      format[index] == 'X' || format[index] == 'a' || format[index] == 'A' ||
+		      format[index] == 'f' || format[index] == 'e' || format[index] == 'E' ||
+		      format[index] == 'g' || format[index] == 'G' || format[index] == 'q' ||
+		      format[index] == 's'))
+			return luaL_error(vm, "Unsupported format conversion");
+	}
+	lua_pushvalue(vm, lua_upvalueindex(1));
+	lua_insert(vm, 1);
+	// The original formatter is C code, and our automatic state is trivial. Any
+	// format/allocation error unwinds directly to the outer protected Lua entry.
+	lua_call(vm, arguments, 1);
+	if (lua_rawlen(vm, -1) > max_string)
+		return luaL_error(vm, "Formatted result exceeds 4096 bytes");
+	return 1;
+}
 void remove_fields(lua_State *vm, const char *const *names) {
 	for (std::size_t index = 0; names[index]; ++index) {
 		lua_pushnil(vm);
@@ -156,8 +208,11 @@ int open_libraries(lua_State *vm) {
 	remove_fields(vm, removed_math);
 	lua_pop(vm, 1);
 	luaL_requiref(vm, LUA_STRLIBNAME, luaopen_string, 1);
-	static const char *const removed_string[]{"dump", "format", "find",   "match",    "gmatch",
-	                                          "gsub", "pack",   "unpack", "packsize", nullptr};
+	lua_getfield(vm, -1, "format");
+	lua_pushcclosure(vm, scalar_format, 1);
+	lua_setfield(vm, -2, "format");
+	static const char *const removed_string[]{"dump", "find",   "match",    "gmatch", "gsub",
+	                                          "pack", "unpack", "packsize", nullptr};
 	remove_fields(vm, removed_string);
 	lua_pop(vm, 1);
 	luaL_requiref(vm, LUA_TABLIBNAME, luaopen_table, 1);
@@ -197,26 +252,21 @@ struct output_field {
 	lua_Number  float_value  = 0;
 };
 struct call_context {
-	const char        *function      = nullptr;
-	std::size_t        function_size = 0, input_count = 0, output_count = 0;
-	const input_field *input          = nullptr;
-	output_field      *output         = nullptr;
-	bool               invalid_output = false;
+	const char                    *function      = nullptr;
+	std::size_t                    function_size = 0, input_count = 0, output_count = 0;
+	const input_field             *input          = nullptr;
+	output_field                  *output         = nullptr;
+	bool                           invalid_output = false;
+	std::span<const host_function> hosts;
+	std::uint32_t                  remaining_host_calls = 0;
+	bool                           host_failed = false, host_limit = false;
+	std::string                    host_message;
+	scalar_record                  host_output;
 };
-int output_error(lua_State *vm, call_context *context, const char *message) {
-	context->invalid_output = true;
-	return luaL_error(vm, "%s", message);
-}
-int invoke(lua_State *vm) {
-	auto *context = static_cast<call_context *>(lua_touserdata(vm, 1));
-	lua_pushglobaltable(vm);
-	lua_pushlstring(vm, context->function, context->function_size);
-	lua_rawget(vm, -2);
-	if (lua_type(vm, -1) != LUA_TFUNCTION)
-		return luaL_error(vm, "Requested global is not a function");
-	lua_createtable(vm, 0, static_cast<int>(context->input_count));
-	for (std::size_t index = 0; index < context->input_count; ++index) {
-		const auto *field = &context->input[index];
+void push_record(lua_State *vm, const input_field *fields, std::size_t count) {
+	lua_createtable(vm, 0, static_cast<int>(count));
+	for (std::size_t index = 0; index < count; ++index) {
+		const auto *field = &fields[index];
 		const auto *value = field->value;
 		lua_pushlstring(vm, field->name, field->name_size);
 		switch (value->index()) {
@@ -237,23 +287,27 @@ int invoke(lua_State *vm) {
 			                std::get<std::string>(*value).size());
 			break;
 		default:
-			return luaL_error(vm, "Invalid host scalar");
+			luaL_error(vm, "Invalid host scalar");
+			return;
 		}
 		lua_rawset(vm, -3);
 	}
-	lua_call(vm, 1, 1);
-	if (lua_type(vm, -1) != LUA_TTABLE)
-		return output_error(vm, context, "Function must return a scalar record table");
+}
+const char *read_record(lua_State *vm, int table, output_field *fields, std::size_t *count) {
+	if (lua_type(vm, table) != LUA_TTABLE)
+		return "Expected a scalar record table";
+	table             = lua_absindex(vm, table);
+	*count            = 0;
 	std::size_t bytes = 0;
 	lua_pushnil(vm);
-	while (lua_next(vm, -2)) {
-		if (context->output_count == max_fields || lua_type(vm, -2) != LUA_TSTRING)
-			return output_error(vm, context, "Output must have at most 128 string-named fields");
-		auto *field = &context->output[context->output_count++];
+	while (lua_next(vm, table)) {
+		if (*count == max_fields || lua_type(vm, -2) != LUA_TSTRING)
+			return "Record must have at most 128 string-named fields";
+		auto *field = &fields[(*count)++];
 		field->name = lua_tolstring(vm, -2, &field->name_size);
 		if (!field->name_size ||
 		    !ice::core::valid_utf8_text({field->name, field->name_size}, max_name))
-			return output_error(vm, context, "Invalid output field name");
+			return "Invalid record field name";
 		bytes += field->name_size + sizeof(double);
 		field->type = lua_type(vm, -1);
 		switch (field->type) {
@@ -267,22 +321,132 @@ int invoke(lua_State *vm) {
 			else {
 				field->float_value = lua_tonumber(vm, -1);
 				if (!std::isfinite(field->float_value))
-					return output_error(vm, context, "Output numbers must be finite");
+					return "Record numbers must be finite";
 			}
 			break;
 		case LUA_TSTRING:
 			field->text = lua_tolstring(vm, -1, &field->text_size);
 			if (!ice::core::valid_utf8_text({field->text, field->text_size}, max_string))
-				return output_error(vm, context,
-				                    "Output strings must be bounded UTF-8 without NUL");
+				return "Record strings must be bounded UTF-8 without NUL";
 			bytes += field->text_size;
 			break;
 		default:
-			return output_error(vm, context, "Output values must be scalars");
+			return "Record values must be scalars";
 		}
 		if (bytes > max_record_bytes)
-			return output_error(vm, context, "Output record exceeds 64 KiB");
+			return "Record exceeds 64 KiB";
 		lua_pop(vm, 1);
+	}
+	return nullptr;
+}
+scalar_record copy_record(const output_field *fields, std::size_t count) {
+	scalar_record result;
+	for (std::size_t index = 0; index < count; ++index) {
+		const auto      &field = fields[index];
+		ice::meta::value value;
+		if (field.type == LUA_TBOOLEAN)
+			value = field.boolean;
+		else if (field.type == LUA_TSTRING)
+			value = std::string(field.text, field.text_size);
+		else if (field.integer)
+			value = static_cast<std::int64_t>(field.signed_value);
+		else
+			value = static_cast<double>(field.float_value);
+		result.emplace(std::string(field.name, field.name_size), std::move(value));
+	}
+	return result;
+}
+std::size_t input_references(const scalar_record &record, input_field *fields) {
+	std::size_t index = 0;
+	for (const auto &[name, value] : record)
+		fields[index++] = {name.data(), name.size(), &value};
+	return index;
+}
+// No Lua API is called in this helper. Every C++ owner is destroyed before it
+// returns to the C-compatible trampoline, which may subsequently longjmp.
+void execute_host(call_context *context, std::size_t host_index, const output_field *fields,
+                  std::size_t count) noexcept {
+	try {
+		auto input  = copy_record(fields, count);
+		auto output = context->hosts[host_index].invoke(input);
+		if (!output) {
+			context->host_failed  = true;
+			context->host_message = ice::core::valid_utf8_text(output.error().message, 4096)
+			                            ? output.error().message
+			                            : "Host callback returned an invalid diagnostic";
+			return;
+		}
+		if (!valid_input(*output)) {
+			context->host_failed  = true;
+			context->host_message = "Host callback returned an invalid scalar record";
+			return;
+		}
+		context->host_output = std::move(*output);
+	} catch (...) {
+		context->host_failed = true; // Catch without allocating another diagnostic here.
+	}
+}
+int dispatch_host(lua_State *vm) {
+	auto *context = (*static_cast<vm_context **>(lua_getextraspace(vm)))->active;
+	if (!context)
+		return luaL_error(vm, "No active host call scope");
+	if (!context->remaining_host_calls) {
+		context->host_limit = true;
+		return luaL_error(vm, "Lua host call budget exhausted");
+	}
+	--context->remaining_host_calls;
+	std::size_t size  = 0;
+	const char *name  = lua_tolstring(vm, lua_upvalueindex(1), &size);
+	std::size_t index = 0;
+	while (index < context->hosts.size() &&
+	       context->hosts[index].name != std::string_view(name, size))
+		++index;
+	if (index == context->hosts.size()) {
+		context->host_failed = true;
+		return luaL_error(vm, "Host capability is absent from this call");
+	}
+	std::array<output_field, max_fields> fields{};
+	std::size_t                          count = 0;
+	const char *error = lua_gettop(vm) == 1 ? read_record(vm, 1, fields.data(), &count)
+	                                        : "Host function requires one scalar table";
+	if (error) {
+		context->host_failed = true;
+		return luaL_error(vm, "%s", error);
+	}
+	execute_host(context, index, fields.data(), count);
+	if (context->host_failed)
+		return luaL_error(vm, "Host callback failed");
+	std::array<input_field, max_fields> output{};
+	const auto output_count = input_references(context->host_output, output.data());
+	push_record(vm, output.data(), output_count);
+	return 1;
+}
+static_assert(std::is_trivially_destructible_v<std::array<output_field, max_fields>>);
+static_assert(std::is_trivially_destructible_v<std::array<input_field, max_fields>>);
+int invoke(lua_State *vm) {
+	auto *context = static_cast<call_context *>(lua_touserdata(vm, 1));
+	lua_pushglobaltable(vm);
+	lua_createtable(vm, 0, static_cast<int>(context->hosts.size()));
+	for (std::size_t index = 0; index < context->hosts.size(); ++index) {
+		const auto *host = &context->hosts[index];
+		lua_pushlstring(vm, host->name.data(), host->name.size());
+		lua_pushlstring(vm, host->name.data(), host->name.size());
+		lua_pushcclosure(vm, dispatch_host, 1); // Only a Lua-owned name, never a callback pointer.
+		lua_rawset(vm, -3);
+	}
+	lua_pushliteral(vm, "host");
+	lua_pushvalue(vm, -2);
+	lua_rawset(vm, -4);
+	lua_pop(vm, 1);
+	lua_pushlstring(vm, context->function, context->function_size);
+	lua_rawget(vm, -2);
+	if (lua_type(vm, -1) != LUA_TFUNCTION)
+		return luaL_error(vm, "Requested global is not a function");
+	push_record(vm, context->input, context->input_count);
+	lua_call(vm, 1, 1);
+	if (const char *error = read_record(vm, -1, context->output, &context->output_count)) {
+		context->invalid_output = true;
+		return luaL_error(vm, "%s", error);
 	}
 	// Keep the result table rooted until C++ has copied all borrowed string bytes.
 	return 1;
@@ -304,25 +468,25 @@ std::string_view lua_message(lua_State *vm) {
 } // namespace
 
 struct lua_program::implementation {
-	memory_budget      memory;
-	instruction_budget instructions;
-	lua_State         *vm = nullptr;
-	std::string        uri;
-	lua_limits         limits;
-	bool               faulted = false;
+	memory_budget memory;
+	vm_context    runtime;
+	lua_State    *vm = nullptr;
+	std::string   uri;
+	lua_limits    limits;
+	bool          faulted = false;
 	~implementation() {
 		if (vm)
 			lua_close(vm);
 	}
 	void start_budget() {
-		memory.denied = false;
-		instructions  = {limits.instructions, false};
+		memory.denied        = false;
+		runtime.instructions = {limits.instructions, false};
 		lua_sethook(vm, instruction_hook, LUA_MASKCOUNT, 1);
 	}
 	diagnostic error(error_code fallback) const {
-		return failure(instructions.exhausted ? error_code::instruction_limit
-		               : memory.denied        ? error_code::memory_limit
-		                                      : fallback,
+		return failure(runtime.instructions.exhausted ? error_code::instruction_limit
+		               : memory.denied                ? error_code::memory_limit
+		                                              : fallback,
 		               uri, lua_message(vm));
 	}
 };
@@ -335,9 +499,9 @@ lua_program &lua_program::operator=(lua_program &&other) noexcept = default;
 ice::expected<lua_program, diagnostic>
 lua_program::prepare(const ice::io::resource_resolver &resolver, const std::string &uri,
                      lua_limits limits) {
-	if (limits.memory_bytes < 64 * 1024 || limits.memory_bytes > 64 * 1024 * 1024 ||
-	    !limits.instructions || limits.instructions > 10000000 || !limits.source_bytes ||
-	    limits.source_bytes > 1024 * 1024)
+	if (limits.memory_bytes < 64 * 1024 || limits.memory_bytes > 1024 * 1024 * 1024 ||
+	    !limits.instructions || limits.instructions > 1000000000 || !limits.source_bytes ||
+	    limits.source_bytes > 1024 * 1024 || limits.host_calls > 1000000)
 		return ice::unexpected(
 		    failure(error_code::invalid_limits, uri, "Invalid Lua resource limits"));
 	try {
@@ -367,7 +531,7 @@ lua_program::prepare(const ice::io::resource_resolver &resolver, const std::stri
 		if (!state->vm)
 			return ice::unexpected(
 			    failure(error_code::memory_limit, state->uri, "Cannot allocate Lua VM"));
-		*static_cast<instruction_budget **>(lua_getextraspace(state->vm)) = &state->instructions;
+		*static_cast<vm_context **>(lua_getextraspace(state->vm)) = &state->runtime;
 		if (protected_call(state->vm, open_libraries, nullptr, 0) != LUA_OK)
 			return ice::unexpected(state->error(error_code::runtime));
 		state->start_budget();
@@ -383,42 +547,65 @@ lua_program::prepare(const ice::io::resource_resolver &resolver, const std::stri
 		    failure(error_code::host_memory, uri, "Host allocation failed while preparing Lua"));
 	}
 }
-ice::expected<scalar_record, diagnostic> lua_program::call(std::string_view     function,
-                                                           const scalar_record &input) {
+ice::expected<scalar_record, diagnostic> lua_program::call(std::string_view               function,
+                                                           const scalar_record           &input,
+                                                           std::span<const host_function> hosts) {
 	if (!state_ || state_->faulted)
 		return ice::unexpected(
 		    failure(error_code::faulted, source_uri(), "Lua instance requires replacement"));
-	if (!identifier(function) || !valid_input(input))
+	if (state_->runtime.active)
+		return ice::unexpected(
+		    failure(error_code::invalid_input, state_->uri, "Lua call is already executing"));
+	if (!identifier(function) || !valid_input(input) || hosts.size() > 32)
 		return ice::unexpected(failure(error_code::invalid_input, state_->uri,
 		                               "Invalid function name or scalar input record"));
+	for (std::size_t index = 0; index < hosts.size(); ++index) {
+		if (!identifier(hosts[index].name) || !hosts[index].invoke)
+			return ice::unexpected(
+			    failure(error_code::invalid_input, state_->uri, "Invalid host function"));
+		for (std::size_t previous = 0; previous < index; ++previous)
+			if (hosts[previous].name == hosts[index].name)
+				return ice::unexpected(failure(error_code::invalid_input, state_->uri,
+				                               "Duplicate host function name"));
+	}
 	std::array<input_field, max_fields> inputs{};
-	std::size_t                         index = 0;
-	for (const auto &[name, value] : input)
-		inputs[index++] = {name.data(), name.size(), &value};
+	input_references(input, inputs.data());
 	std::array<output_field, max_fields> outputs{};
-	call_context                         context{function.data(), function.size(), input.size(), 0,
-                         inputs.data(),   outputs.data(),  false};
+	call_context                         context;
+	context.function             = function.data();
+	context.function_size        = function.size();
+	context.input_count          = input.size();
+	context.input                = inputs.data();
+	context.output               = outputs.data();
+	context.hosts                = hosts;
+	context.remaining_host_calls = state_->limits.host_calls;
 	state_->start_budget();
-	if (protected_call(state_->vm, invoke, &context, 1) != LUA_OK) {
+	state_->runtime.active = &context;
+	const int status       = protected_call(state_->vm, invoke, &context, 1);
+	state_->runtime.active = nullptr; // No callback/borrowed context survives the protected call.
+	// Sticky independently of Lua error handling: a richer future profile must
+	// never turn a caught failed host operation into successful publication.
+	if (status == LUA_OK && (context.host_failed || context.host_limit)) {
 		state_->faulted = true;
-		return ice::unexpected(state_->error(context.invalid_output ? error_code::invalid_output
-		                                                            : error_code::runtime));
+		return ice::unexpected(failure(
+		    context.host_limit ? error_code::host_call_limit : error_code::host_error, state_->uri,
+		    context.host_limit             ? "Lua host call budget exhausted"
+		    : context.host_message.empty() ? "Host callback failed"
+		                                   : context.host_message));
+	}
+	if (status != LUA_OK) {
+		state_->faulted = true;
+		auto error      = state_->error(context.host_limit       ? error_code::host_call_limit
+		                                : context.host_failed    ? error_code::host_error
+		                                : context.invalid_output ? error_code::invalid_output
+		                                                         : error_code::runtime);
+		if (context.host_failed && error.code == error_code::host_error &&
+		    !context.host_message.empty())
+			error.message = std::move(context.host_message);
+		return ice::unexpected(std::move(error));
 	}
 	try {
-		scalar_record result;
-		for (index = 0; index < context.output_count; ++index) {
-			const auto      &field = outputs[index];
-			ice::meta::value value;
-			if (field.type == LUA_TBOOLEAN)
-				value = field.boolean;
-			else if (field.type == LUA_TSTRING)
-				value = std::string(field.text, field.text_size);
-			else if (field.integer)
-				value = static_cast<std::int64_t>(field.signed_value);
-			else
-				value = static_cast<double>(field.float_value);
-			result.emplace(std::string(field.name, field.name_size), std::move(value));
-		}
+		auto result = copy_record(outputs.data(), context.output_count);
 		// This slot cannot be to-be-closed: only a returned Lua table is on the C stack.
 		lua_pop(state_->vm, 1);
 		return result;

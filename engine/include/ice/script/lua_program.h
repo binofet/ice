@@ -4,8 +4,10 @@
 #include "ice/meta/schema.h"
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <memory>
+#include <span>
 #include <string>
 #include <string_view>
 
@@ -25,6 +27,8 @@ enum class error_code {
 	memory_limit,
 	instruction_limit,
 	invalid_output,
+	host_error,
+	host_call_limit,
 	faulted,
 	host_memory
 };
@@ -38,15 +42,29 @@ struct diagnostic {
 	/// Human-readable context, at most 4096 bytes.
 	std::string message;
 };
+/// Synchronous call-scoped capability exposed as host.<name>(scalar_table).
+/// The registry and callbacks stay alive/immutable for call's duration only; nothing
+/// is retained by the VM. Handlers must stage candidate edits rather than publish
+/// native mutations: later Lua/validation failures cannot roll back host side effects.
+struct host_function {
+	/// Unique ASCII identifier, 1..128 bytes. At most 32 functions per call.
+	std::string name;
+	/// Consume owned scalar inputs and return owned scalar outputs under the same
+	/// record limits. Exceptions become host_error. No Lua API, program reentry,
+	/// movement/destruction or unbounded blocking work is allowed inside a handler.
+	std::function<ice::expected<scalar_record, diagnostic>(const scalar_record &)> invoke;
+};
 /// Per-program Lua heap and per-prepare/call bytecode limits. They do not cap host
 /// resolver allocations, compiler/native-library wall time or the process C stack.
 struct lua_limits {
-	/// Lua allocation bytes; allowed 64 KiB..64 MiB. Includes libraries and allocator headers.
-	std::size_t memory_bytes = 8 * 1024 * 1024;
-	/// Lua VM instructions per top-level execution/call, allowed 1..10000000.
-	std::uint64_t instructions = 100000;
+	/// Lua allocation bytes; allowed 64 KiB..1 GiB. Includes libraries and allocator headers.
+	std::size_t memory_bytes = 64 * 1024 * 1024;
+	/// Lua VM instructions per top-level execution/call, allowed 1..1000000000.
+	std::uint64_t instructions = 10000000;
 	/// Source bytes accepted after the provider read, allowed 1..1 MiB.
 	std::size_t source_bytes = 256 * 1024;
+	/// Host callback attempts per call, allowed 0..1000000. Zero disables host invocation.
+	std::uint32_t host_calls = 65536;
 };
 /// Interpreted Lua 5.5 instance with no native host pointers or ambient I/O exposed.
 /// Single-threaded: the host serializes prepare/call/destruction at its chosen boundary.
@@ -74,8 +92,13 @@ public:
 	/// Call a named global function(input_table) -> scalar_table. Names are ASCII Lua
 	/// identifiers of 1..128 bytes. Invalid host input is rejected before entering Lua;
 	/// other failed calls fault the VM. No Lua tables, pointers or borrowed strings escape.
-	ice::expected<scalar_record, diagnostic> call(std::string_view     function,
-	                                              const scalar_record &input);
+	/// Callbacks are installed only for this call, with bounded scalar I/O and invocation
+	/// count. Retained Lua host closures require a matching capability in the CURRENT call;
+	/// they never retain an earlier callback. All host edits remain the handler's staging
+	/// responsibility. Native callback execution is outside the VM instruction/heap budget.
+	ice::expected<scalar_record, diagnostic> call(std::string_view               function,
+	                                              const scalar_record           &input,
+	                                              std::span<const host_function> hosts = {});
 	/// Whether a call disabled this VM, or ownership has been moved away.
 	bool faulted() const;
 	/// Canonical source identity; empty after a move. Borrow lasts until move/destruction.

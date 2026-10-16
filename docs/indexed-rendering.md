@@ -66,7 +66,7 @@ blending. Transparent spatial geometry can test depth without writing it; the
 caller remains responsible for draw sorting. No automatic sorting or OIT is
 implied.
 
-The bounds are 4096 items, 4096 uniform bytes per item and four MiB of aggregate
+The bounds are 131072 items, 4096 uniform bytes per item and 64 MiB of aggregate
 uniform bytes per frame. The existing single RGBA8 sampled image at binding zero
 is available to either shader stage. Image updates replace storage and preserve
 the image used by preceding submissions. The profile has no additional vertex
