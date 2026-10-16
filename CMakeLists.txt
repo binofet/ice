@@ -113,6 +113,12 @@ if(BUILD_TESTING)
             $<$<BOOL:${ICE_BUILD_METAL}>:ICE_TEST_METAL=1>
             $<$<BOOL:${ICE_BUILD_OPENGL}>:ICE_TEST_OPENGL=1>)
         set_target_properties(ice_textured_mesh_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+        ice_test(ice_skinned_mesh_tests tests/skinned_mesh.cpp ice::render)
+        target_link_libraries(ice_skinned_mesh_tests PRIVATE ice::window ice::math)
+        target_compile_definitions(ice_skinned_mesh_tests PRIVATE
+            $<$<BOOL:${ICE_BUILD_METAL}>:ICE_TEST_METAL=1>
+            $<$<BOOL:${ICE_BUILD_OPENGL}>:ICE_TEST_OPENGL=1>)
+        set_target_properties(ice_skinned_mesh_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
         ice_test(ice_live_pipeline_tests tests/live_pipeline.cpp ice::render)
         target_compile_definitions(ice_live_pipeline_tests PRIVATE
             $<$<BOOL:${ICE_BUILD_METAL}>:ICE_TEST_METAL=1>

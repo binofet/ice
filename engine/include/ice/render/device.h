@@ -41,7 +41,7 @@ private:
 	friend class device;
 	friend class presentation_surface;
 };
-/// Immutable device-owned indexed triangle list, retaining its declared position/normal[/UV]
+/// Immutable device-owned indexed triangle list, retaining its declared position/normal[/UV[/skin]]
 /// layout. Keep the CPU description separately for recreation on another logical device.
 class mesh {
 public:
@@ -111,7 +111,7 @@ struct draw_item {
 	const class pipeline *pipeline = nullptr;
 	/// Immutable triangle list, or null for the existing three-vertex procedural draw.
 	const mesh *geometry = nullptr;
-	/// At most 4096 bytes, satisfying the pipeline's reflected uniform contract.
+	/// At most 16384 bytes, satisfying the pipeline's reflected uniform contract.
 	std::span<const std::byte> uniforms;
 	/// Optional image from the same device; required if the pipeline samples texture zero.
 	const texture *sampled_image = nullptr;
@@ -138,7 +138,7 @@ public:
 	ice::expected<frame_status, diagnostic> draw_batch(const frame_batch &batch);
 	/// Set drawable pixels; zero suspends rendering. False rejects out-of-range dimensions.
 	bool resize(int width, int height);
-	/// Submit a procedural three-vertex draw; copy at most 4096 uniform bytes to binding zero.
+	/// Submit a procedural three-vertex draw; copy at most 16384 uniform bytes to binding zero.
 	/// Foreign resources, missing required images and undersized uniforms fail before submission.
 	ice::expected<frame_status, diagnostic> draw(const pipeline            &pipeline,
 	                                             std::span<const std::byte> uniforms = {},
@@ -184,6 +184,10 @@ public:
 	/// The CPU arrays may be changed or released after this call returns.
 	ice::expected<std::unique_ptr<mesh>, diagnostic>
 	create_mesh(const textured_mesh_data &description);
+	/// Upload validated position/normal/UV/joints/weights vertices with an exact 64-byte layout.
+	/// Joint palette sizing, animation and skinning shader math remain caller policy.
+	ice::expected<std::unique_ptr<mesh>, diagnostic>
+	create_mesh(const skinned_mesh_data &description);
 	/// Synchronously capture an ordered indexed/procedural batch as top-row-first RGBA8.
 	/// Dimensions are in [1,4096]. The whole batch is validated before touching its target.
 	ice::expected<image, diagnostic> render_offscreen(const frame_batch &batch, int width,

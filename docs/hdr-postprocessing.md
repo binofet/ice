@@ -64,7 +64,7 @@ slot 0 API; it does not infer a multi-texture material contract. Metal uses
 `[[texture(0)]]` through `[[texture(3)]]`; GLSL multi-slot samplers are named
 `ice_texture0` through `ice_texture3`, and the backend assigns their texture
 units. A sole slot 0 sampler can retain its old arbitrary name. Uniform bytes
-remain at read-only buffer 0 / one std140 block, bounded to 4096 bytes per draw.
+remain at read-only buffer 0 / one std140 block, bounded to 16384 bytes per draw.
 
 `depth_sampled_bindings` is a subset of the explicit used-slot mask. Those slots
 require target depth views; other used slots require color views. Depth sampling

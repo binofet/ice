@@ -103,7 +103,7 @@ struct draw_item {
 	const class pipeline *pipeline = nullptr;
 	/// Immutable triangle list, or null for the existing three-vertex procedural draw.
 	const mesh *geometry = nullptr;
-	/// At most 4096 bytes, satisfying the pipeline's reflected uniform contract.
+	/// At most 16384 bytes, satisfying the pipeline's reflected uniform contract.
 	std::span<const std::byte> uniforms;
 	/// Optional image from the same device; required if the pipeline samples texture zero.
 	const texture *sampled_image = nullptr;
@@ -129,7 +129,7 @@ public:
 	ice::expected<frame_status, diagnostic> draw_batch(const frame_batch &batch);
 	/// Set drawable pixel dimensions in [0,16384]; zero suspends acquisition.
 	bool resize(int width, int height);
-	/// Draw three procedural vertices. Uniform bytes are copied, at most 4096, to buffer(0)
+	/// Draw three procedural vertices. Uniform bytes are copied, at most 16384, to buffer(0)
 	/// in both shader stages. Return busy rather than queue more than three in-flight frames.
 	ice::expected<frame_status, diagnostic> draw(const pipeline            &pipeline,
 	                                             std::span<const std::byte> uniforms = {},
@@ -172,6 +172,9 @@ public:
 	/// Upload finite position/normal/UV vertices, declaring the immutable 32-byte indexed layout.
 	ice::expected<std::unique_ptr<mesh>, diagnostic>
 	create_mesh(const textured_mesh_data &description);
+	/// Upload validated immutable 64-byte position/normal/UV/joints/weights vertices.
+	ice::expected<std::unique_ptr<mesh>, diagnostic>
+	create_mesh(const skinned_mesh_data &description);
 	/// Synchronously capture an ordered indexed/procedural batch as top-row-first RGBA8.
 	/// Dimensions are in [1,4096]. The whole batch is validated before touching its target.
 	ice::expected<image, diagnostic> render_offscreen(const frame_batch &batch, int width,

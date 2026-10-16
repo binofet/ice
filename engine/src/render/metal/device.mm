@@ -112,7 +112,8 @@ std::string native_error(NSError *error, const char *fallback) {
 bool valid_draw(const std::shared_ptr<detail::device_state> &state,
                 const std::shared_ptr<detail::device_state> &pipeline_state,
                 std::span<const std::byte> uniforms, std::size_t required) {
-	return state == pipeline_state && uniforms.size() >= required && uniforms.size() <= 4096;
+	return state == pipeline_state && uniforms.size() >= required &&
+	       uniforms.size() <= max_uniform_bytes;
 }
 } // namespace
 struct detail::batch_access {
@@ -170,6 +171,22 @@ struct detail::batch_access {
 	}
 	static bool encode(id<MTLCommandBuffer> command, id<MTLTexture> target, id<MTLTexture> depth,
 	                   const frame_batch &batch, bool store_depth = false) {
+		// setBytes is limited to four KiB. Prepare every larger owned allocation before
+		// creating the render encoder: a nil buffer cannot partially clear/draw the target.
+		// ARC retains these buffers through encoding; ordinary retained-reference command
+		// buffers then retain each encoded buffer through GPU completion.
+		std::vector<id<MTLBuffer>> uniforms(batch.draws.size(), nil);
+		for (std::size_t index = 0; index < batch.draws.size(); ++index) {
+			const auto &item = batch.draws[index];
+			if (item.uniforms.size() <= 4096)
+				continue;
+			uniforms[index] = [item.pipeline->implementation_->state->device
+			    newBufferWithBytes:item.uniforms.data()
+			                length:item.uniforms.size()
+			               options:MTLResourceStorageModeShared];
+			if (!uniforms[index])
+				return false;
+		}
 		MTLRenderPassDescriptor *pass        = [MTLRenderPassDescriptor renderPassDescriptor];
 		pass.colorAttachments[0].texture     = target;
 		pass.colorAttachments[0].loadAction  = MTLLoadActionClear;
@@ -184,12 +201,17 @@ struct detail::batch_access {
 		id<MTLRenderCommandEncoder> encoder = [command renderCommandEncoderWithDescriptor:pass];
 		if (!encoder)
 			return false;
+		[encoder setFrontFacingWinding:MTLWindingCounterClockwise];
 		[encoder setCullMode:MTLCullModeNone];
-		for (const auto &item : batch.draws) {
+		for (std::size_t index = 0; index < batch.draws.size(); ++index) {
+			const auto &item     = batch.draws[index];
 			const auto &prepared = *item.pipeline->implementation_;
 			[encoder setRenderPipelineState:prepared.native];
 			[encoder setDepthStencilState:prepared.depth];
-			if (!item.uniforms.empty()) {
+			if (uniforms[index]) {
+				[encoder setVertexBuffer:uniforms[index] offset:0 atIndex:0];
+				[encoder setFragmentBuffer:uniforms[index] offset:0 atIndex:0];
+			} else if (!item.uniforms.empty()) {
 				[encoder setVertexBytes:item.uniforms.data() length:item.uniforms.size() atIndex:0];
 				[encoder setFragmentBytes:item.uniforms.data()
 				                   length:item.uniforms.size()
@@ -340,12 +362,16 @@ device::prepare_pipeline(const shader_snapshot &snapshot, const std::string &ver
 				continue;
 			const bool vector3 =
 			    attribute.attributeIndex < 2 && attribute.attributeType == MTLDataTypeFloat3;
-			const bool uv = options.vertices == vertex_layout::position_normal_uv &&
+			const bool skinned = options.vertices == vertex_layout::position_normal_uv_skin;
+			const bool uv = (options.vertices == vertex_layout::position_normal_uv || skinned) &&
 			                attribute.attributeIndex == 2 &&
 			                attribute.attributeType == MTLDataTypeFloat2;
-			if (options.vertices == vertex_layout::procedural || (!vector3 && !uv))
-				return failure(
-				    uri + ": vertex inputs must match the declared position0/normal1[/uv2] layout");
+			const bool influences =
+			    skinned && (attribute.attributeIndex == 3 || attribute.attributeIndex == 4) &&
+			    attribute.attributeType == MTLDataTypeFloat4;
+			if (options.vertices == vertex_layout::procedural || (!vector3 && !uv && !influences))
+				return failure(uri + ": vertex inputs must match the declared "
+				                     "position0/normal1[/uv2[/joints3/weights4]] layout");
 			position_attribute |= attribute.attributeIndex == 0;
 		}
 		if (options.vertices != vertex_layout::procedural) {
@@ -358,12 +384,22 @@ device::prepare_pipeline(const shader_snapshot &snapshot, const std::string &ver
 				vertices.attributes[index].offset      = index * 12;
 				vertices.attributes[index].bufferIndex = 1;
 			}
-			if (options.vertices == vertex_layout::position_normal_uv) {
+			const bool skinned = options.vertices == vertex_layout::position_normal_uv_skin;
+			if (options.vertices == vertex_layout::position_normal_uv || skinned) {
 				vertices.attributes[2].format      = MTLVertexFormatFloat2;
 				vertices.attributes[2].offset      = offsetof(mesh_vertex_uv, uv);
 				vertices.attributes[2].bufferIndex = 1;
 			}
-			vertices.layouts[1].stride       = options.vertices == vertex_layout::position_normal_uv
+			if (skinned)
+				for (unsigned index = 3; index < 5; ++index) {
+					vertices.attributes[index].format      = MTLVertexFormatFloat4;
+					vertices.attributes[index].offset      = index == 3
+					                                             ? offsetof(mesh_vertex_skin, joints)
+					                                             : offsetof(mesh_vertex_skin, weights);
+					vertices.attributes[index].bufferIndex = 1;
+				}
+			vertices.layouts[1].stride       = skinned ? sizeof(mesh_vertex_skin)
+			                                   : options.vertices == vertex_layout::position_normal_uv
 			                                       ? sizeof(mesh_vertex_uv)
 			                                       : sizeof(mesh_vertex);
 			vertices.layouts[1].stepFunction = MTLVertexStepFunctionPerVertex;
@@ -428,8 +464,8 @@ device::prepare_pipeline(const shader_snapshot &snapshot, const std::string &ver
 		    (options.sampled_bindings != 0xff &&
 		     options.sampled_bindings != result->sampled_bindings))
 			return failure(uri + ": active sampled slots do not match the pipeline descriptor");
-		if (result->uniform_bytes > 4096)
-			return failure(uri + ": uniform block exceeds 4096 bytes");
+		if (result->uniform_bytes > max_uniform_bytes)
+			return failure(uri + ": uniform block exceeds 16384 bytes");
 		// The unique owner moves into tl::expected; analyzer 18 loses that ownership path.
 		// NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks)
 		return std::unique_ptr<pipeline>(new pipeline(std::move(result)));
@@ -550,6 +586,14 @@ device::create_mesh(const textured_mesh_data &description) {
 		return ice::unexpected(valid.error());
 	return upload_mesh(std::as_bytes(std::span(description.vertices)), description.indices,
 	                   vertex_layout::position_normal_uv);
+}
+ice::expected<std::unique_ptr<mesh>, diagnostic>
+device::create_mesh(const skinned_mesh_data &description) {
+	auto valid = ice::render::detail::validate_mesh_data(description);
+	if (!valid)
+		return ice::unexpected(valid.error());
+	return upload_mesh(std::as_bytes(std::span(description.vertices)), description.indices,
+	                   vertex_layout::position_normal_uv_skin);
 }
 ice::expected<std::unique_ptr<mesh>, diagnostic>
 device::upload_mesh(std::span<const std::byte> vertices, std::span<const std::uint32_t> indices,

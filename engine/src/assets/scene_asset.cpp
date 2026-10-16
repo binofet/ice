@@ -1,6 +1,7 @@
 #include "ice/assets/scene_asset.h"
 #include "cgltf/cgltf.h"
 #include "ice/animation/scene_animation.h"
+#include "ice/core/utf8.h"
 #include "stb/stb_image.h"
 #include <algorithm>
 #include <cmath>
@@ -105,6 +106,14 @@ std::vector<float> unpack(const cgltf_accessor *a, int components) {
 		require(std::isfinite(x), "Non-finite vertex data");
 	return values;
 }
+std::string decoded_uri(const char *source) {
+	std::string uri(source);
+	// cgltf retains JSON escapes in string storage. Decode exactly once, before URI
+	// normalization; a URI containing a literal backslash must not be decoded twice.
+	uri.resize(cgltf_decode_string(uri.data()));
+	require(ice::core::valid_utf8_text(uri, budget), "Resource URI contains invalid UTF-8 or NUL");
+	return uri;
+}
 std::vector<unsigned char> image_bytes(const cgltf_image &image, const std::string &directory,
                                        const cgltf_options &opt, files &files) {
 	if (image.buffer_view) {
@@ -114,7 +123,7 @@ std::vector<unsigned char> image_bytes(const cgltf_image &image, const std::stri
 		return {bytes, bytes + view->size};
 	}
 	require(image.uri, "Image has no source");
-	std::string uri = image.uri;
+	std::string uri = decoded_uri(image.uri);
 	if (uri.compare(0, 5, "data:") == 0) {
 		auto comma = uri.find(',');
 		require(comma != std::string::npos &&
@@ -246,7 +255,7 @@ bool load_gltf(const std::string &uri, ice::io::resource_resolver &resolver, sce
 				buffer.data = const_cast<void *>(parsed->bin);
 				continue;
 			}
-			std::string uri = buffer.uri;
+			std::string uri = decoded_uri(buffer.uri);
 			if (uri.compare(0, 5, "data:") == 0) {
 				auto comma = uri.find(',');
 				require(comma != std::string::npos &&
@@ -580,8 +589,10 @@ bool load_gltf(const std::string &uri, ice::io::resource_resolver &resolver, sce
 			scene_skin skin;
 			skin.name     = src.name ? src.name : "Skin " + std::to_string(si);
 			skin.skeleton = src.skeleton ? int(src.skeleton - parsed->nodes) : -1;
-			require(src.joints_count > 0 && src.joints_count <= 256,
-			        "Skin must contain 1..256 joints");
+			// CPU skin data is independent of a renderer's per-draw palette capacity.
+			// Unique joints cannot outnumber the already bounded hierarchy nodes.
+			require(src.joints_count > 0 && src.joints_count <= parsed->nodes_count,
+			        "Skin must contain between one and the scene node count of unique joints");
 			std::set<unsigned> used;
 			for (cgltf_size j = 0; j < src.joints_count; j++) {
 				unsigned node = unsigned(src.joints[j] - parsed->nodes);

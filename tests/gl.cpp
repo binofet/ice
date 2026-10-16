@@ -134,7 +134,7 @@ int main(int argc, char **argv) {
 	CHECK(!(*gpu)->render_offscreen(**prepared, 32, 16));
 	CHECK(!(*gpu)->render_offscreen(**prepared, 0, 16, uniforms));
 	CHECK(!(*gpu)->render_offscreen(**prepared, 4097, 16, uniforms));
-	std::vector<std::byte> oversized(4097);
+	std::vector<std::byte> oversized(ice::render::max_uniform_bytes + 1);
 	CHECK(!(*gpu)->render_offscreen(**prepared, 32, 16, oversized));
 	auto other = device::create();
 	CHECK(other && !(*other)->render_offscreen(**prepared, 32, 16, uniforms));

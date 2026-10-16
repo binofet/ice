@@ -368,6 +368,10 @@ ice::expected<std::unique_ptr<mesh>, diagnostic>
 device::create_mesh(const textured_mesh_data &description) {
 	return upload_mesh(description, vertex_layout::position_normal_uv);
 }
+ice::expected<std::unique_ptr<mesh>, diagnostic>
+device::create_mesh(const skinned_mesh_data &description) {
+	return upload_mesh(description, vertex_layout::position_normal_uv_skin);
+}
 template <typename mesh_description>
 ice::expected<std::unique_ptr<mesh>, diagnostic>
 device::upload_mesh(const mesh_description &description, vertex_layout layout) {

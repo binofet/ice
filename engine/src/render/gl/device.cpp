@@ -12,6 +12,7 @@ struct device_state {
 	std::shared_ptr<native_context> context;
 	functions                       api;
 	GLuint                          vao = 0, uniforms = 0;
+	std::size_t                     uniform_limit = 0;
 	std::string                     error;
 	GLsync                          pending = nullptr;
 	void                            wait_pending() {
@@ -170,7 +171,8 @@ ice::expected<GLuint, diagnostic> compile(detail::functions &api, GLenum stage,
 bool valid_draw(const std::shared_ptr<detail::device_state> &state,
                 const std::shared_ptr<detail::device_state> &pipeline_state,
                 std::span<const std::byte> uniforms, std::size_t required) {
-	return state == pipeline_state && uniforms.size() >= required && uniforms.size() <= 4096;
+	return state == pipeline_state && uniforms.size() >= required &&
+	       uniforms.size() <= max_uniform_bytes && uniforms.size() <= state->uniform_limit;
 }
 ice::expected<GLuint, diagnostic> upload_texture(detail::device_state &state, const image &pixels) {
 	if (pixels.width < 1 || pixels.height < 1 || pixels.width > 4096 || pixels.height > 4096 ||
@@ -294,8 +296,11 @@ struct detail::batch_access {
 				api.BindBuffer(GL_ARRAY_BUFFER, geometry.vertices);
 				api.EnableVertexAttribArray(0);
 				api.EnableVertexAttribArray(1);
-				const bool uv     = geometry.layout == vertex_layout::position_normal_uv;
-				const auto stride = GLsizei(uv ? sizeof(mesh_vertex_uv) : sizeof(mesh_vertex));
+				const bool skinned = geometry.layout == vertex_layout::position_normal_uv_skin;
+				const bool uv     = geometry.layout == vertex_layout::position_normal_uv || skinned;
+				const auto stride = GLsizei(skinned ? sizeof(mesh_vertex_skin)
+				                            : uv    ? sizeof(mesh_vertex_uv)
+				                                    : sizeof(mesh_vertex));
 				api.VertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, nullptr);
 				api.VertexAttribPointer(
 				    1, 3, GL_FLOAT, GL_FALSE, stride,
@@ -307,12 +312,24 @@ struct detail::batch_access {
 					    reinterpret_cast<const void *>(offsetof(mesh_vertex_uv, uv)));
 				} else
 					api.DisableVertexAttribArray(2);
+				for (unsigned attribute = 3; attribute < 5; ++attribute)
+					if (skinned) {
+						api.EnableVertexAttribArray(attribute);
+						api.VertexAttribPointer(attribute, 4, GL_FLOAT, GL_FALSE, stride,
+						                        reinterpret_cast<const void *>(
+						                            attribute == 3
+						                                ? offsetof(mesh_vertex_skin, joints)
+						                                : offsetof(mesh_vertex_skin, weights)));
+					} else
+						api.DisableVertexAttribArray(attribute);
 				api.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, geometry.indices);
 				api.DrawElements(GL_TRIANGLES, geometry.index_count, GL_UNSIGNED_INT, nullptr);
 			} else {
 				api.DisableVertexAttribArray(0);
 				api.DisableVertexAttribArray(1);
 				api.DisableVertexAttribArray(2);
+				api.DisableVertexAttribArray(3);
+				api.DisableVertexAttribArray(4);
 				api.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 				api.DrawArrays(GL_TRIANGLES, 0, 3);
 			}
@@ -371,6 +388,11 @@ ice::expected<std::unique_ptr<device>, diagnostic> device::create() {
 	state->api.GetIntegerv(GL_CONTEXT_PROFILE_MASK, &profile);
 	if (major < 4 || (major == 4 && minor < 1) || !(profile & GL_CONTEXT_CORE_PROFILE_BIT))
 		return failure("OpenGL 4.1 or newer core profile is required");
+	GLint uniform_limit = 0;
+	state->api.GetIntegerv(GL_MAX_UNIFORM_BLOCK_SIZE, &uniform_limit);
+	if (uniform_limit < GLint(max_uniform_bytes))
+		return failure("OpenGL device does not provide the required 16384-byte uniform block");
+	state->uniform_limit = std::size_t(uniform_limit);
 	state->api.GenVertexArrays(1, &state->vao);
 	state->api.GenBuffers(1, &state->uniforms);
 	if (auto error = check(*state); !error.empty())
@@ -530,6 +552,14 @@ device::create_mesh(const textured_mesh_data &description) {
 	                   vertex_layout::position_normal_uv);
 }
 ice::expected<std::unique_ptr<mesh>, diagnostic>
+device::create_mesh(const skinned_mesh_data &description) {
+	auto valid = ice::render::detail::validate_mesh_data(description);
+	if (!valid)
+		return ice::unexpected(valid.error());
+	return upload_mesh(std::as_bytes(std::span(description.vertices)), description.indices,
+	                   vertex_layout::position_normal_uv_skin);
+}
+ice::expected<std::unique_ptr<mesh>, diagnostic>
 device::upload_mesh(std::span<const std::byte> vertices, std::span<const std::uint32_t> indices,
                     vertex_layout layout) {
 	if (!state_->context->make_current())
@@ -629,11 +659,15 @@ device::prepare_pipeline(const shader_snapshot &snapshot, const std::string &ver
 		if (location < 0)
 			continue;
 		const bool vector3 = location < 2 && type == GL_FLOAT_VEC3;
-		const bool uv = options.vertices == vertex_layout::position_normal_uv && location == 2 &&
-		                type == GL_FLOAT_VEC2;
-		if (options.vertices == vertex_layout::procedural || size != 1 || (!vector3 && !uv))
-			return failure(
-			    uri + ": vertex inputs must match the declared position0/normal1[/uv2] layout");
+		const bool skinned = options.vertices == vertex_layout::position_normal_uv_skin;
+		const bool uv      = (options.vertices == vertex_layout::position_normal_uv || skinned) &&
+		                location == 2 && type == GL_FLOAT_VEC2;
+		const bool influences =
+		    skinned && (location == 3 || location == 4) && type == GL_FLOAT_VEC4;
+		if (options.vertices == vertex_layout::procedural || size != 1 ||
+		    (!vector3 && !uv && !influences))
+			return failure(uri + ": vertex inputs must match the declared "
+			                     "position0/normal1[/uv2[/joints3/weights4]] layout");
 		position_attribute |= location == 0;
 	}
 	if (options.vertices != vertex_layout::procedural && !position_attribute)
@@ -683,8 +717,9 @@ device::prepare_pipeline(const shader_snapshot &snapshot, const std::string &ver
 	if (blocks) {
 		GLint size = 0;
 		api.GetActiveUniformBlockiv(prepared->program, 0, GL_UNIFORM_BLOCK_DATA_SIZE, &size);
-		if (size < 0 || size > 4096)
-			return failure(uri + ": uniform block exceeds 4096 bytes");
+		if (size < 0 || std::size_t(size) > max_uniform_bytes ||
+		    std::size_t(size) > state_->uniform_limit)
+			return failure(uri + ": uniform block exceeds 16384 bytes or the native device limit");
 		prepared->uniform_bytes = std::size_t(size);
 		api.UniformBlockBinding(prepared->program, 0, 0);
 	}
