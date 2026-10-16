@@ -99,6 +99,9 @@ The shared host's `device_input` reuses optional typed `physical_key`/`mouse_but
 fields alongside existing contact codes. This does not create another polling system or
 automatically bridge desktop events into a host device. Application input policy owns that
 routing; existing mobile probes continue feeding their own touch/sensor devices.
+The host distinguishes held inputs by device, surface, kind, contact, physical key and mouse
+button together. Distinct typed controls may use contact zero; a release/change must preserve
+the matching typed identity. The default `unknown`/`none` fields preserve legacy contacts.
 
 ## Validation
 

@@ -137,7 +137,8 @@ void host::drain_input() {
 		bool held = event.kind == input_kind::pointer || event.kind == input_kind::key;
 		auto same = [&](const device_input &other) {
 			return other.device == event.device && other.surface == event.surface &&
-			       other.contact == event.contact && other.kind == event.kind;
+			       other.contact == event.contact && other.kind == event.kind &&
+			       other.key == event.key && other.button == event.button;
 		};
 		if (held) {
 			auto found = std::find_if(held_.begin(), held_.end(), same);

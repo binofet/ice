@@ -25,6 +25,10 @@ struct Client : ice::platform::host_client {
 			++cancels;
 	}
 };
+struct input_client final : ice::platform::host_client {
+	std::vector<ice::platform::device_input> events;
+	void on_input(const ice::platform::device_input &event) override { events.push_back(event); }
+};
 int main() {
 	Client              client;
 	ice::platform::host host(client);
@@ -153,6 +157,74 @@ int main() {
 	unsupported.seconds = NAN;
 	CHECK(!routing.post_input(unsupported));
 	routing.stop();
+	// Typed controls contribute to held identity alongside legacy contact codes.
+	// Two keys/buttons using the default contact zero must not suppress one another.
+	{
+		using namespace ice::platform;
+		input_client        recorded;
+		ice::platform::host controls(recorded);
+		CHECK(controls.set_state(app_state::active));
+		const auto   target   = controls.add_surface(surface);
+		const auto   keyboard = controls.add_device(input_capability(input_kind::key));
+		device_input w;
+		w.device  = keyboard;
+		w.surface = target;
+		w.kind    = input_kind::key;
+		w.phase   = input_phase::begin;
+		w.key     = physical_key::w;
+		auto d    = w;
+		d.key     = physical_key::d;
+		CHECK(w.contact == 0 && d.contact == 0);
+		CHECK(controls.post_input(w) && controls.post_input(d));
+		controls.frame(0);
+		CHECK(recorded.events.size() == 2 && recorded.events[0].key == physical_key::w &&
+		      recorded.events[1].key == physical_key::d);
+		w.phase = input_phase::end;
+		d.phase = input_phase::change;
+		CHECK(controls.post_input(w) && controls.post_input(d));
+		controls.frame(1);
+		CHECK(recorded.events.size() == 4 && recorded.events[2].key == physical_key::w &&
+		      recorded.events[2].phase == input_phase::end &&
+		      recorded.events[3].key == physical_key::d &&
+		      recorded.events[3].phase == input_phase::change);
+		CHECK(controls.set_state(app_state::background));
+		CHECK(recorded.events.size() == 5 && recorded.events.back().key == physical_key::d &&
+		      recorded.events.back().phase == input_phase::cancel);
+		CHECK(controls.set_state(app_state::active));
+		const auto   mouse = controls.add_device(input_capability(input_kind::pointer));
+		device_input primary;
+		primary.device      = mouse;
+		primary.surface     = target;
+		primary.phase       = input_phase::begin;
+		primary.button      = mouse_button::primary;
+		auto secondary      = primary;
+		secondary.button    = mouse_button::secondary;
+		auto legacy_touch   = primary;
+		legacy_touch.button = mouse_button::none;
+		CHECK(primary.contact == 0 && secondary.contact == 0 && legacy_touch.contact == 0);
+		CHECK(controls.post_input(primary) && controls.post_input(secondary) &&
+		      controls.post_input(legacy_touch));
+		controls.frame(2);
+		CHECK(recorded.events.size() == 8 && recorded.events[5].button == mouse_button::primary &&
+		      recorded.events[6].button == mouse_button::secondary &&
+		      recorded.events[7].button == mouse_button::none);
+		primary.phase   = input_phase::end;
+		secondary.phase = input_phase::change;
+		CHECK(controls.post_input(primary) && controls.post_input(secondary));
+		controls.frame(3);
+		CHECK(recorded.events.size() == 10 && recorded.events[8].button == mouse_button::primary &&
+		      recorded.events[8].phase == input_phase::end &&
+		      recorded.events[9].button == mouse_button::secondary &&
+		      recorded.events[9].phase == input_phase::change);
+		CHECK(controls.remove_device(mouse));
+		CHECK(recorded.events.size() == 12 &&
+		      recorded.events[10].button == mouse_button::secondary &&
+		      recorded.events[10].phase == input_phase::cancel &&
+		      recorded.events[11].button == mouse_button::none &&
+		      recorded.events[11].phase == input_phase::cancel);
+		controls.stop();
+	}
 	std::puts("Host checks passed: windowless updates, multiple/recreated surfaces, resume clock, "
-	          "touch cancellation, sensors, overflow and shutdown");
+	          "typed key/button and legacy contact identity, cancellation, sensors, overflow and "
+	          "shutdown");
 }

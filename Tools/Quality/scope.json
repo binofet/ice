@@ -97,7 +97,9 @@
     "engine/src/platform/input_cancellation_internal.h",
     "tests/platform_physical_input.cpp",
     "tests/platform_physical_input_macos.mm",
-    "tests/platform_input_x11.cpp"
+    "tests/platform_input_x11.cpp",
+    "engine/src/platform/host.cpp",
+    "tests/host_runtime.cpp"
   ],
   "lint": [
     "tests/mesh.cpp",
@@ -145,7 +147,9 @@
     "engine/src/render/camera.cpp",
     "tests/camera.cpp",
     "engine/src/platform/platform_events.cpp",
-    "tests/platform_physical_input.cpp"
+    "tests/platform_physical_input.cpp",
+    "engine/src/platform/host.cpp",
+    "tests/host_runtime.cpp"
   ],
   "lint_platform": {
     "Darwin": [
