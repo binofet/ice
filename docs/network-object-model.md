@@ -99,6 +99,156 @@ argument profile is not the full entity graph codec. Authoring commands can pass
 pinned document URI; tick input/state uses its own typed protocol rather than one
 MCP call or JSON command per field per frame.
 
+### Metagen extension and the first generated proof
+
+Networking attributes are a first-class authoring feature, owned by an **ICE
+networking metadata package**. Keep Metagen's core generic: another project can
+still reflect its own attributes and generate an infographic without adopting an
+ICE object or replication model. C# assemblies/Python declarations remain the
+authoritative inputs; a network projection is generated consumer data with a
+specific purpose, not a second hand-maintained schema.
+
+The existing extension points are sufficient for the first scalar proof:
+
+| Existing surface | Network consumer use |
+| --- | --- |
+| `IMetaSource` / `IMetaType` / `IMetaMember` / `IMetaAttribute` | Read stable schema/field IDs, recursive type expressions and arbitrary custom attribute values. |
+| `ReflectionMetaSource.Load` | Read C# `CustomAttributeData`, including custom/assembly attributes, without invoking their constructors. Assembly loading itself is not a sandbox. |
+| `IMetaGenerator.Generate` / `Generation.Run` | Produce owned source/JSON artifacts and structured diagnostics. Errors suppress artifact publication; callers stage filesystem writes. |
+| `Python/metagen_source.py` | Read constrained passive scalar declarations with literal type/field `tags`; do not import/evaluate Python. |
+| `ProjectionMetaSource.Load` | Turn that scalar projection's tags into generic `MetaTag` attributes so the same network consumer can read both providers. |
+
+Do not infer that arbitrary Python decorators already work: they are rejected.
+`portable_schema.py` validates the scalar profile and preserves its bounded string
+tags, but it is not a network generator. The rich `Python/data_source.py` currently
+rejects extra network/tag metadata; `DataSchema.Read` does not carry arbitrary
+attributes into its rich output, and `PortableSchema.Read` carries known tags
+rather than arbitrary custom attribute types. Read networking policy from the raw
+`IMetaSource` before those projections discard it, then join projections by stable
+type/field IDs. Rich Python policy needs a tested passive metadata extension;
+do not silently claim it is already supported or copy/fork the entire parser.
+
+Proposed C# spelling, **not attributes currently shipped by ICE**:
+
+```csharp
+using Metagen;
+using Metagen.PortableData;
+using Ice.NetworkMetadata; // Proposed ICE-owned attribute assembly.
+
+[MetaSchema("demo.transform", 1, "transform")]
+[Replicated("authority", Audience = "relevant")]
+public sealed class Transform {
+    [MetaField(1, "x"), MetaRange(-300, 300)]
+    [WireCodec("signed16_cm", Unit = "m", Interpolation = "linear")]
+    public float X { get; set; }
+    [MetaField(2, "y"), MetaRange(-300, 300)]
+    [WireCodec("signed16_cm", Unit = "m", Interpolation = "linear")]
+    public float Y { get; set; }
+    [MetaField(3, "z"), MetaRange(-300, 300)]
+    [WireCodec("signed16_cm", Unit = "m", Interpolation = "linear")]
+    public float Z { get; set; }
+}
+```
+
+The custom attribute classes expose typed constructor/named arguments; the ICE
+consumer normalizes them to its network policy IR. Equivalent Python declarations
+can already express the policy as literal namespaced scalar tags, without adding
+an executable decorator. This syntax is accepted by the existing passive reader;
+the **meaning of the `ice.net.*` tags remains proposed**:
+
+```python
+from dataclasses import dataclass, field
+from typing import Annotated
+from metagen import schema, f32
+
+@schema("demo.transform", version=1, name="transform",
+        tags={"ice.net.writer": "authority", "ice.net.audience": "relevant"})
+@dataclass
+class Transform:
+    x: Annotated[float, f32] = field(metadata={"id": 1, "range": [-300, 300],
+        "tags": {"ice.net.codec": "signed16_cm", "ice.net.unit": "m",
+                 "ice.net.interpolation": "linear"}})
+    y: Annotated[float, f32] = field(metadata={"id": 2, "range": [-300, 300],
+        "tags": {"ice.net.codec": "signed16_cm", "ice.net.unit": "m",
+                 "ice.net.interpolation": "linear"}})
+    z: Annotated[float, f32] = field(metadata={"id": 3, "range": [-300, 300],
+        "tags": {"ice.net.codec": "signed16_cm", "ice.net.unit": "m",
+                 "ice.net.interpolation": "linear"}})
+```
+
+Typed C# attributes and Python tags normalize to one validated language-neutral
+policy for each field: stable type ID/version, field ID, logical type/range,
+writer, audience, codec/version, unit and interpolation. Reject conflicting typed
+attributes/tags, unknown `ice.net.*` keys, duplicate IDs and invalid combinations.
+Do not let attribute iteration order decide policy. Wire fingerprints cover
+semantic IDs/types/versions/codecs/policies, separately from presentation names and
+source-file/assembly provenance hashes. Renaming a display/member name with the
+same ID must not reorder fields or silently change encoded meaning.
+
+Start with exactly these three definitions before a broad attribute library:
+
+| Stable type ID | Fields and initial policy |
+| --- | --- |
+| `demo.transform`, version 1 | IDs 1/2/3: x/y/z float32 meters in -300..300, authority-written, relevance-filtered, linear presentation interpolation, `signed16_cm` codec. |
+| `demo.health`, version 1 | ID 1: points uint32 in 0..65535, authority-written, reliable change notification, exact uint16 codec, whole-field compare-and-set for authoring. |
+| `demo.fire_event`, version 1 | ID 1: weapon entity reference; ID 2: uint32 input sequence; IDs 3/4/5: finite float32 aim x/y/z in -1..1. Client-to-authority, `weapon.fire` grant, reliable event delivery and explicit deduplication. |
+
+The proposed event attribute can be
+`[NetworkEvent("client_to_authority", RequiredCapability = "weapon.fire")]`,
+with `[EntityReference("owned_weapon")]` on its weapon field. Python uses
+equivalent namespaced tags. Principal/player identity comes from the authenticated
+transport, not an authored event argument. Reference resolution, weapon ownership,
+current room/epoch, aim-vector validity and cooldown require host context; emit
+calls to declared validators instead of pretending field ranges prove gameplay
+legitimacy. A uint32 sequence is a deliberately small proof profile: use an
+explicit sequence-window/epoch rollover rule, and add uint64 support before
+claiming it is a permanent room-counter representation. The existing scalar
+authoring profile has no uint64 kind or first-class entity-reference type; the
+network consumer needs an explicit typed reference projection rather than treating
+every string as a handle.
+
+`signed16_cm` is a registered, versioned test codec: signed 16-bit centimeters,
+little-endian, round-to-nearest with ties-to-even, no clamping or wraparound.
+Derive the representable interval and validate after float32 normalization; test
+the boundary rounding cases explicitly. Quantization changes network precision,
+not authored units/native storage. The test expects at most half a centimeter of
+quantization error, plus the stated float32 conversion tolerance. Larger worlds
+need another declared codec, such as sector origin plus local offset.
+
+The first generator consumes that normalized policy once and emits:
+
+1. `network.types.generated.h`: ordinary typed C++ records and stable IDs, or reuse
+   an existing generated native record instead of defining it twice.
+2. `network.generated.h/.cpp`: replication descriptors, full-state read/write,
+   delta diff/apply and event validation/dispatch adapters. Declaration traversal
+   generates all field lists; no manually synchronized serializer tables.
+3. `network.discovery.generated.json`: domains, field policies, codecs, event
+   permissions and host-context requirements for models/editors.
+4. A reproducibility manifest: input identities, generator/profile versions and
+   semantic fingerprints. A canonical network projection is useful as a derived
+   inspection/interop artifact when several generators consume it.
+
+The runtime tests compile the same generated sources in C++20 and C++23. C#/Python
+provider fixtures must produce the same normalized policies and wire bytes. Prove
+full-state round trips, an empty delta, one changed field, exact health values,
+quantization edges, unknown/wrong schemas, truncated/noncanonical/oversized input
+and rejection without partial output publication. Test missing delta baselines,
+unauthorized health writes, stale weapon references, wrong ownership, duplicate
+fire events, missing required capabilities and altered operation reuse. Rename a
+field while retaining its ID and verify unchanged wire meaning. Add a field only
+through an explicit negotiated version/default rule. Generated discovery must
+match the actual validators and descriptors.
+
+Next extend the same consumer to nested records, keyed sequences/maps/sets and
+typed references. The existing data merge policy and network conflict/delta
+policy are related but distinct: a keyed inventory needs stable element IDs,
+authored insert/update/remove semantics, runtime ownership validation and a tested
+replication delta. Quantization applies only to declared numeric leaves; reference
+traversal supplies dependency/relevance rules. Unsupported rich policies must
+diagnose, not fall back to serializing a native container's bytes. Rust or another
+network codec generator can later consume the same policy without adding ICE
+semantics to Metagen core.
+
 ## Script domains and discovery
 
 Domain is part of a script's manifest, not a convention in a function name:
