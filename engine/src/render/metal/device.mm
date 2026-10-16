@@ -61,6 +61,7 @@ struct pipeline::implementation {
 };
 struct mesh::implementation {
 	std::shared_ptr<detail::device_state> state;
+	vertex_layout                         layout = vertex_layout::position_normal;
 	id<MTLBuffer>                         vertices, indices;
 	NSUInteger                            index_count = 0;
 };
@@ -128,9 +129,9 @@ struct detail::batch_access {
 			if (!valid_draw(state, prepared.state, item.uniforms, prepared.uniform_bytes) ||
 			    (item.geometry && item.geometry->implementation_->state != state))
 				return failure("Foreign frame resource or invalid uniform byte count");
-			if ((prepared.options.vertices == vertex_layout::position_normal) !=
-			    bool(item.geometry))
-				return failure("Indexed pipelines require a mesh; procedural pipelines reject one");
+			if (prepared.options.vertices != (item.geometry ? item.geometry->implementation_->layout
+			                                                : vertex_layout::procedural))
+				return failure("Pipeline and mesh vertex layouts do not match");
 			if (prepared.options.target_format != format)
 				return failure("Pipeline color format does not match the destination");
 			for (unsigned slot = 0; slot < 4; ++slot) {
@@ -337,12 +338,17 @@ device::prepare_pipeline(const shader_snapshot &snapshot, const std::string &ver
 		for (MTLAttribute *attribute in descriptor.vertexFunction.stageInputAttributes) {
 			if (!attribute.active)
 				continue;
-			if (options.vertices != vertex_layout::position_normal ||
-			    attribute.attributeIndex > 1 || attribute.attributeType != MTLDataTypeFloat3)
-				return failure(uri + ": vertex inputs must match float3 position0/normal1");
+			const bool vector3 =
+			    attribute.attributeIndex < 2 && attribute.attributeType == MTLDataTypeFloat3;
+			const bool uv = options.vertices == vertex_layout::position_normal_uv &&
+			                attribute.attributeIndex == 2 &&
+			                attribute.attributeType == MTLDataTypeFloat2;
+			if (options.vertices == vertex_layout::procedural || (!vector3 && !uv))
+				return failure(
+				    uri + ": vertex inputs must match the declared position0/normal1[/uv2] layout");
 			position_attribute |= attribute.attributeIndex == 0;
 		}
-		if (options.vertices == vertex_layout::position_normal) {
+		if (options.vertices != vertex_layout::procedural) {
 			if (!position_attribute)
 				return failure(uri +
 				               ": indexed pipelines require active float3 position at attribute0");
@@ -352,7 +358,14 @@ device::prepare_pipeline(const shader_snapshot &snapshot, const std::string &ver
 				vertices.attributes[index].offset      = index * 12;
 				vertices.attributes[index].bufferIndex = 1;
 			}
-			vertices.layouts[1].stride       = sizeof(mesh_vertex);
+			if (options.vertices == vertex_layout::position_normal_uv) {
+				vertices.attributes[2].format      = MTLVertexFormatFloat2;
+				vertices.attributes[2].offset      = offsetof(mesh_vertex_uv, uv);
+				vertices.attributes[2].bufferIndex = 1;
+			}
+			vertices.layouts[1].stride       = options.vertices == vertex_layout::position_normal_uv
+			                                       ? sizeof(mesh_vertex_uv)
+			                                       : sizeof(mesh_vertex);
 			vertices.layouts[1].stepFunction = MTLVertexStepFunctionPerVertex;
 			vertices.layouts[1].stepRate     = 1;
 			descriptor.vertexDescriptor      = vertices;
@@ -383,7 +396,7 @@ device::prepare_pipeline(const shader_snapshot &snapshot, const std::string &ver
 				for (id<MTLBinding> binding in bindings) {
 					if (!binding.used || !binding.argument)
 						continue;
-					if (stage == 0 && options.vertices == vertex_layout::position_normal &&
+					if (stage == 0 && options.vertices != vertex_layout::procedural &&
 					    binding.type == MTLBindingTypeBuffer && binding.index == 1 &&
 					    binding.access == MTLBindingAccessReadOnly)
 						continue;
@@ -527,20 +540,33 @@ ice::expected<std::unique_ptr<mesh>, diagnostic> device::create_mesh(const mesh_
 	auto valid = ice::render::detail::validate_mesh_data(description);
 	if (!valid)
 		return ice::unexpected(valid.error());
+	return upload_mesh(std::as_bytes(std::span(description.vertices)), description.indices,
+	                   vertex_layout::position_normal);
+}
+ice::expected<std::unique_ptr<mesh>, diagnostic>
+device::create_mesh(const textured_mesh_data &description) {
+	auto valid = ice::render::detail::validate_mesh_data(description);
+	if (!valid)
+		return ice::unexpected(valid.error());
+	return upload_mesh(std::as_bytes(std::span(description.vertices)), description.indices,
+	                   vertex_layout::position_normal_uv);
+}
+ice::expected<std::unique_ptr<mesh>, diagnostic>
+device::upload_mesh(std::span<const std::byte> vertices, std::span<const std::uint32_t> indices,
+                    vertex_layout layout) {
 	@autoreleasepool {
-		auto data   = std::make_unique<mesh::implementation>();
-		data->state = state_;
-		data->vertices =
-		    [state_->device newBufferWithBytes:description.vertices.data()
-		                                length:description.vertices.size() * sizeof(mesh_vertex)
-		                               options:MTLResourceStorageModeShared];
-		data->indices =
-		    [state_->device newBufferWithBytes:description.indices.data()
-		                                length:description.indices.size() * sizeof(std::uint32_t)
-		                               options:MTLResourceStorageModeShared];
+		auto data      = std::make_unique<mesh::implementation>();
+		data->state    = state_;
+		data->layout   = layout;
+		data->vertices = [state_->device newBufferWithBytes:vertices.data()
+		                                             length:vertices.size()
+		                                            options:MTLResourceStorageModeShared];
+		data->indices  = [state_->device newBufferWithBytes:indices.data()
+                                                    length:indices.size_bytes()
+                                                   options:MTLResourceStorageModeShared];
 		if (!data->vertices || !data->indices)
 			return failure("Metal mesh vertex/index allocation failed");
-		data->index_count = description.indices.size();
+		data->index_count = indices.size();
 		// Ownership transfers through tl::expected.
 		// NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks)
 		return std::unique_ptr<mesh>(new mesh(std::move(data)));

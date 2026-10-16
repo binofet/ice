@@ -56,10 +56,10 @@ Worlds are move-only and confined to one host thread. Each engine `body_id` comb
 a process-local world identity, a slot and a non-reusing 64-bit generation. Stale
 handles, handles from another world, exhausted budgets and invalid numeric inputs
 return diagnostics before ordinary mutation. Moving a world preserves its body
-handles; retiring the world invalidates all of them. Bodies have one centered
-collision shape in this first API. Joints, compound shapes, mesh colliders and
-additional character shapes remain future extensions. The Jolt module includes the
-world-owned capsule motor described below.
+handles; retiring the world invalidates all of them. Bodies have one collision
+shape anchored at the body origin. The Jolt module supports reusable cooked static
+meshes/heightfields and the world-owned capsule motor described below. Joints,
+compound shapes and additional character shapes remain future extensions.
 
 Contact spans borrow world storage until the next step or world retirement. Explicit
 body removal preserves the current span and exposes retirement transitions on the
@@ -110,6 +110,97 @@ collision response. Ordinary ray queries exclude them like other sensors. A
 nonsensor ray starting inside the solid negative half-space reports fraction zero;
 the returned normal is the transformed local +Y normal. Planes use the same body
 identities, event storage and retirement rules as other collision shapes.
+
+## Reusable cooked static surfaces
+
+`cooked_static_shape::cook_mesh()` and `cook_heightfield()` synchronously validate
+and prepare immutable collision resources. Cooking does not require a world. The
+descriptions borrow source spans only until the call returns; the cooked resource
+owns its native acceleration structure and does not borrow vertices, indices or
+height arrays. Mutating or releasing source storage cannot change it afterward.
+Keep source assets separately when they need editing, saving or renderer upload.
+
+The handle is cheap to copy, and its process-local `identity()` identifies one cook.
+Copies retain that identity and share geometry across bodies and independent worlds.
+Assign it to `body3d_description::static_shape`; a populated handle replaces the
+ordinary primitive `shape` description. Cooked surfaces require
+`motion_type::static_body` and `sensor=false`; dynamic, kinematic and sensor uses
+are rejected before body insertion. Body position, normalized rotation, friction
+and restitution still apply. `body3d_snapshot::static_shape_identity` exposes the
+shared cook identity (zero for primitive bodies), independently of the body's own
+lifetime ID. Bodies retain native geometry after the caller releases every cooked
+handle, and cooked handles survive world destruction. Backend allocator/registry
+ownership lasts until the final world or cooked resource retires, including static
+objects destroyed during process teardown.
+
+`statistics()` reports source vertex/triangle counts, backend-reported resident
+collision bytes and native cook nanoseconds. Cooking time excludes validation and
+one-time backend registration; bytes exclude source arrays and temporary cooking
+storage. Creating more body instances does not recook the resource. These metrics
+are useful for measuring reuse and comparing mesh versus heightfield storage;
+identities/timings are local observations, not stable asset hashes or wire IDs.
+Empty handles report identity zero and zero statistics.
+
+### Indexed triangle meshes
+
+`triangle_mesh3d_description` contains finite local-meter `vertices` and flat
+`indices` as consecutive triples. Indices must address the vertex span. Triangles
+use counterclockwise winding viewed from their colliding front side; for a flat
++Y-facing quad, `(x,z)`, `(x,z+1)`, `(x+1,z+1)` is one valid triangle. Open meshes,
+overhangs and intentional holes made by omitted triangles are supported. Degenerate
+triangles are rejected, including triangles that collapse under native vertex
+quantization; ICE does not silently remove them or infer winding. Shared vertices
+allow the cook to classify internal edges, and enhanced internal-edge removal is
+enabled for interacting bodies and characters to reduce seam snagging.
+
+All vertex components must lie within ±1,000,000 meters. Counts are checked before
+copying/indexing: at most 2,147,483,647 source vertices and 1,073,741,823 triangles
+fit the conservative native signed-index/intermediate-count limits. Those are
+format/arithmetic ceilings, not practical memory recommendations. Native cooking
+can additionally reject geometry that cannot fit its acceleration-tree encoding.
+Allocation failure is not crash-contained, as with other native physics work.
+
+### Regular heightfields
+
+`heightfield3d_description` contains a square row-major height span and
+`sample_count` per axis. Sample `(x,z)` lives at
+`offset + scale * (x, heights[z*sample_count+x], z)` in body-local meters.
+Each scale component must be in `[0.001,1,000,000]`, and all transformed sample
+positions must remain within the finite ±1,000,000-meter local coordinate domain.
+The body pose then transforms this local surface. Every authored sample has
+collision: NaN, infinity, native hole sentinels and out-of-domain samples return
+diagnostics. Use omitted mesh triangles for holes in this milestone.
+
+Counts from 4 through 16,382 are accepted when the span contains exactly
+`sample_count*sample_count` values. The upper bound keeps native sixteen-bit sample
+bit offsets and their rounding arithmetic inside 32 bits. Jolt pads odd dimensions
+to an even internal block size, without adding colliding surface outside the
+authored sample square. Heights are compressed with sixteen bits per sample;
+collisions approximate the source heights rather than preserving every float bit.
+Adjacent independently cooked tiles need matching border positions/heights, and
+small quantization differences remain possible when their ranges differ.
+
+The surface is triangulated, not bilinear. Every quad splits along `(x,z)` to
+`(x+1,z+1)`, with +Y-facing triangles `(x,z),(x,z+1),(x+1,z+1)` and
+`(x,z),(x+1,z+1),(x+1,z)`. A renderer should use that same diagonal when exact
+collision/visual alignment matters. Tests cover characters crossing internal
+diagonals and matched separate-body mesh/heightfield tile borders, varied slopes,
+resting bodies, and ray intersection heights.
+
+### Surface placement and query behavior
+
+Mesh and heightfield collision surfaces use their front faces for rigid bodies and
+characters. They do not make the entire space below them solid. Closest ray queries
+hit either triangle face and return its authored normal; a ray starting below a
+surface intersects it at its actual height rather than returning fraction zero.
+This differs from the analytic plane's solid negative half-space.
+
+Creation and `set_pose()` also check transformed cooked collision bounds against
+the ±1,000,000-meter world coordinate domain. Rejected placement leaves live body
+state and slot lifetimes unchanged. There is no runtime height-array mutation,
+automatic chunk streaming, voxel collision, origin shifting, native cooked-blob
+serialization or general editable terrain in this slice. Cook a replacement
+resource and rebuild the affected static body when authoring geometry changes.
 
 ## World-owned 3D characters
 

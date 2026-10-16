@@ -52,6 +52,7 @@ struct pipeline::implementation {
 };
 struct mesh::implementation {
 	std::shared_ptr<detail::device_state> state;
+	vertex_layout                         layout   = vertex_layout::position_normal;
 	GLuint                                vertices = 0, indices = 0;
 	GLsizei                               index_count = 0;
 	~implementation() {
@@ -222,9 +223,9 @@ struct detail::batch_access {
 			if (!valid_draw(state, prepared.state, item.uniforms, prepared.uniform_bytes) ||
 			    (item.geometry && item.geometry->implementation_->state != state))
 				return failure("Foreign frame resource or invalid uniform byte count");
-			if ((prepared.options.vertices == vertex_layout::position_normal) !=
-			    bool(item.geometry))
-				return failure("Indexed pipelines require a mesh; procedural pipelines reject one");
+			if (prepared.options.vertices != (item.geometry ? item.geometry->implementation_->layout
+			                                                : vertex_layout::procedural))
+				return failure("Pipeline and mesh vertex layouts do not match");
 			if (prepared.options.target_format != format)
 				return failure("Pipeline color format does not match the destination");
 			for (unsigned slot = 0; slot < 4; ++slot) {
@@ -293,15 +294,25 @@ struct detail::batch_access {
 				api.BindBuffer(GL_ARRAY_BUFFER, geometry.vertices);
 				api.EnableVertexAttribArray(0);
 				api.EnableVertexAttribArray(1);
-				api.VertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(mesh_vertex), nullptr);
+				const bool uv     = geometry.layout == vertex_layout::position_normal_uv;
+				const auto stride = GLsizei(uv ? sizeof(mesh_vertex_uv) : sizeof(mesh_vertex));
+				api.VertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, nullptr);
 				api.VertexAttribPointer(
-				    1, 3, GL_FLOAT, GL_FALSE, sizeof(mesh_vertex),
+				    1, 3, GL_FLOAT, GL_FALSE, stride,
 				    reinterpret_cast<const void *>(offsetof(mesh_vertex, normal)));
+				if (uv) {
+					api.EnableVertexAttribArray(2);
+					api.VertexAttribPointer(
+					    2, 2, GL_FLOAT, GL_FALSE, stride,
+					    reinterpret_cast<const void *>(offsetof(mesh_vertex_uv, uv)));
+				} else
+					api.DisableVertexAttribArray(2);
 				api.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, geometry.indices);
 				api.DrawElements(GL_TRIANGLES, geometry.index_count, GL_UNSIGNED_INT, nullptr);
 			} else {
 				api.DisableVertexAttribArray(0);
 				api.DisableVertexAttribArray(1);
+				api.DisableVertexAttribArray(2);
 				api.BindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 				api.DrawArrays(GL_TRIANGLES, 0, 3);
 			}
@@ -507,24 +518,38 @@ ice::expected<std::unique_ptr<mesh>, diagnostic> device::create_mesh(const mesh_
 	auto valid = ice::render::detail::validate_mesh_data(description);
 	if (!valid)
 		return ice::unexpected(valid.error());
+	return upload_mesh(std::as_bytes(std::span(description.vertices)), description.indices,
+	                   vertex_layout::position_normal);
+}
+ice::expected<std::unique_ptr<mesh>, diagnostic>
+device::create_mesh(const textured_mesh_data &description) {
+	auto valid = ice::render::detail::validate_mesh_data(description);
+	if (!valid)
+		return ice::unexpected(valid.error());
+	return upload_mesh(std::as_bytes(std::span(description.vertices)), description.indices,
+	                   vertex_layout::position_normal_uv);
+}
+ice::expected<std::unique_ptr<mesh>, diagnostic>
+device::upload_mesh(std::span<const std::byte> vertices, std::span<const std::uint32_t> indices,
+                    vertex_layout layout) {
 	if (!state_->context->make_current())
 		return failure("Cannot activate OpenGL mesh upload context");
-	auto data   = std::make_unique<mesh::implementation>();
-	data->state = state_;
-	auto &api   = state_->api;
+	auto data    = std::make_unique<mesh::implementation>();
+	data->state  = state_;
+	data->layout = layout;
+	auto &api    = state_->api;
 	api.GenBuffers(1, &data->vertices);
 	api.GenBuffers(1, &data->indices);
 	api.BindBuffer(GL_ARRAY_BUFFER, data->vertices);
-	api.BufferData(GL_ARRAY_BUFFER, GLsizeiptr(description.vertices.size() * sizeof(mesh_vertex)),
-	               description.vertices.data(), GL_STATIC_DRAW);
+	api.BufferData(GL_ARRAY_BUFFER, GLsizeiptr(vertices.size()), vertices.data(), GL_STATIC_DRAW);
 	// Buffer storage is untyped; upload indices without mutating any context-local VAO binding.
 	api.BindBuffer(GL_ARRAY_BUFFER, data->indices);
-	api.BufferData(GL_ARRAY_BUFFER, GLsizeiptr(description.indices.size() * sizeof(std::uint32_t)),
-	               description.indices.data(), GL_STATIC_DRAW);
+	api.BufferData(GL_ARRAY_BUFFER, GLsizeiptr(indices.size_bytes()), indices.data(),
+	               GL_STATIC_DRAW);
 	api.Finish();
 	if (auto error = check(*state_); !error.empty())
 		return failure(error);
-	data->index_count = GLsizei(description.indices.size());
+	data->index_count = GLsizei(indices.size());
 	// Ownership transfers through tl::expected.
 	// NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks)
 	return std::unique_ptr<mesh>(new mesh(std::move(data)));
@@ -603,12 +628,15 @@ device::prepare_pipeline(const shader_snapshot &snapshot, const std::string &ver
 		auto location = api.GetAttribLocation(prepared->program, attribute_name.data());
 		if (location < 0)
 			continue;
-		if (options.vertices != vertex_layout::position_normal || type != GL_FLOAT_VEC3 ||
-		    size != 1 || location > 1)
-			return failure(uri + ": vertex inputs must match float3 position0/normal1");
+		const bool vector3 = location < 2 && type == GL_FLOAT_VEC3;
+		const bool uv = options.vertices == vertex_layout::position_normal_uv && location == 2 &&
+		                type == GL_FLOAT_VEC2;
+		if (options.vertices == vertex_layout::procedural || size != 1 || (!vector3 && !uv))
+			return failure(
+			    uri + ": vertex inputs must match the declared position0/normal1[/uv2] layout");
 		position_attribute |= location == 0;
 	}
-	if (options.vertices == vertex_layout::position_normal && !position_attribute)
+	if (options.vertices != vertex_layout::procedural && !position_attribute)
 		return failure(uri + ": indexed pipelines require an active float3 position at location0");
 	GLint uniform_name_bytes = 0;
 	api.GetProgramiv(prepared->program, GL_ACTIVE_UNIFORM_MAX_LENGTH, &uniform_name_bytes);

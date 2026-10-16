@@ -1,0 +1,155 @@
+[
+  {
+    "id": "demo.fire_event",
+    "version": 1,
+    "name": "fire_event",
+    "writer": "",
+    "audience": "",
+    "delivery": "reliable_event",
+    "conflict": "",
+    "direction": "client_to_authority",
+    "capability": "weapon.fire",
+    "deduplication": "sequence_window_epoch",
+    "fields": [
+      {
+        "id": 1,
+        "name": "weapon",
+        "logical_type": "entity_reference",
+        "minimum": null,
+        "maximum": null,
+        "codec": "entity_v1",
+        "codec_version": 1,
+        "unit": "entity",
+        "interpolation": "none",
+        "reference": "owned_weapon"
+      },
+      {
+        "id": 2,
+        "name": "input_sequence",
+        "logical_type": "uint32",
+        "minimum": 0,
+        "maximum": 4294967295,
+        "codec": "uint32_exact",
+        "codec_version": 1,
+        "unit": "sequence",
+        "interpolation": "none",
+        "reference": ""
+      },
+      {
+        "id": 3,
+        "name": "aim_x",
+        "logical_type": "float32",
+        "minimum": -1,
+        "maximum": 1,
+        "codec": "float32_finite",
+        "codec_version": 1,
+        "unit": "unit_vector",
+        "interpolation": "none",
+        "reference": ""
+      },
+      {
+        "id": 4,
+        "name": "aim_y",
+        "logical_type": "float32",
+        "minimum": -1,
+        "maximum": 1,
+        "codec": "float32_finite",
+        "codec_version": 1,
+        "unit": "unit_vector",
+        "interpolation": "none",
+        "reference": ""
+      },
+      {
+        "id": 5,
+        "name": "aim_z",
+        "logical_type": "float32",
+        "minimum": -1,
+        "maximum": 1,
+        "codec": "float32_finite",
+        "codec_version": 1,
+        "unit": "unit_vector",
+        "interpolation": "none",
+        "reference": ""
+      }
+    ],
+    "fingerprint": "1023f4e45ca22e224543dec882192339de0510145c93b267bbef8f69490abb62"
+  },
+  {
+    "id": "demo.health",
+    "version": 1,
+    "name": "health",
+    "writer": "authority",
+    "audience": "relevant",
+    "delivery": "reliable_change",
+    "conflict": "whole_field_cas",
+    "direction": "",
+    "capability": "",
+    "deduplication": "",
+    "fields": [
+      {
+        "id": 1,
+        "name": "points",
+        "logical_type": "uint32",
+        "minimum": 0,
+        "maximum": 65535,
+        "codec": "uint16_exact",
+        "codec_version": 1,
+        "unit": "points",
+        "interpolation": "none",
+        "reference": ""
+      }
+    ],
+    "fingerprint": "da4ad6531195939dfa809d93568ba1912119223b6a4bc728636b4fd93fa6b72b"
+  },
+  {
+    "id": "demo.transform",
+    "version": 1,
+    "name": "transform",
+    "writer": "authority",
+    "audience": "relevant",
+    "delivery": "snapshot",
+    "conflict": "whole_field_cas",
+    "direction": "",
+    "capability": "",
+    "deduplication": "",
+    "fields": [
+      {
+        "id": 1,
+        "name": "x",
+        "logical_type": "float32",
+        "minimum": -300,
+        "maximum": 300,
+        "codec": "signed16_cm",
+        "codec_version": 1,
+        "unit": "m",
+        "interpolation": "linear",
+        "reference": ""
+      },
+      {
+        "id": 2,
+        "name": "y",
+        "logical_type": "float32",
+        "minimum": -300,
+        "maximum": 300,
+        "codec": "signed16_cm",
+        "codec_version": 1,
+        "unit": "m",
+        "interpolation": "linear",
+        "reference": ""
+      },
+      {
+        "id": 3,
+        "name": "z",
+        "logical_type": "float32",
+        "minimum": -300,
+        "maximum": 300,
+        "codec": "signed16_cm",
+        "codec_version": 1,
+        "unit": "m",
+        "interpolation": "linear",
+        "reference": ""
+      }
+    ],
+    "fingerprint": "43d39c0f385678d3d3487d68c958fc8f9c07b83b6b83d4696f4f13cf89d9fa43"
+  }
+]

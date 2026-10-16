@@ -16,6 +16,8 @@
 #include <Jolt/Physics/Collision/RayCast.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
+#include <Jolt/Physics/Collision/Shape/HeightFieldShape.h>
+#include <Jolt/Physics/Collision/Shape/MeshShape.h>
 #include <Jolt/Physics/Collision/Shape/PlaneShape.h>
 #include <Jolt/Physics/Collision/Shape/RotatedTranslatedShape.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
@@ -23,6 +25,7 @@
 #include <Jolt/RegisterTypes.h>
 #include <algorithm>
 #include <bit>
+#include <chrono>
 #include <cmath>
 #include <limits>
 #include <stdexcept>
@@ -51,6 +54,20 @@ math::vec3 portable(JPH::Vec3Arg value) { return {value.GetX(), value.GetY(), va
 math::quat portable(JPH::QuatArg value) {
 	return {value.GetW(), value.GetX(), value.GetY(), value.GetZ()};
 }
+bool valid_static_pose(const JPH::Shape &shape, const math::vec3 &position,
+                       const math::quat &rotation) {
+	const auto       bounds = shape.GetLocalBounds();
+	const glm::dquat unit(glm::normalize(rotation));
+	for (unsigned corner = 0; corner < 8; ++corner) {
+		const glm::dvec3 local((corner & 1) ? bounds.mMax.GetX() : bounds.mMin.GetX(),
+		                       (corner & 2) ? bounds.mMax.GetY() : bounds.mMin.GetY(),
+		                       (corner & 4) ? bounds.mMax.GetZ() : bounds.mMin.GetZ());
+		const auto world = glm::dvec3(position) + unit * local;
+		if (glm::any(glm::greaterThan(glm::abs(world), glm::dvec3(1.0e6))))
+			return false;
+	}
+	return true;
+}
 struct backend_runtime {
 	backend_runtime() {
 		// One module-owned registration lifetime, shared by all independent ICE worlds.
@@ -66,9 +83,12 @@ struct backend_runtime {
 		JPH::Factory::sInstance = nullptr;
 	}
 };
-void initialize_backend() {
-	static backend_runtime runtime;
-	(void)runtime;
+std::shared_ptr<backend_runtime> initialize_backend() {
+	// A cooked resource or world may outlive the function-static registration owner during
+	// process teardown. Their explicit references keep the allocator/registry alive until
+	// their last native shape, material and physics system have been destroyed.
+	static const auto runtime = std::make_shared<backend_runtime>();
+	return runtime;
 }
 struct broad_layers final : JPH::BroadPhaseLayerInterface {
 	JPH::uint            GetNumBroadPhaseLayers() const override { return 2; }
@@ -243,14 +263,143 @@ struct contact_cache {
 };
 } // namespace
 
+struct cooked_static_shape::implementation {
+	// Declaration order matters: registration is released after the native shape.
+	std::shared_ptr<backend_runtime> runtime;
+	JPH::RefConst<JPH::Shape>        shape;
+	static_shape3d_statistics        statistics;
+	std::uint64_t                    identity = 0;
+};
+cooked_static_shape::cooked_static_shape(std::shared_ptr<const implementation> state)
+    : state_(std::move(state)) {}
+cooked_static_shape::operator bool() const { return bool(state_); }
+std::uint64_t cooked_static_shape::identity() const { return state_ ? state_->identity : 0; }
+static_shape3d_statistics cooked_static_shape::statistics() const {
+	return state_ ? state_->statistics : static_shape3d_statistics{};
+}
+ice::expected<cooked_static_shape, diagnostic>
+cooked_static_shape::cook_mesh(const triangle_mesh3d_description &description) {
+	// Jolt uses signed indices in mesh edge construction and signed triangle loops. Keep
+	// intermediate triangle/edge counts representable before copying or indexing source data.
+	const auto triangles = description.indices.size() / 3;
+	if (description.vertices.empty() || description.indices.empty() ||
+	    description.indices.size() % 3 ||
+	    description.vertices.size() > std::size_t(std::numeric_limits<std::int32_t>::max()) ||
+	    triangles > std::size_t(std::numeric_limits<std::int32_t>::max()) / 2)
+		return ice::unexpected(diagnostic{"Invalid static mesh vertex/index counts"});
+	for (const auto &vertex : description.vertices)
+		if (!finite(vertex))
+			return ice::unexpected(
+			    diagnostic{"Static mesh vertices must be finite and within +/-1e6 meters"});
+	for (auto index : description.indices)
+		if (index >= description.vertices.size())
+			return ice::unexpected(diagnostic{"Static mesh index is outside the vertex span"});
+	for (std::size_t index = 0; index < description.indices.size(); index += 3) {
+		const glm::dvec3 a(description.vertices[description.indices[index]]);
+		const glm::dvec3 b(description.vertices[description.indices[index + 1]]);
+		const glm::dvec3 c(description.vertices[description.indices[index + 2]]);
+		const auto       normal = glm::cross(b - a, c - a);
+		if (glm::dot(normal, normal) == 0)
+			return ice::unexpected(diagnostic{"Static mesh contains a degenerate triangle"});
+	}
+	std::shared_ptr<backend_runtime> runtime;
+	try {
+		runtime = initialize_backend();
+	} catch (const std::exception &error) {
+		return ice::unexpected(diagnostic{error.what()});
+	}
+	const auto             started = std::chrono::steady_clock::now();
+	JPH::MeshShapeSettings settings;
+	settings.mTriangleVertices.reserve(description.vertices.size());
+	for (const auto &vertex : description.vertices)
+		settings.mTriangleVertices.emplace_back(vertex.x, vertex.y, vertex.z);
+	settings.mIndexedTriangles.reserve(triangles);
+	for (std::size_t index = 0; index < description.indices.size(); index += 3)
+		settings.mIndexedTriangles.emplace_back(description.indices[index],
+		                                        description.indices[index + 1],
+		                                        description.indices[index + 2]);
+	// The default constructor leaves source topology intact. Jolt still validates triangles
+	// after its vertex quantization, and computes shared-edge activity for smooth contact.
+	auto result = settings.Create();
+	if (result.HasError())
+		return ice::unexpected(diagnostic{result.GetError().c_str()});
+	if (!result.IsValid())
+		return ice::unexpected(diagnostic{"Jolt did not cook a static mesh"});
+	auto state      = std::make_shared<implementation>();
+	state->runtime  = std::move(runtime);
+	state->shape    = result.Get();
+	state->identity = detail::next_world_identity();
+	if (!state->identity)
+		return ice::unexpected(diagnostic{"Static collision lifetime identity exhausted"});
+	state->statistics = {description.vertices.size(), triangles,
+	                     state->shape->GetStats().mSizeBytes,
+	                     std::uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(
+	                                       std::chrono::steady_clock::now() - started)
+	                                       .count())};
+	return cooked_static_shape(std::move(state));
+}
+ice::expected<cooked_static_shape, diagnostic>
+cooked_static_shape::cook_heightfield(const heightfield3d_description &description) {
+	const auto count  = std::uint64_t(description.sample_count);
+	const auto padded = (count + 1) & ~std::uint64_t{1};
+	// Jolt's sixteen-bit sample buffer uses 32-bit bit offsets, including seven rounding bits.
+	// Check that arithmetic (and the two-dimensional source size) before touching its arrays.
+	if (count < 4 || padded > 16382 || count * count != description.heights.size() ||
+	    !finite(description.offset) || !finite(description.scale) ||
+	    glm::any(glm::lessThan(description.scale, math::vec3(.001f))))
+		return ice::unexpected(
+		    diagnostic{"Invalid static heightfield dimensions, offset or scale"});
+	const auto maximum_x =
+	    double(description.offset.x) + double(description.scale.x) * double(count - 1);
+	const auto maximum_z =
+	    double(description.offset.z) + double(description.scale.z) * double(count - 1);
+	if (maximum_x > 1.0e6 || maximum_z > 1.0e6)
+		return ice::unexpected(
+		    diagnostic{"Static heightfield extends outside +/-1e6 local meters"});
+	for (float height : description.heights) {
+		const auto y = double(description.offset.y) + double(description.scale.y) * double(height);
+		if (!std::isfinite(height) || !std::isfinite(y) || std::abs(y) > 1.0e6)
+			return ice::unexpected(diagnostic{
+			    "Static heightfield heights must be finite and bounded; holes are unsupported"});
+	}
+	std::shared_ptr<backend_runtime> runtime;
+	try {
+		runtime = initialize_backend();
+	} catch (const std::exception &error) {
+		return ice::unexpected(diagnostic{error.what()});
+	}
+	const auto                    started = std::chrono::steady_clock::now();
+	JPH::HeightFieldShapeSettings settings(description.heights.data(), native(description.offset),
+	                                       native(description.scale), description.sample_count);
+	settings.mBitsPerSample = 16;
+	auto result             = settings.Create();
+	if (result.HasError())
+		return ice::unexpected(diagnostic{result.GetError().c_str()});
+	if (!result.IsValid())
+		return ice::unexpected(diagnostic{"Jolt did not cook a static heightfield"});
+	auto state      = std::make_shared<implementation>();
+	state->runtime  = std::move(runtime);
+	state->shape    = result.Get();
+	state->identity = detail::next_world_identity();
+	if (!state->identity)
+		return ice::unexpected(diagnostic{"Static collision lifetime identity exhausted"});
+	state->statistics = {count * count, (count - 1) * (count - 1) * 2,
+	                     state->shape->GetStats().mSizeBytes,
+	                     std::uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(
+	                                       std::chrono::steady_clock::now() - started)
+	                                       .count())};
+	return cooked_static_shape(std::move(state));
+}
+
 struct world3d::implementation final : JPH::ContactListener {
 	struct slot {
 		JPH::BodyID   native;
-		std::uint64_t generation      = 1;
-		motion_type   motion          = motion_type::static_body;
-		bool          alive           = false;
-		bool          stepped         = false;
-		bool          character_proxy = false;
+		std::uint64_t generation            = 1;
+		motion_type   motion                = motion_type::static_body;
+		bool          alive                 = false;
+		bool          stepped               = false;
+		bool          character_proxy       = false;
+		std::uint64_t static_shape_identity = 0;
 	};
 	struct character_slot {
 		std::unique_ptr<JPH::CharacterVirtual> native;
@@ -260,9 +409,10 @@ struct world3d::implementation final : JPH::ContactListener {
 		std::uint64_t                          generation   = 1;
 		bool                                   jump_pending = false, ground_dirty = true;
 	};
-	world3d_description description;
-	std::uint64_t       owner = 0, ticks = 0;
-	std::uint32_t       count = 0, characters_count = 0;
+	std::shared_ptr<backend_runtime> runtime;
+	world3d_description              description;
+	std::uint64_t                    owner = 0, ticks = 0;
+	std::uint32_t                    count = 0, characters_count = 0;
 	bool faulted = false, stepping = false, truncated = false, pending_truncated = false;
 	std::vector<slot>                                   slots;
 	std::vector<std::uint32_t>                          free;
@@ -279,9 +429,9 @@ struct world3d::implementation final : JPH::ContactListener {
 	JPH::TempAllocatorImplWithMallocFallback            temporary;
 	JPH::JobSystemSingleThreaded                        jobs;
 	JPH::PhysicsSystem                                  system;
-	explicit implementation(world3d_description settings)
-	    : description(settings), cache(settings.max_contact_events), temporary(4 * 1024 * 1024),
-	      jobs(2048) {
+	explicit implementation(world3d_description settings, std::shared_ptr<backend_runtime> backend)
+	    : runtime(std::move(backend)), description(settings), cache(settings.max_contact_events),
+	      temporary(4 * 1024 * 1024), jobs(2048) {
 		owner = detail::next_world_identity();
 		slots.resize(settings.max_bodies);
 		free.reserve(settings.max_bodies);
@@ -458,12 +608,13 @@ ice::expected<world3d, diagnostic> world3d::create(const world3d_description &de
 	    description.max_contact_events > 65536 || description.max_characters > 65536)
 		return ice::unexpected(
 		    diagnostic{"Invalid fixed-step 3D world settings or resource budgets"});
+	std::shared_ptr<backend_runtime> runtime;
 	try {
-		initialize_backend();
+		runtime = initialize_backend();
 	} catch (const std::exception &error) {
 		return ice::unexpected(diagnostic{error.what()});
 	}
-	auto state = std::make_unique<implementation>(description);
+	auto state = std::make_unique<implementation>(description, std::move(runtime));
 	if (!state->owner)
 		return ice::unexpected(diagnostic{"World lifetime identity exhausted"});
 	return world3d(std::move(state));
@@ -480,14 +631,23 @@ ice::expected<body_id, diagnostic> world3d::create_body(const body3d_description
 	    description.friction > 10 || !std::isfinite(description.restitution) ||
 	    description.restitution < 0 || description.restitution > 1)
 		return ice::unexpected(diagnostic{"Invalid body pose, velocity, mass or material"});
-	if (description.shape.kind == shape3d_kind::plane &&
+	if (description.shape.kind == shape3d_kind::plane && !description.static_shape &&
 	    description.motion != motion_type::static_body)
 		return ice::unexpected(diagnostic{"Plane collision shapes require a static body"});
+	if (description.static_shape &&
+	    (description.motion != motion_type::static_body || description.sensor))
+		return ice::unexpected(
+		    diagnostic{"Cooked surface collision requires a static nonsensor body"});
 	if (state.free.empty())
 		return ice::unexpected(diagnostic{"3D body budget exhausted"});
-	auto shape = prepare(description.shape);
+	auto shape = description.static_shape ? ice::expected<JPH::RefConst<JPH::Shape>, diagnostic>(
+	                                            description.static_shape.state_->shape)
+	                                      : prepare(description.shape);
 	if (!shape)
 		return ice::unexpected(shape.error());
+	if (description.static_shape &&
+	    !valid_static_pose(**shape, description.position, description.rotation))
+		return ice::unexpected(diagnostic{"Cooked surface body bounds exceed +/-1e6 world meters"});
 	JPH::BodyCreationSettings settings(shape->GetPtr(), native(description.position),
 	                                   native(description.rotation), native(description.motion),
 	                                   description.motion == motion_type::static_body ? 0 : 1);
@@ -496,6 +656,7 @@ ice::expected<body_id, diagnostic> world3d::create_body(const body3d_description
 	settings.mFriction                     = description.friction;
 	settings.mRestitution                  = description.restitution;
 	settings.mIsSensor                     = description.sensor;
+	settings.mEnhancedInternalEdgeRemoval  = true;
 	settings.mOverrideMassProperties       = JPH::EOverrideMassProperties::CalculateInertia;
 	settings.mMassPropertiesOverride.mMass = description.mass;
 	settings.mMotionQuality =
@@ -510,12 +671,13 @@ ice::expected<body_id, diagnostic> world3d::create_body(const body3d_description
 	if (!body)
 		return ice::unexpected(diagnostic{"Jolt could not allocate a native body"});
 	state.free.pop_back();
-	auto &entry           = state.slots[index];
-	entry.native          = body->GetID();
-	entry.alive           = true;
-	entry.stepped         = false;
-	entry.motion          = description.motion;
-	entry.character_proxy = false;
+	auto &entry                 = state.slots[index];
+	entry.native                = body->GetID();
+	entry.alive                 = true;
+	entry.stepped               = false;
+	entry.motion                = description.motion;
+	entry.character_proxy       = false;
+	entry.static_shape_identity = description.static_shape.identity();
 	bodies.AddBody(entry.native, description.motion == motion_type::static_body
 	                                 ? JPH::EActivation::DontActivate
 	                                 : JPH::EActivation::Activate);
@@ -565,7 +727,8 @@ ice::expected<body3d_snapshot, diagnostic> world3d::inspect(body_id body) const 
 	                       portable(rotation),
 	                       portable(linear),
 	                       portable(angular),
-	                       entry.motion == motion_type::dynamic && !bodies.IsActive(entry.native)};
+	                       entry.motion == motion_type::dynamic && !bodies.IsActive(entry.native),
+	                       entry.static_shape_identity};
 }
 ice::expected<void, diagnostic> world3d::set_pose(body_id body, const math::vec3 &position,
                                                   const math::quat &rotation, bool reset_velocity) {
@@ -581,6 +744,9 @@ ice::expected<void, diagnostic> world3d::set_pose(body_id body, const math::vec3
 		return ice::unexpected(
 		    diagnostic{"Character proxies must be moved through teleport_character"});
 	auto &bodies = state_->system.GetBodyInterface();
+	if (entry.static_shape_identity &&
+	    !valid_static_pose(*bodies.GetShape(entry.native), position, rotation))
+		return ice::unexpected(diagnostic{"Cooked surface body bounds exceed +/-1e6 world meters"});
 	bodies.SetPositionAndRotation(entry.native, native(position), native(rotation),
 	                              entry.motion == motion_type::static_body
 	                                  ? JPH::EActivation::DontActivate
@@ -623,20 +789,22 @@ world3d::create_character(const character3d_description &description) {
 	if (!proxy_shape)
 		return ice::unexpected(proxy_shape.error());
 	JPH::CharacterVirtualSettings settings;
-	settings.mShape                     = *shape;
-	settings.mInnerBodyShape            = *proxy_shape;
-	settings.mInnerBodyLayer            = 1;
-	settings.mMass                      = description.mass;
-	settings.mMaxStrength               = description.max_push_force;
-	settings.mMaxSlopeAngle             = description.max_slope_angle;
-	settings.mCharacterPadding          = std::min(.02f, description.radius * .1f);
-	settings.mCollisionTolerance        = std::min(.001f, description.radius * .01f);
-	settings.mPredictiveContactDistance = std::min(.1f, description.radius * .5f);
-	settings.mSupportingVolume          = JPH::Plane(JPH::Vec3::sAxisY(), -description.radius);
-	settings.mMaxNumHits                = description.max_contacts;
-	const auto body_index               = state.free.back();
-	const auto character_index          = state.free_characters.back();
-	auto       prepared                 = std::make_unique<JPH::CharacterVirtual>(
+	settings.mShape                       = *shape;
+	settings.mInnerBodyShape              = *proxy_shape;
+	settings.mInnerBodyLayer              = 1;
+	settings.mMass                        = description.mass;
+	settings.mMaxStrength                 = description.max_push_force;
+	settings.mMaxSlopeAngle               = description.max_slope_angle;
+	settings.mCharacterPadding            = std::min(.02f, description.radius * .1f);
+	settings.mCollisionTolerance          = std::min(.001f, description.radius * .01f);
+	settings.mPredictiveContactDistance   = std::min(.1f, description.radius * .5f);
+	settings.mSupportingVolume            = JPH::Plane(JPH::Vec3::sAxisY(), -description.radius);
+	settings.mMaxNumHits                  = description.max_contacts;
+	settings.mEnhancedInternalEdgeRemoval = true;
+	settings.mBackFaceMode                = JPH::EBackFaceMode::IgnoreBackFaces;
+	const auto body_index                 = state.free.back();
+	const auto character_index            = state.free_characters.back();
+	auto       prepared                   = std::make_unique<JPH::CharacterVirtual>(
         &settings, native(description.position), JPH::Quat::sIdentity(), body_index, &state.system);
 	if (prepared->GetInnerBodyID().IsInvalid())
 		return ice::unexpected(diagnostic{"Jolt could not allocate a character collision proxy"});
@@ -647,19 +815,20 @@ world3d::create_character(const character3d_description &description) {
 	state.character_collisions.Add(prepared.get());
 	state.free.pop_back();
 	state.free_characters.pop_back();
-	auto &proxy           = state.slots[body_index];
-	proxy.native          = prepared->GetInnerBodyID();
-	proxy.motion          = motion_type::kinematic;
-	proxy.alive           = true;
-	proxy.stepped         = false;
-	proxy.character_proxy = true;
-	auto &entry           = state.characters[character_index];
-	entry.native          = std::move(prepared);
-	entry.description     = description;
-	entry.intent          = {};
-	entry.proxy           = {state.owner, body_index + 1, proxy.generation};
-	entry.jump_pending    = false;
-	entry.ground_dirty    = true;
+	auto &proxy                 = state.slots[body_index];
+	proxy.native                = prepared->GetInnerBodyID();
+	proxy.motion                = motion_type::kinematic;
+	proxy.alive                 = true;
+	proxy.stepped               = false;
+	proxy.character_proxy       = true;
+	proxy.static_shape_identity = 0;
+	auto &entry                 = state.characters[character_index];
+	entry.native                = std::move(prepared);
+	entry.description           = description;
+	entry.intent                = {};
+	entry.proxy                 = {state.owner, body_index + 1, proxy.generation};
+	entry.jump_pending          = false;
+	entry.ground_dirty          = true;
 	++state.count;
 	++state.characters_count;
 	return character_id{state.owner, character_index + 1, entry.generation};

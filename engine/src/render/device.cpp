@@ -51,6 +51,7 @@ struct pipeline::implementation {
 };
 struct mesh::implementation {
 	std::shared_ptr<const int> token;
+	vertex_layout              vertices = vertex_layout::position_normal;
 #ifdef ICE_RENDER_METAL
 	std::unique_ptr<metal::mesh> metal;
 #endif
@@ -114,9 +115,10 @@ struct batch_access {
 				if (sampled && sampled->implementation_->token != token)
 					return failure("Frame contains a foreign sampled image");
 			}
-			if ((prepared.options.vertices == vertex_layout::position_normal) !=
-			    bool(item.geometry))
-				return failure("Indexed pipelines require a mesh; procedural pipelines reject one");
+			if (prepared.options.vertices != (item.geometry
+			                                      ? item.geometry->implementation_->vertices
+			                                      : vertex_layout::procedural))
+				return failure("Pipeline and mesh vertex layouts do not match");
 		}
 		return {};
 	}
@@ -360,11 +362,21 @@ ice::expected<void, diagnostic> device::wait_idle() {
 	return failure("Graphics backend unavailable");
 }
 ice::expected<std::unique_ptr<mesh>, diagnostic> device::create_mesh(const mesh_data &description) {
+	return upload_mesh(description, vertex_layout::position_normal);
+}
+ice::expected<std::unique_ptr<mesh>, diagnostic>
+device::create_mesh(const textured_mesh_data &description) {
+	return upload_mesh(description, vertex_layout::position_normal_uv);
+}
+template <typename mesh_description>
+ice::expected<std::unique_ptr<mesh>, diagnostic>
+device::upload_mesh(const mesh_description &description, vertex_layout layout) {
 	auto valid = detail::validate_mesh_data(description);
 	if (!valid)
 		return ice::unexpected(valid.error());
-	auto result   = std::make_unique<mesh::implementation>();
-	result->token = implementation_->token;
+	auto result      = std::make_unique<mesh::implementation>();
+	result->token    = implementation_->token;
+	result->vertices = layout;
 #ifdef ICE_RENDER_METAL
 	if (implementation_->metal) {
 		auto native = implementation_->metal->create_mesh(description);

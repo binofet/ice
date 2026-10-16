@@ -7,7 +7,7 @@ namespace ice::render {
 /// Supported immutable vertex input contracts. Uniform bytes remain at binding zero.
 /// Indexed scene shaders use zero-to-one clip depth. Authored GLSL entries explicitly map
 /// gl_Position.z = 2*z-w for OpenGL; Metal consumes the shared convention directly.
-enum class vertex_layout { procedural, position_normal };
+enum class vertex_layout { procedural, position_normal, position_normal_uv };
 /// Linear color attachment format. Presentation/capture remain RGBA8; HDR targets retain >1
 /// radiance.
 enum class color_format { rgba8_unorm, rgba16_float };
@@ -21,8 +21,9 @@ struct render_target_description {
 };
 /// Explicit fixed-function state retained with the prepared pipeline.
 struct pipeline_options {
-	/// Procedural triangles, or indexed float3 position/normal attributes at locations zero/one.
-	/// Metal fetches their fixed 24-byte stride from vertex buffer one, reserving buffer zero.
+	/// Procedural triangles, indexed position/normal, or indexed position/normal/UV attributes.
+	/// Locations zero/one are float3; UV at two is float2. Strides are 24/32 bytes respectively.
+	/// Metal fetches indexed vertices from buffer one, reserving buffer zero for uniform bytes.
 	vertex_layout vertices = vertex_layout::procedural;
 	/// Compare incoming depth with the stored value using less-than; depth clears to one.
 	bool depth_test = false;
@@ -50,6 +51,23 @@ struct mesh_vertex {
 struct mesh_data {
 	/// One to 1048576 finite position/normal vertices.
 	std::vector<mesh_vertex> vertices;
+	/// Three to 3145728 uint32 indices, a multiple of three, all less than vertices.size().
+	std::vector<std::uint32_t> indices;
+};
+/// Fixed 32-byte interleaved vertex; UV extends the unchanged 24-byte position/normal prefix.
+struct mesh_vertex_uv {
+	/// Object-space position. All three components must be finite.
+	std::array<float, 3> position{};
+	/// Object-space normal. Finite components are required; normalization belongs to the shader.
+	std::array<float, 3> normal{};
+	/// Authored texture coordinates at location two; finite, with no forced [0,1] restriction.
+	/// Uploaded image row zero samples at UV y=0; addressing/filtering remain the texture contract.
+	std::array<float, 2> uv{};
+};
+/// Owned CPU triangle list with explicit position/normal/UV input for device reconstruction.
+struct textured_mesh_data {
+	/// One to 1048576 finite position/normal/UV vertices, with a fixed 32-byte stride.
+	std::vector<mesh_vertex_uv> vertices;
 	/// Three to 3145728 uint32 indices, a multiple of three, all less than vertices.size().
 	std::vector<std::uint32_t> indices;
 };

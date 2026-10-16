@@ -1,7 +1,7 @@
 # Indexed drawing and ordered frame batches
 
-The first indexed rendering profile supports immutable position/normal triangle
-lists on Metal and OpenGL 4.1 core. It uses the same logical device ownership,
+The indexed rendering profile supports immutable position/normal and
+position/normal/UV triangle lists on Metal and OpenGL 4.1 core. It uses the same logical device ownership,
 shader URI snapshots, uniform block and sampled image contracts as procedural
 drawing. It does not create a camera, simulation, material model or application.
 
@@ -29,20 +29,39 @@ before uploading independent immutable GPU storage. The CPU description may be
 changed or released after creation. Retain a description when it must be uploaded
 to a replacement logical device.
 
+`textured_mesh_data` is an additive description with `mesh_vertex_uv` vertices:
+float3 position, float3 normal and float2 UV, in that order. Its fixed stride is
+32 bytes, with offsets 0, 12 and 24. The original `mesh_vertex`/`mesh_data` contract
+remains 24 bytes. Both `device::create_mesh` overloads upload independent immutable
+storage, and each GPU mesh retains its exact declared layout. A shader that ignores
+UV still needs a `position_normal_uv` pipeline when consuming a 32-byte mesh;
+matching the position/normal prefix does not permit an implicit stride conversion.
+
+UV components must be finite. They may be outside `[0,1]`; upload does not clamp or
+rewrite authored coordinates. The existing texture contract samples uploaded row
+zero at UV y=0, using linear filtering and clamp-to-edge without mipmaps. There is
+no material system, glTF texture transform or implicit UV flip in this addition.
+An authored shader chooses which coordinates, textures and color-space operations
+it uses.
+
 The bounds are 1–1048576 vertices and 3–3145728 indices, with a multiple of three
 indices. Degenerate triangles and non-unit/zero normals are not geometry repair
 errors; the shader author chooses how to use their values. Indices do not have to
 be sequential. GPU meshes retain their native device lifetime independently of
 the C++ device wrapper.
 
-`pipeline_options` selects procedural or `position_normal` vertex input, depth
+`pipeline_options` selects procedural, `position_normal` or `position_normal_uv` vertex input, depth
 testing, depth writing and premultiplied alpha blending. Defaults preserve the
 existing procedural path. Indexed shader attributes are float3 position at
 location/attribute zero and float3 normal at one. Position must be active; unused
-normal input may be optimized out. Other active attributes and mismatched types
-are rejected. Metal's fixed vertex descriptor fetches buffer one, reserving buffer
+normal input may be optimized out. `position_normal_uv` additionally permits
+float2 UV at location/attribute two, which may also be optimized out. Other active
+attributes, arrays and mismatched types are rejected. Metal's fixed vertex descriptor fetches buffer one, reserving buffer
 zero for the caller's uniform bytes. GL uses per-context VAOs with shared immutable
-vertex/index buffers.
+vertex/index buffers, restoring the appropriate 24/32-byte stride and disabling
+unused attributes when a batch switches layouts. Mesh/pipeline layouts must match
+exactly in portable and backend-specific entry points, before target clears or GPU
+encoding.
 
 Camera/model/normal transforms, lighting and tint remain authored uniform/shader
 contracts. There is no automatic normal transformation or native memory-layout
@@ -85,8 +104,8 @@ The bounds are 131072 items, 4096 uniform bytes per item and 64 MiB of aggregate
 uniform bytes per frame. The existing RGBA8 sampled image at binding zero
 is available to either shader stage. GPU HDR targets and explicit four-slot postprocess
 bindings extend that baseline; see [HDR postprocessing](hdr-postprocessing.md). Image updates replace storage and preserve
-the image used by preceding submissions. The profile has no additional vertex
-formats, UV/color attributes, mutable vertex streams, instancing, mesh shaders or
+the image used by preceding submissions. Beyond these two indexed layouts, the profile has no additional vertex
+formats, color/tangent attributes, mutable vertex streams, instancing, mesh shaders or
 compute dispatch. These can be added through explicit capability/API extensions.
 
 ## Live replacement and tests
@@ -106,6 +125,16 @@ repeated depth clears, bounds/foreign-resource rejection, live options undo,
 independent previews, resize/suspend and retained device lifetime. Four actual
 renderer replacements preserve a window and CPU simulation state. The same suite
 compares Metal/GL mixed-scene readback pixels with a small UNORM tolerance.
+
+`ice_textured_mesh_tests` is likewise GPU-only. It retains embedded shader bytes
+through a URI provider and uploads an asymmetric checker image. Tests compare
+actual interpolated UV sampling against CPU bilinear expectations, mirror authored
+UVs independently of screen position, exercise out-of-range clamping and the normal
+offset, switch between old/new layouts, and compare Metal/OpenGL captures. Invalid
+UVs, reflected attribute types, exact layout mismatches and foreign resources are
+rejected; a valid first draw followed by an invalid layout preserves an initialized
+render target. CPU arrays may be released after upload, and native resource owners
+can retire safely after their logical-device wrapper.
 
 The whole-batch rejection guarantee applies to checked input and ownership
 failures. Native compiler/driver errors, hangs and shader faults are not an

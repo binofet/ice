@@ -5,17 +5,25 @@
 #include <cstddef>
 
 namespace ice::render::detail {
-inline ice::expected<void, diagnostic> validate_mesh_data(const mesh_data &description) {
+template <typename mesh_description>
+inline ice::expected<void, diagnostic> validate_mesh_data(const mesh_description &description) {
 	static_assert(sizeof(mesh_vertex) == 24 && offsetof(mesh_vertex, normal) == 12);
+	static_assert(sizeof(mesh_vertex_uv) == 32 && offsetof(mesh_vertex_uv, normal) == 12 &&
+	              offsetof(mesh_vertex_uv, uv) == 24);
 	if (description.vertices.empty() || description.vertices.size() > 1048576 ||
 	    description.indices.size() < 3 || description.indices.size() > 3145728 ||
 	    description.indices.size() % 3)
 		return ice::unexpected(
 		    diagnostic{"Invalid mesh vertex/index count or triangle-list budget"});
-	for (const auto &vertex : description.vertices)
+	for (const auto &vertex : description.vertices) {
 		for (unsigned axis = 0; axis < 3; ++axis)
 			if (!std::isfinite(vertex.position[axis]) || !std::isfinite(vertex.normal[axis]))
 				return ice::unexpected(diagnostic{"Mesh position/normal must be finite"});
+		if constexpr (requires { vertex.uv; })
+			for (float component : vertex.uv)
+				if (!std::isfinite(component))
+					return ice::unexpected(diagnostic{"Mesh UV coordinates must be finite"});
+	}
 	for (auto index : description.indices)
 		if (index >= description.vertices.size())
 			return ice::unexpected(diagnostic{"Mesh index is outside the vertex array"});
@@ -23,7 +31,8 @@ inline ice::expected<void, diagnostic> validate_mesh_data(const mesh_data &descr
 }
 inline bool valid_options(const pipeline_options &options) {
 	return (options.vertices == vertex_layout::procedural ||
-	        options.vertices == vertex_layout::position_normal) &&
+	        options.vertices == vertex_layout::position_normal ||
+	        options.vertices == vertex_layout::position_normal_uv) &&
 	       (!options.depth_write || options.depth_test) &&
 	       (options.target_format == color_format::rgba8_unorm ||
 	        options.target_format == color_format::rgba16_float) &&

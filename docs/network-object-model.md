@@ -1,9 +1,12 @@
 # Networked objects and live worlds
 
-Design checkpoint: 2026-10-15. This defines the next implementation milestone after
-the Lua authoring bridge. Shared-room replication, durable prototype catalogs,
-network attributes and persistent gameplay scripts are **not implemented** by this
-document. The existing companion transport supports a particular party-game input
+Design checkpoint: 2026-10-16. This defines the networking direction after
+the Lua authoring bridge. The first scalar networking metadata/codegen proof now
+lives in [Tools/NetworkMetadata](../Tools/NetworkMetadata/README.md): raw Metagen
+C# attributes and passive Python tags generate equivalent typed records, descriptors,
+full/delta codecs, discovery and explicit host event-validator hooks. This is an
+isolated conformance example; shared-room replication and durable prototype catalogs
+are **not implemented** by it. The existing companion transport supports a particular party-game input
 protocol; Ignition's command socket is private loopback control. Neither is a
 general replicated world.
 
@@ -128,15 +131,15 @@ rather than arbitrary custom attribute types. Read networking policy from the ra
 type/field IDs. Rich Python policy needs a tested passive metadata extension;
 do not silently claim it is already supported or copy/fork the entire parser.
 
-Proposed C# spelling, **not attributes currently shipped by ICE**:
+C# spelling implemented by the ICE-owned scalar proof (not a public runtime API):
 
 ```csharp
 using Metagen;
 using Metagen.PortableData;
-using Ice.NetworkMetadata; // Proposed ICE-owned attribute assembly.
+using Ice.NetworkMetadata; // ICE-owned attribute vocabulary.
 
 [MetaSchema("demo.transform", 1, "transform")]
-[Replicated("authority", Audience = "relevant")]
+[Replicated("authority", Audience = "relevant", Delivery = "snapshot", Conflict = "whole_field_cas")]
 public sealed class Transform {
     [MetaField(1, "x"), MetaRange(-300, 300)]
     [WireCodec("signed16_cm", Unit = "m", Interpolation = "linear")]
@@ -154,7 +157,7 @@ The custom attribute classes expose typed constructor/named arguments; the ICE
 consumer normalizes them to its network policy IR. Equivalent Python declarations
 can already express the policy as literal namespaced scalar tags, without adding
 an executable decorator. This syntax is accepted by the existing passive reader;
-the **meaning of the `ice.net.*` tags remains proposed**:
+the **meaning of these `ice.net.*` tags is validated by the scalar proof**:
 
 ```python
 from dataclasses import dataclass, field
@@ -162,17 +165,18 @@ from typing import Annotated
 from metagen import schema, f32
 
 @schema("demo.transform", version=1, name="transform",
-        tags={"ice.net.writer": "authority", "ice.net.audience": "relevant"})
+        tags={"ice.net.writer": "authority", "ice.net.audience": "relevant",
+              "ice.net.delivery": "snapshot", "ice.net.conflict": "whole_field_cas"})
 @dataclass
 class Transform:
     x: Annotated[float, f32] = field(metadata={"id": 1, "range": [-300, 300],
-        "tags": {"ice.net.codec": "signed16_cm", "ice.net.unit": "m",
+        "tags": {"ice.net.codec": "signed16_cm", "ice.net.codec_version": "1", "ice.net.unit": "m",
                  "ice.net.interpolation": "linear"}})
     y: Annotated[float, f32] = field(metadata={"id": 2, "range": [-300, 300],
-        "tags": {"ice.net.codec": "signed16_cm", "ice.net.unit": "m",
+        "tags": {"ice.net.codec": "signed16_cm", "ice.net.codec_version": "1", "ice.net.unit": "m",
                  "ice.net.interpolation": "linear"}})
     z: Annotated[float, f32] = field(metadata={"id": 3, "range": [-300, 300],
-        "tags": {"ice.net.codec": "signed16_cm", "ice.net.unit": "m",
+        "tags": {"ice.net.codec": "signed16_cm", "ice.net.codec_version": "1", "ice.net.unit": "m",
                  "ice.net.interpolation": "linear"}})
 ```
 

@@ -8,6 +8,63 @@
 #include <span>
 
 namespace ice::physics {
+/// Borrowed indexed triangles to cook synchronously; source storage is never retained.
+struct triangle_mesh3d_description {
+	/// Local vertices in meters, each component inside the finite +/-1,000,000 meter domain.
+	std::span<const math::vec3> vertices;
+	/// Counterclockwise front-facing triangles as consecutive triples of vertex indices.
+	/// Open meshes and omitted triangles are allowed; degenerate triangles are rejected.
+	std::span<const std::uint32_t> indices;
+};
+/// Borrowed regular square terrain to cook synchronously; no source storage is retained.
+struct heightfield3d_description {
+	/// Finite row-major heights; sample (x,z) is heights[z*sample_count+x]. Holes are unsupported.
+	std::span<const float> heights;
+	/// Number of samples on each axis, at least four; heights.size() must equal its square.
+	std::uint32_t sample_count = 0;
+	/// Local sample position is offset + scale * (x,height,z), before the body's rigid pose.
+	math::vec3 offset{0};
+	/// Strictly positive meters per sample/unit, each component in [0.001,1,000,000].
+	math::vec3 scale{1};
+};
+/// Immutable cooking measurements; they describe one shared resource, not each body instance.
+struct static_shape3d_statistics {
+	/// Number of input mesh vertices or height samples.
+	std::uint64_t source_vertices = 0;
+	/// Number of input mesh triangles or authored terrain triangles.
+	std::uint64_t source_triangles = 0;
+	/// Backend-reported resident collision bytes; excludes temporary cooking/source allocations.
+	std::uint64_t cooked_bytes = 0;
+	/// Synchronous native cooking time in nanoseconds; excludes validation/backend registration.
+	std::uint64_t cook_nanoseconds = 0;
+};
+/// Shared immutable static collision geometry, reusable by bodies in independent worlds.
+/// Cooking works before any world exists. Source spans may be released after cooking returns.
+/// Copies share geometry; bodies retain it independently of the caller's handle lifetime.
+class cooked_static_shape {
+public:
+	/// Construct an empty handle, selecting ordinary primitive geometry in a body description.
+	cooked_static_shape() = default;
+	/// Validate and cook a single-sided indexed surface; front faces use counterclockwise winding.
+	static ice::expected<cooked_static_shape, diagnostic>
+	cook_mesh(const triangle_mesh3d_description &description);
+	/// Validate and cook an immutable +Y-facing regular heightfield, with sixteen-bit samples.
+	/// Each quad splits along (x,z) to (x+1,z+1); finite heights only, without authored holes.
+	static ice::expected<cooked_static_shape, diagnostic>
+	cook_heightfield(const heightfield3d_description &description);
+	/// Process-local non-reusing cook identity; copies share it and empty handles return zero.
+	std::uint64_t identity() const;
+	/// Copy resource measurements; empty handles return all zeros.
+	static_shape3d_statistics statistics() const;
+	/// Whether this handle owns successfully cooked immutable geometry.
+	explicit operator bool() const;
+
+private:
+	friend class world3d;
+	struct implementation;
+	explicit cooked_static_shape(std::shared_ptr<const implementation> state);
+	std::shared_ptr<const implementation> state_;
+};
 /// Native collision geometry supported by the first Jolt integration.
 enum class shape3d_kind { sphere, box, capsule, plane };
 /// Local collision geometry in meters; a capsule extends along local Y.
@@ -45,6 +102,8 @@ struct body3d_description {
 	motion_type motion = motion_type::dynamic;
 	/// Local collision shape anchored at the body's origin; a plane passes through that origin.
 	shape3d_description shape;
+	/// Optional shared cooked geometry, replacing shape when present; requires static, nonsensor.
+	cooked_static_shape static_shape;
 	/// Initial world translation in meters.
 	math::vec3 position{0};
 	/// Initial unit quaternion, normalized after finite/nonzero validation.
@@ -80,6 +139,8 @@ struct body3d_snapshot {
 	math::vec3 angular_velocity{0};
 	/// True when a dynamic body is inactive/sleeping.
 	bool sleeping = false;
+	/// Shared cook identity for mesh/heightfield bodies; zero for ordinary primitive bodies.
+	std::uint64_t static_shape_identity = 0;
 };
 /// Closest nonsensor ray intersection; fraction lies in [0,1] along the displacement.
 struct ray_hit3d {
@@ -150,6 +211,7 @@ public:
 	std::span<const contact_event> contacts() const;
 	/// Query the closest nonsensor hit without stepping; a zero/invalid ray is rejected.
 	/// Every ignored handle must be live in this world; at most max_bodies may be supplied.
+	/// Mesh/heightfield surfaces can be hit from either side; normals retain authored winding.
 	ice::expected<std::optional<ray_hit3d>, diagnostic>
 	ray_cast(const math::vec3 &origin, const math::vec3 &displacement,
 	         std::span<const body_id> ignored = {}) const;

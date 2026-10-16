@@ -20,7 +20,7 @@ enum class backend_kind { metal, opengl };
 struct shader_source {
 	/// Library identity resolved through configured handlers/mounts.
 	std::string uri;
-	/// Vertex entry; pipeline_options selects procedural or fixed position/normal inputs.
+	/// Vertex entry; pipeline_options selects procedural or a declared fixed indexed layout.
 	std::string vertex_entry;
 	/// Fragment entry; optional buffer(0)/std140 bytes and declared sampled slots are reflected.
 	std::string fragment_entry;
@@ -41,8 +41,8 @@ private:
 	friend class device;
 	friend class presentation_surface;
 };
-/// Immutable device-owned indexed position/normal triangle list, uploaded from a CPU description.
-/// Keep the CPU description separately for recreation on another logical device.
+/// Immutable device-owned indexed triangle list, retaining its declared position/normal[/UV]
+/// layout. Keep the CPU description separately for recreation on another logical device.
 class mesh {
 public:
 	/// Release vertex/index storage; submitted native commands retain referenced resources.
@@ -180,6 +180,10 @@ public:
 	ice::expected<void, diagnostic> wait_idle();
 	/// Upload a validated immutable position/normal triangle list without retaining CPU aliases.
 	ice::expected<std::unique_ptr<mesh>, diagnostic> create_mesh(const mesh_data &description);
+	/// Upload finite position/normal/UV vertices; only position_normal_uv pipelines accept them.
+	/// The CPU arrays may be changed or released after this call returns.
+	ice::expected<std::unique_ptr<mesh>, diagnostic>
+	create_mesh(const textured_mesh_data &description);
 	/// Synchronously capture an ordered indexed/procedural batch as top-row-first RGBA8.
 	/// Dimensions are in [1,4096]. The whole batch is validated before touching its target.
 	ice::expected<image, diagnostic> render_offscreen(const frame_batch &batch, int width,
@@ -220,6 +224,9 @@ public:
 	std::string take_error();
 
 private:
+	template <typename mesh_description>
+	ice::expected<std::unique_ptr<mesh>, diagnostic>
+	upload_mesh(const mesh_description &description, vertex_layout layout);
 	struct implementation;
 	explicit device(std::unique_ptr<implementation> implementation);
 	device(const device &other)                                    = delete;

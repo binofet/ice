@@ -169,6 +169,9 @@ public:
 	ice::expected<void, diagnostic> wait_idle();
 	/// Upload a validated immutable position/normal triangle list without retaining CPU aliases.
 	ice::expected<std::unique_ptr<mesh>, diagnostic> create_mesh(const mesh_data &description);
+	/// Upload finite position/normal/UV vertices, declaring the immutable 32-byte indexed layout.
+	ice::expected<std::unique_ptr<mesh>, diagnostic>
+	create_mesh(const textured_mesh_data &description);
 	/// Synchronously capture an ordered indexed/procedural batch as top-row-first RGBA8.
 	/// Dimensions are in [1,4096]. The whole batch is validated before touching its target.
 	ice::expected<image, diagnostic> render_offscreen(const frame_batch &batch, int width,
@@ -210,6 +213,9 @@ public:
 	std::string take_error();
 
 private:
+	ice::expected<std::unique_ptr<mesh>, diagnostic>
+	upload_mesh(std::span<const std::byte> vertices, std::span<const std::uint32_t> indices,
+	            vertex_layout layout);
 	explicit device(std::shared_ptr<detail::device_state> state);
 	device(const device &other)                                          = delete;
 	device                               &operator=(const device &other) = delete;
