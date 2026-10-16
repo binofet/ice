@@ -77,6 +77,14 @@ if(BUILD_TESTING)
         add_test(NAME ice_shader_snapshot COMMAND ice_shader_snapshot_tests)
     endif()
     if(TARGET ice::render)
+        if(ICE_BUILD_DESKTOP)
+            ice_test(ice_hdr_tests tests/hdr.cpp ice::render)
+            target_link_libraries(ice_hdr_tests PRIVATE ice::window)
+            target_compile_definitions(ice_hdr_tests PRIVATE
+                $<$<BOOL:${ICE_BUILD_METAL}>:ICE_TEST_METAL=1>
+                $<$<BOOL:${ICE_BUILD_OPENGL}>:ICE_TEST_OPENGL=1>)
+            set_target_properties(ice_hdr_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+        endif()
         ice_test(ice_mesh_tests tests/mesh.cpp ice::render)
         target_link_libraries(ice_mesh_tests PRIVATE ice::window)
         target_compile_definitions(ice_mesh_tests PRIVATE

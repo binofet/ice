@@ -27,11 +27,12 @@ struct layer_lease {
 } // namespace
 namespace detail {
 struct device_state {
-	id<MTLDevice>       device;
-	id<MTLCommandQueue> queue;
-	std::mutex          mutex;
-	std::string         error;
-	void                completed(id<MTLCommandBuffer> command) {
+	id<MTLDevice>        device;
+	id<MTLCommandQueue>  queue;
+	std::mutex           mutex;
+	std::string          error;
+	dispatch_semaphore_t target_available = dispatch_semaphore_create(64);
+	void                 completed(id<MTLCommandBuffer> command) {
         if (command.status != MTLCommandBufferStatusError)
             return;
         std::lock_guard guard(mutex);
@@ -53,8 +54,8 @@ struct device_state {
 struct pipeline::implementation {
 	std::shared_ptr<detail::device_state> state;
 	id<MTLRenderPipelineState>            native;
-	std::size_t                           uniform_bytes = 0;
-	bool                                  sampled_image = false;
+	std::size_t                           uniform_bytes    = 0;
+	std::uint8_t                          sampled_bindings = 0;
 	pipeline_options                      options;
 	id<MTLDepthStencilState>              depth;
 };
@@ -67,6 +68,12 @@ struct texture::implementation {
 	std::shared_ptr<detail::device_state> state;
 	id<MTLTexture>                        native;
 	int                                   width = 0, height = 0;
+	bool                                  depth = false, attachment = false, initialized = true;
+};
+struct render_target::implementation {
+	std::shared_ptr<detail::device_state> state;
+	render_target_description             description;
+	std::unique_ptr<texture>              color, depth;
 };
 struct presentation_surface::implementation {
 	// Release exclusivity after native state; both common and backend-specific APIs use it.
@@ -109,21 +116,41 @@ bool valid_draw(const std::shared_ptr<detail::device_state> &state,
 } // namespace
 struct detail::batch_access {
 	static ice::expected<void, diagnostic> validate(const std::shared_ptr<device_state> &state,
-	                                                const frame_batch                   &batch) {
+	                                                const frame_batch                   &batch,
+	                                                color_format format = color_format::rgba8_unorm,
+	                                                id<MTLTexture> color = nil,
+	                                                id<MTLTexture> depth = nil) {
 		auto shape = ice::render::detail::validate_batch_shape(batch);
 		if (!shape)
 			return shape;
 		for (const auto &item : batch.draws) {
 			const auto &prepared = *item.pipeline->implementation_;
 			if (!valid_draw(state, prepared.state, item.uniforms, prepared.uniform_bytes) ||
-			    (item.geometry && item.geometry->implementation_->state != state) ||
-			    (item.sampled_image && item.sampled_image->implementation_->state != state))
+			    (item.geometry && item.geometry->implementation_->state != state))
 				return failure("Foreign frame resource or invalid uniform byte count");
 			if ((prepared.options.vertices == vertex_layout::position_normal) !=
 			    bool(item.geometry))
 				return failure("Indexed pipelines require a mesh; procedural pipelines reject one");
-			if (prepared.sampled_image && !item.sampled_image)
-				return failure("Frame pipeline requires a sampled image");
+			if (prepared.options.target_format != format)
+				return failure("Pipeline color format does not match the destination");
+			for (unsigned slot = 0; slot < 4; ++slot) {
+				auto       sampled  = ice::render::detail::sampled_at(item, slot);
+				const bool required = prepared.sampled_bindings & (1u << slot);
+				if (required && !sampled)
+					return failure("Frame pipeline is missing a required sampled slot");
+				if (!sampled)
+					continue;
+				const auto &view = *sampled->implementation_;
+				if (!view.initialized)
+					return failure("Sampled target has not received a successful pass");
+				if (view.state != state)
+					return failure("Frame contains a foreign sampled image");
+				if (view.native == color || view.native == depth)
+					return failure("Render target color/depth feedback is unsupported");
+				if (required &&
+				    view.depth != bool(prepared.options.depth_sampled_bindings & (1u << slot)))
+					return failure("Sampled slot color/depth kind does not match its declaration");
+			}
 		}
 		return {};
 	}
@@ -136,21 +163,22 @@ struct detail::batch_access {
 			                                                      height:height
 			                                                   mipmapped:NO];
 			descriptor.storageMode = MTLStorageModePrivate;
-			descriptor.usage       = MTLTextureUsageRenderTarget;
+			descriptor.usage       = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead;
 			return [state->device newTextureWithDescriptor:descriptor];
 		}
 	}
 	static bool encode(id<MTLCommandBuffer> command, id<MTLTexture> target, id<MTLTexture> depth,
-	                   const frame_batch &batch) {
+	                   const frame_batch &batch, bool store_depth = false) {
 		MTLRenderPassDescriptor *pass        = [MTLRenderPassDescriptor renderPassDescriptor];
 		pass.colorAttachments[0].texture     = target;
 		pass.colorAttachments[0].loadAction  = MTLLoadActionClear;
 		pass.colorAttachments[0].storeAction = MTLStoreActionStore;
 		pass.colorAttachments[0].clearColor  = MTLClearColorMake(
             batch.clear_color[0], batch.clear_color[1], batch.clear_color[2], batch.clear_color[3]);
-		pass.depthAttachment.texture        = depth;
-		pass.depthAttachment.loadAction     = MTLLoadActionClear;
-		pass.depthAttachment.storeAction    = MTLStoreActionDontCare;
+		pass.depthAttachment.texture    = depth;
+		pass.depthAttachment.loadAction = MTLLoadActionClear;
+		pass.depthAttachment.storeAction =
+		    store_depth ? MTLStoreActionStore : MTLStoreActionDontCare;
 		pass.depthAttachment.clearDepth     = 1.0;
 		id<MTLRenderCommandEncoder> encoder = [command renderCommandEncoderWithDescriptor:pass];
 		if (!encoder)
@@ -166,10 +194,12 @@ struct detail::batch_access {
 				                   length:item.uniforms.size()
 				                  atIndex:0];
 			}
-			id<MTLTexture> sampled =
-			    item.sampled_image ? item.sampled_image->implementation_->native : nil;
-			[encoder setVertexTexture:sampled atIndex:0];
-			[encoder setFragmentTexture:sampled atIndex:0];
+			for (unsigned slot = 0; slot < 4; ++slot) {
+				auto           image   = ice::render::detail::sampled_at(item, slot);
+				id<MTLTexture> sampled = image ? image->implementation_->native : nil;
+				[encoder setVertexTexture:sampled atIndex:slot];
+				[encoder setFragmentTexture:sampled atIndex:slot];
+			}
 			if (item.geometry) {
 				const auto &geometry = *item.geometry->implementation_;
 				[encoder setVertexBuffer:geometry.vertices offset:0 atIndex:1];
@@ -196,8 +226,18 @@ mesh::~mesh() = default;
 texture::texture(std::unique_ptr<implementation> implementation)
     : implementation_(std::move(implementation)) {}
 texture::~texture() = default;
+render_target::render_target(std::unique_ptr<implementation> implementation)
+    : implementation_(std::move(implementation)) {}
+render_target::~render_target() = default;
+const texture            &render_target::color() const { return *implementation_->color; }
+const texture            &render_target::depth() const { return *implementation_->depth; }
+render_target_description render_target::description() const {
+	return implementation_->description;
+}
 ice::expected<void, diagnostic> texture::update(const image &pixels) {
 	auto &data = *implementation_;
+	if (data.attachment)
+		return failure("Render target views cannot be updated from CPU pixels");
 	if (pixels.width != data.width || pixels.height != data.height ||
 	    pixels.rgba.size() != std::size_t(data.width) * data.height * 4)
 		return failure("Texture update requires matching dimensions and exact RGBA8 pixels");
@@ -281,8 +321,10 @@ device::prepare_pipeline(const shader_snapshot &snapshot, const std::string &ver
 		descriptor.fragmentFunction = [library newFunctionWithName:native_string(fragment_entry)];
 		if (!descriptor.vertexFunction || !descriptor.fragmentFunction)
 			return failure(uri + ": a requested shader entry point is missing");
-		descriptor.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
-		descriptor.depthAttachmentPixelFormat      = MTLPixelFormatDepth32Float;
+		descriptor.colorAttachments[0].pixelFormat =
+		    options.target_format == color_format::rgba16_float ? MTLPixelFormatRGBA16Float
+		                                                        : MTLPixelFormatBGRA8Unorm;
+		descriptor.depthAttachmentPixelFormat = MTLPixelFormatDepth32Float;
 		if (options.alpha_blend) {
 			auto attachment                        = descriptor.colorAttachments[0];
 			attachment.blendingEnabled             = YES;
@@ -345,21 +387,23 @@ device::prepare_pipeline(const shader_snapshot &snapshot, const std::string &ver
 					    binding.type == MTLBindingTypeBuffer && binding.index == 1 &&
 					    binding.access == MTLBindingAccessReadOnly)
 						continue;
-					if (binding.type == MTLBindingTypeTexture && binding.index == 0 &&
+					if (binding.type == MTLBindingTypeTexture && binding.index < 4 &&
 					    binding.access == MTLBindingAccessReadOnly) {
 						auto sampled = static_cast<id<MTLTextureBinding>>(binding);
 						if (sampled.textureType != MTLTextureType2D ||
-						    sampled.textureDataType != MTLDataTypeFloat || sampled.depthTexture ||
-						    sampled.arrayLength != 1)
-							return failure(uri + ": only a float sampled texture2d at fragment "
-							                     "texture(0) is supported");
-						result->sampled_image = true;
+						    sampled.textureDataType != MTLDataTypeFloat ||
+						    sampled.arrayLength != 1 ||
+						    sampled.depthTexture !=
+						        bool(options.depth_sampled_bindings & (1u << binding.index)))
+							return failure(uri + ": sampled textures must match declared float "
+							                     "color/depth slots0..3");
+						result->sampled_bindings |= std::uint8_t(1u << binding.index);
 						continue;
 					}
 					if (binding.type != MTLBindingTypeBuffer || binding.index != 0 ||
 					    binding.access != MTLBindingAccessReadOnly)
 						return failure(
-						    uri + ": this pipeline supports read-only buffer(0) and texture(0)");
+						    uri + ": this pipeline supports read-only buffer(0) and texture(0..3)");
 					auto buffer = static_cast<id<MTLBufferBinding>>(binding);
 					result->uniform_bytes =
 					    std::max(result->uniform_bytes, std::size_t(buffer.bufferDataSize));
@@ -367,11 +411,116 @@ device::prepare_pipeline(const shader_snapshot &snapshot, const std::string &ver
 			}
 		} else
 			return failure(uri + ": pipeline reflection requires macOS 13 / iOS 16 or newer");
+		if ((options.sampled_bindings == 0xff && result->sampled_bindings > 1) ||
+		    (options.sampled_bindings != 0xff &&
+		     options.sampled_bindings != result->sampled_bindings))
+			return failure(uri + ": active sampled slots do not match the pipeline descriptor");
 		if (result->uniform_bytes > 4096)
 			return failure(uri + ": uniform block exceeds 4096 bytes");
 		// The unique owner moves into tl::expected; analyzer 18 loses that ownership path.
 		// NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks)
 		return std::unique_ptr<pipeline>(new pipeline(std::move(result)));
+	}
+}
+ice::expected<std::unique_ptr<render_target>, diagnostic>
+device::create_render_target(const render_target_description &description) {
+	if (!ice::render::detail::valid_target(description))
+		return failure("Invalid render target dimensions or color format");
+		// Metal's feature tables specify 16K for Mac and Apple3+, 8K for older Apple GPUs.
+		// Keep the public 16K bound even on newer families with larger native limits.
+#if TARGET_OS_OSX
+	const int maximum_dimension = 16384;
+#else
+	const int maximum_dimension = [state_->device supportsFamily:MTLGPUFamilyApple3] ? 16384 : 8192;
+#endif
+	if (description.width > maximum_dimension || description.height > maximum_dimension)
+		return failure("Render target exceeds this Metal GPU family's texture dimensions");
+	@autoreleasepool {
+		auto result         = std::make_unique<render_target::implementation>();
+		result->state       = state_;
+		result->description = description;
+		for (unsigned aspect = 0; aspect < 2; ++aspect) {
+			auto data         = std::make_unique<texture::implementation>();
+			data->state       = state_;
+			data->width       = description.width;
+			data->height      = description.height;
+			data->depth       = aspect != 0;
+			data->attachment  = true;
+			data->initialized = false;
+			auto format       = aspect ? MTLPixelFormatDepth32Float
+			                    : description.format == color_format::rgba16_float
+			                        ? MTLPixelFormatRGBA16Float
+			                        : MTLPixelFormatBGRA8Unorm;
+			auto native =
+			    [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:format
+			                                                       width:description.width
+			                                                      height:description.height
+			                                                   mipmapped:NO];
+			native.storageMode = MTLStorageModePrivate;
+			native.usage       = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead;
+			data->native       = [state_->device newTextureWithDescriptor:native];
+			if (!data->native)
+				return failure("Metal render target color/depth allocation failed");
+			if (aspect)
+				result->depth.reset(new texture(std::move(data)));
+			else
+				result->color.reset(new texture(std::move(data)));
+		}
+		// Ownership transfers through tl::expected.
+		// NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks)
+		return std::unique_ptr<render_target>(new render_target(std::move(result)));
+	}
+}
+ice::expected<frame_status, diagnostic> device::render_into(render_target     &target,
+                                                            const frame_batch &batch) {
+	auto &output = *target.implementation_;
+	if (output.state != state_)
+		return failure("Foreign render target");
+	auto valid = detail::batch_access::validate(state_, batch, output.description.format,
+	                                            output.color->implementation_->native,
+	                                            output.depth->implementation_->native);
+	if (!valid)
+		return ice::unexpected(valid.error());
+	if (dispatch_semaphore_wait(state_->target_available, DISPATCH_TIME_NOW) != 0)
+		return frame_status::busy;
+	@autoreleasepool {
+		auto command = [state_->queue commandBuffer];
+		if (!command ||
+		    !detail::batch_access::encode(command, output.color->implementation_->native,
+		                                  output.depth->implementation_->native, batch, true)) {
+			dispatch_semaphore_signal(state_->target_available);
+			return failure("Metal target command encoding failed");
+		}
+		auto state = state_;
+		[command addCompletedHandler:^(id<MTLCommandBuffer> completed) {
+		  state->completed(completed);
+		  dispatch_semaphore_signal(state->target_available);
+		}];
+		[command commit];
+		output.color->implementation_->initialized = true;
+		output.depth->implementation_->initialized = true;
+		return frame_status::submitted;
+	}
+}
+ice::expected<void, diagnostic> device::wait_idle() {
+	@autoreleasepool {
+		auto barrier = [state_->queue commandBuffer];
+		if (!barrier)
+			return failure("Metal device drain allocation failed");
+		[barrier commit];
+		[barrier waitUntilCompleted];
+		// A queue barrier orders GPU work. Also wait for target completion handlers,
+		// so asynchronous target failures are visible to synchronous preparation.
+		for (unsigned index = 0; index < 64; ++index)
+			dispatch_semaphore_wait(state_->target_available, DISPATCH_TIME_FOREVER);
+		for (unsigned index = 0; index < 64; ++index)
+			dispatch_semaphore_signal(state_->target_available);
+		if (barrier.status != MTLCommandBufferStatusCompleted)
+			return failure(native_error(barrier.error, "Metal device drain failed"));
+		auto error = take_error();
+		if (!error.empty())
+			return failure(std::move(error));
+		return {};
 	}
 }
 ice::expected<std::unique_ptr<mesh>, diagnostic> device::create_mesh(const mesh_data &description) {

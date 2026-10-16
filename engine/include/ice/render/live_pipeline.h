@@ -28,7 +28,9 @@ public:
 	/// Replace this holder with transferred state; the source becomes empty and reusable.
 	live_pipeline &operator=(live_pipeline &&other) noexcept;
 	/// Compile exact snapshot bytes and synchronously render a detached 63x31 probe with
-	/// current uniforms/image. Reject stale revision or a foreign logical device first.
+	/// current uniforms/images. HDR uses a matching GPU target followed by a synchronous device
+	/// drain; this can pause all device work during preparation. Multi-slot bindings follow
+	/// draw_item collision/lifetime rules. Reject stale revision or a foreign device first.
 	/// Indexed options require a same-device probe_mesh; procedural options reject one.
 	/// Success replaces only the staged candidate; failure preserves all existing owners.
 	/// The caller maintains compatible bindings through activation and later draws; probing
@@ -37,7 +39,8 @@ public:
 	prepare(device &gpu, const shader_snapshot &source, const std::string &vertex_entry,
 	        const std::string &fragment_entry, std::uint64_t expected_revision,
 	        std::span<const std::byte> uniforms = {}, const texture *sampled_image = nullptr,
-	        pipeline_options options = {}, const mesh *probe_mesh = nullptr);
+	        pipeline_options options = {}, const mesh *probe_mesh = nullptr,
+	        std::array<const texture *, 4> sampled_images = {});
 	/// Publish staged work at an explicit frame boundary, rejecting stale revision/device.
 	/// Retain the prior active pipeline for one undo; success returns the new monotonic revision.
 	ice::expected<std::uint64_t, diagnostic> activate(device &gpu, std::uint64_t expected_revision);

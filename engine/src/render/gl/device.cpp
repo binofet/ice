@@ -13,8 +13,24 @@ struct device_state {
 	functions                       api;
 	GLuint                          vao = 0, uniforms = 0;
 	std::string                     error;
+	GLsync                          pending = nullptr;
+	void                            wait_pending() {
+        if (pending) {
+            api.WaitSync(pending, 0, GL_TIMEOUT_IGNORED);
+            api.DeleteSync(pending);
+            pending = nullptr;
+        }
+	}
+	bool signal() {
+		pending = api.FenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+		api.Flush();
+		return pending != nullptr;
+	}
 	~device_state() {
 		if (context && context->make_current()) {
+			wait_pending();
+			if (api.Finish)
+				api.Finish();
 			if (vao && api.DeleteVertexArrays)
 				api.DeleteVertexArrays(1, &vao);
 			if (uniforms && api.DeleteBuffers)
@@ -25,9 +41,9 @@ struct device_state {
 } // namespace detail
 struct pipeline::implementation {
 	std::shared_ptr<detail::device_state> state;
-	GLuint                                program       = 0;
-	std::size_t                           uniform_bytes = 0;
-	bool                                  samples_image = false;
+	GLuint                                program          = 0;
+	std::size_t                           uniform_bytes    = 0;
+	std::uint8_t                          sampled_bindings = 0;
 	pipeline_options                      options;
 	~implementation() {
 		if (program && state->context->make_current())
@@ -51,9 +67,29 @@ struct texture::implementation {
 	std::shared_ptr<detail::device_state> state;
 	GLuint                                name  = 0;
 	int                                   width = 0, height = 0;
+	bool                                  depth = false, attachment = false, initialized = true;
 	~implementation() {
 		if (name && state->context->make_current())
 			state->api.DeleteTextures(1, &name);
+	}
+};
+struct render_target::implementation {
+	std::shared_ptr<detail::device_state> state;
+	render_target_description             description;
+	std::unique_ptr<texture>              color, depth;
+	GLuint render_color = 0, render_depth = 0, framebuffer = 0, resolved = 0;
+	~implementation() {
+		if (state->context->make_current()) {
+			auto &api = state->api;
+			if (framebuffer)
+				api.DeleteFramebuffers(1, &framebuffer);
+			if (resolved)
+				api.DeleteFramebuffers(1, &resolved);
+			if (render_color)
+				api.DeleteTextures(1, &render_color);
+			if (render_depth)
+				api.DeleteTextures(1, &render_depth);
+		}
 	}
 };
 struct presentation_surface::implementation {
@@ -63,6 +99,7 @@ struct presentation_surface::implementation {
 	int                                     width = 0, height = 0;
 	~implementation() {
 		if (context && context->make_current()) {
+			state->wait_pending();
 			state->api.Finish();
 			if (vao)
 				state->api.DeleteVertexArrays(1, &vao);
@@ -174,21 +211,40 @@ ice::expected<GLuint, diagnostic> upload_texture(detail::device_state &state, co
 } // namespace
 struct detail::batch_access {
 	static ice::expected<void, diagnostic> validate(const std::shared_ptr<device_state> &state,
-	                                                const frame_batch                   &batch) {
+	                                                const frame_batch                   &batch,
+	                                                color_format format = color_format::rgba8_unorm,
+	                                                GLuint color = 0, GLuint depth = 0) {
 		auto shape = ice::render::detail::validate_batch_shape(batch);
 		if (!shape)
 			return shape;
 		for (const auto &item : batch.draws) {
 			const auto &prepared = *item.pipeline->implementation_;
 			if (!valid_draw(state, prepared.state, item.uniforms, prepared.uniform_bytes) ||
-			    (item.geometry && item.geometry->implementation_->state != state) ||
-			    (item.sampled_image && item.sampled_image->implementation_->state != state))
+			    (item.geometry && item.geometry->implementation_->state != state))
 				return failure("Foreign frame resource or invalid uniform byte count");
 			if ((prepared.options.vertices == vertex_layout::position_normal) !=
 			    bool(item.geometry))
 				return failure("Indexed pipelines require a mesh; procedural pipelines reject one");
-			if (prepared.samples_image && !item.sampled_image)
-				return failure("Frame pipeline requires a sampled image");
+			if (prepared.options.target_format != format)
+				return failure("Pipeline color format does not match the destination");
+			for (unsigned slot = 0; slot < 4; ++slot) {
+				auto       sampled  = ice::render::detail::sampled_at(item, slot);
+				const bool required = prepared.sampled_bindings & (1u << slot);
+				if (required && !sampled)
+					return failure("Frame pipeline is missing a required sampled slot");
+				if (!sampled)
+					continue;
+				const auto &view = *sampled->implementation_;
+				if (!view.initialized)
+					return failure("Sampled target has not received a successful pass");
+				if (view.state != state)
+					return failure("Frame contains a foreign sampled image");
+				if (view.name == color || view.name == depth)
+					return failure("Render target color/depth feedback is unsupported");
+				if (required &&
+				    view.depth != bool(prepared.options.depth_sampled_bindings & (1u << slot)))
+					return failure("Sampled slot color/depth kind does not match its declaration");
+			}
 		}
 		return {};
 	}
@@ -219,9 +275,11 @@ struct detail::batch_access {
 				api.BlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 			} else
 				api.Disable(GL_BLEND);
-			api.ActiveTexture(GL_TEXTURE0);
-			api.BindTexture(GL_TEXTURE_2D,
-			                item.sampled_image ? item.sampled_image->implementation_->name : 0);
+			for (unsigned slot = 0; slot < 4; ++slot) {
+				auto sampled = ice::render::detail::sampled_at(item, slot);
+				api.ActiveTexture(GL_TEXTURE0 + slot);
+				api.BindTexture(GL_TEXTURE_2D, sampled ? sampled->implementation_->name : 0);
+			}
 			if (!item.uniforms.empty()) {
 				// Orphan per draw; preceding commands keep the bytes referenced by their UBO
 				// storage.
@@ -259,8 +317,18 @@ mesh::~mesh() = default;
 texture::texture(std::unique_ptr<implementation> implementation)
     : implementation_(std::move(implementation)) {}
 texture::~texture() = default;
+render_target::render_target(std::unique_ptr<implementation> implementation)
+    : implementation_(std::move(implementation)) {}
+render_target::~render_target() = default;
+const texture            &render_target::color() const { return *implementation_->color; }
+const texture            &render_target::depth() const { return *implementation_->depth; }
+render_target_description render_target::description() const {
+	return implementation_->description;
+}
 ice::expected<void, diagnostic> texture::update(const image &pixels) {
 	auto &data = *implementation_;
+	if (data.attachment)
+		return failure("Render target views cannot be updated from CPU pixels");
 	if (pixels.width != data.width || pixels.height != data.height)
 		return failure("Texture update must preserve dimensions");
 	auto uploaded = upload_texture(*data.state, pixels);
@@ -309,6 +377,132 @@ std::string device::name() const {
 	       (version ? version : "unknown version");
 }
 std::string device::take_error() { return std::exchange(state_->error, {}); }
+ice::expected<std::unique_ptr<render_target>, diagnostic>
+device::create_render_target(const render_target_description &description) {
+	if (!ice::render::detail::valid_target(description))
+		return failure("Invalid render target dimensions or color format");
+	if (!state_->context->make_current())
+		return failure("Cannot activate OpenGL target context");
+	auto &api           = state_->api;
+	GLint texture_limit = 0, render_limit = 0;
+	api.GetIntegerv(GL_MAX_TEXTURE_SIZE, &texture_limit);
+	api.GetIntegerv(GL_MAX_RENDERBUFFER_SIZE, &render_limit);
+	if (auto error = check(*state_); !error.empty())
+		return failure(error);
+	const auto maximum_dimension = std::min(texture_limit, render_limit);
+	if (description.width > maximum_dimension || description.height > maximum_dimension)
+		return failure("Render target exceeds native OpenGL texture/framebuffer dimensions");
+	auto result         = std::make_unique<render_target::implementation>();
+	result->state       = state_;
+	result->description = description;
+	auto allocate       = [&](bool depth, bool sampled) {
+        GLuint name = 0;
+        api.GenTextures(1, &name);
+        api.ActiveTexture(GL_TEXTURE0);
+        api.BindTexture(GL_TEXTURE_2D, name);
+        api.BindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+        const auto internal = depth ? GL_DEPTH_COMPONENT32F
+		                            : description.format == color_format::rgba16_float ? GL_RGBA16F
+		                                                                               : GL_RGBA8;
+        api.TexImage2D(GL_TEXTURE_2D, 0, GLint(internal), description.width, description.height, 0,
+                       depth ? GL_DEPTH_COMPONENT : GL_RGBA, GL_FLOAT, nullptr);
+        api.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+                          depth || !sampled ? GL_NEAREST : GL_LINEAR);
+        api.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER,
+                          depth || !sampled ? GL_NEAREST : GL_LINEAR);
+        api.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        api.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        api.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
+        api.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+        api.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_NONE);
+        return name;
+	};
+	for (unsigned aspect = 0; aspect < 2; ++aspect) {
+		auto data         = std::make_unique<texture::implementation>();
+		data->state       = state_;
+		data->width       = description.width;
+		data->height      = description.height;
+		data->depth       = aspect != 0;
+		data->attachment  = true;
+		data->initialized = false;
+		data->name        = allocate(data->depth, true);
+		if (!data->name) {
+			auto error = check(*state_);
+			return failure(error.empty() ? "OpenGL sampled target allocation failed"
+			                             : std::move(error));
+		}
+		if (aspect)
+			result->depth.reset(new texture(std::move(data)));
+		else
+			result->color.reset(new texture(std::move(data)));
+	}
+	result->render_color = allocate(false, false);
+	result->render_depth = allocate(true, false);
+	for (unsigned resolved = 0; resolved < 2; ++resolved) {
+		auto *framebuffer = resolved ? &result->resolved : &result->framebuffer;
+		api.GenFramebuffers(1, framebuffer);
+		api.BindFramebuffer(GL_FRAMEBUFFER, *framebuffer);
+		api.FramebufferTexture2D(
+		    GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
+		    resolved ? result->color->implementation_->name : result->render_color, 0);
+		api.FramebufferTexture2D(
+		    GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D,
+		    resolved ? result->depth->implementation_->name : result->render_depth, 0);
+		if (auto error = check(*state_); !error.empty())
+			return failure(error);
+		if (!*framebuffer || api.CheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+			return failure("OpenGL render target framebuffer is incomplete");
+	}
+	api.BindFramebuffer(GL_FRAMEBUFFER, 0);
+	if (auto error = check(*state_); !error.empty())
+		return failure(error);
+	// Ownership transfers through tl::expected.
+	// NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks)
+	return std::unique_ptr<render_target>(new render_target(std::move(result)));
+}
+ice::expected<frame_status, diagnostic> device::render_into(render_target     &target,
+                                                            const frame_batch &batch) {
+	auto &output = *target.implementation_;
+	if (output.state != state_)
+		return failure("Foreign render target");
+	auto valid = detail::batch_access::validate(state_, batch, output.description.format,
+	                                            output.color->implementation_->name,
+	                                            output.depth->implementation_->name);
+	if (!valid)
+		return ice::unexpected(valid.error());
+	if (!state_->context->make_current())
+		return failure("Cannot activate OpenGL target context");
+	auto &api = state_->api;
+	state_->wait_pending();
+	api.BindFramebuffer(GL_FRAMEBUFFER, output.framebuffer);
+	detail::batch_access::encode(api, batch, state_->vao, state_->uniforms,
+	                             output.description.width, output.description.height);
+	// Canonical sampled views have top-origin UVs like uploaded images and Metal.
+	// Resolve both attachments entirely on GPU; scissor must not clip the blit.
+	api.Disable(GL_SCISSOR_TEST);
+	api.BindFramebuffer(GL_READ_FRAMEBUFFER, output.framebuffer);
+	api.BindFramebuffer(GL_DRAW_FRAMEBUFFER, output.resolved);
+	api.BlitFramebuffer(0, 0, output.description.width, output.description.height, 0,
+	                    output.description.height, output.description.width, 0,
+	                    GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT, GL_NEAREST);
+	api.BindFramebuffer(GL_FRAMEBUFFER, 0);
+	if (!state_->signal())
+		return failure("OpenGL pass fence allocation failed");
+	if (auto error = check(*state_); !error.empty())
+		return failure(error);
+	output.color->implementation_->initialized = true;
+	output.depth->implementation_->initialized = true;
+	return frame_status::submitted;
+}
+ice::expected<void, diagnostic> device::wait_idle() {
+	if (!state_->context->make_current())
+		return failure("Cannot activate OpenGL drain context");
+	state_->wait_pending();
+	state_->api.Finish();
+	if (auto error = check(*state_); !error.empty())
+		return failure(error);
+	return {};
+}
 ice::expected<std::unique_ptr<mesh>, diagnostic> device::create_mesh(const mesh_data &description) {
 	auto valid = ice::render::detail::validate_mesh_data(description);
 	if (!valid)
@@ -432,20 +626,32 @@ device::prepare_pipeline(const shader_snapshot &snapshot, const std::string &ver
 		GLenum  type   = 0;
 		api.GetActiveUniform(prepared->program, uniform, GLsizei(uniform_name.size()), &length,
 		                     &size, &type, uniform_name.data());
-		if (type != GL_SAMPLER_2D || size != 1 || prepared->samples_image ||
+		if (type != GL_SAMPLER_2D || size != 1 ||
 		    std::string_view(uniform_name.data()).find('[') != std::string_view::npos)
-			return failure(uri +
-			               ": pipelines support one non-array sampler2D and uniform block zero");
+			return failure(uri + ": sampled inputs require non-array sampler2D slots0..3");
+		const std::string_view name(uniform_name.data());
+		unsigned               slot = 0;
+		if (name.size() == 12 && name.starts_with("ice_texture") && name[11] >= '0' &&
+		    name[11] <= '3')
+			slot = unsigned(name[11] - '0');
+		else if (options.sampled_bindings != 0xff && options.sampled_bindings != 1)
+			return failure(uri + ": explicit sampled slots must be named ice_texture0..3");
+		if (prepared->sampled_bindings & (1u << slot))
+			return failure(uri + ": duplicate sampled slot");
 		GLint location = api.GetUniformLocation(prepared->program, uniform_name.data());
 		GLint binding  = -1;
 		if (location >= 0)
 			api.GetUniformiv(prepared->program, location, &binding);
-		if (binding != 0)
-			return failure(uri + ": sampler2D must use texture unit zero");
+		if (location < 0 || (options.sampled_bindings == 0xff && (slot != 0 || binding != 0)))
+			return failure(uri + ": legacy sampler must use texture unit zero");
 		api.UseProgram(prepared->program);
-		api.Uniform1i(location, 0);
-		prepared->samples_image = true;
+		api.Uniform1i(location, GLint(slot));
+		prepared->sampled_bindings |= std::uint8_t(1u << slot);
 	}
+	if ((options.sampled_bindings == 0xff && prepared->sampled_bindings > 1) ||
+	    (options.sampled_bindings != 0xff &&
+	     options.sampled_bindings != prepared->sampled_bindings))
+		return failure(uri + ": active sampled slots do not match the pipeline descriptor");
 	if (blocks) {
 		GLint size = 0;
 		api.GetActiveUniformBlockiv(prepared->program, 0, GL_UNIFORM_BLOCK_DATA_SIZE, &size);
@@ -522,11 +728,14 @@ ice::expected<frame_status, diagnostic> presentation_surface::draw_batch(const f
 		return frame_status::unavailable;
 	if (!data.context->make_current())
 		return failure("Cannot activate OpenGL presentation context");
+	data.state->wait_pending();
 	data.state->api.BindFramebuffer(GL_FRAMEBUFFER, 0);
 	detail::batch_access::encode(data.state->api, batch, data.vao, data.uniforms, data.width,
 	                             data.height);
 	if (auto error = check(*data.state); !error.empty())
 		return failure(error);
+	if (!data.state->signal())
+		return failure("OpenGL presentation fence allocation failed");
 	if (!data.context->present())
 		return failure("Native OpenGL buffer presentation failed");
 	return frame_status::submitted;
@@ -535,6 +744,7 @@ ice::expected<void, diagnostic> presentation_surface::wait_idle() {
 	auto &data = *implementation_;
 	if (!data.context->make_current())
 		return failure("Cannot activate OpenGL presentation context");
+	data.state->wait_pending();
 	data.state->api.Finish();
 	if (auto error = check(*data.state); !error.empty())
 		return failure(error);
@@ -558,6 +768,7 @@ ice::expected<image, diagnostic> device::render_offscreen(const frame_batch &bat
 	if (!state_->context->make_current())
 		return failure("Cannot activate OpenGL capture context");
 	auto &api = state_->api;
+	state_->wait_pending();
 	struct target_owner {
 		detail::functions &api;
 		GLuint             texture = 0, depth = 0, framebuffer = 0;

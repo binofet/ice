@@ -3,6 +3,10 @@
 #include <GL/glcorearb.h>
 namespace ice::render::gl::detail {
 struct functions {
+	PFNGLFENCESYNCPROC                FenceSync                = nullptr;
+	PFNGLWAITSYNCPROC                 WaitSync                 = nullptr;
+	PFNGLDELETESYNCPROC               DeleteSync               = nullptr;
+	PFNGLBLITFRAMEBUFFERPROC          BlitFramebuffer          = nullptr;
 	PFNGLENABLEPROC                   Enable                   = nullptr;
 	PFNGLDEPTHMASKPROC                DepthMask                = nullptr;
 	PFNGLDEPTHFUNCPROC                DepthFunc                = nullptr;
@@ -66,6 +70,27 @@ struct functions {
 	PFNGLFINISHPROC                   Finish                   = nullptr;
 	PFNGLFLUSHPROC                    Flush                    = nullptr;
 	bool                              load(native_context &context, std::string &error) {
+        FenceSync = reinterpret_cast<PFNGLFENCESYNCPROC>(context.resolve("glFenceSync"));
+        if (!FenceSync) {
+            error = "Missing OpenGL entry point glFenceSync";
+            return false;
+        }
+        WaitSync = reinterpret_cast<PFNGLWAITSYNCPROC>(context.resolve("glWaitSync"));
+        if (!WaitSync) {
+            error = "Missing OpenGL entry point glWaitSync";
+            return false;
+        }
+        DeleteSync = reinterpret_cast<PFNGLDELETESYNCPROC>(context.resolve("glDeleteSync"));
+        if (!DeleteSync) {
+            error = "Missing OpenGL entry point glDeleteSync";
+            return false;
+        }
+        BlitFramebuffer =
+            reinterpret_cast<PFNGLBLITFRAMEBUFFERPROC>(context.resolve("glBlitFramebuffer"));
+        if (!BlitFramebuffer) {
+            error = "Missing OpenGL entry point glBlitFramebuffer";
+            return false;
+        }
         GetString = reinterpret_cast<PFNGLGETSTRINGPROC>(context.resolve("glGetString"));
         if (!GetString) {
             error = "Missing OpenGL entry point glGetString";

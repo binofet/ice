@@ -2,6 +2,7 @@
   "format": [
     "engine/src/render/batch_validation.h",
     "tests/mesh.cpp",
+    "tests/hdr.cpp",
     "engine/include/ice/data/json.h",
     "engine/src/data/json.cpp",
     "tests/data_json.cpp",
@@ -88,6 +89,7 @@
   ],
   "lint": [
     "tests/mesh.cpp",
+    "tests/hdr.cpp",
     "engine/src/data/json.cpp",
     "tests/data_json.cpp",
     "engine/src/commands/service.cpp",

@@ -25,7 +25,8 @@ ice::expected<void, diagnostic>
 live_pipeline::prepare(device &gpu, const shader_snapshot &source, const std::string &vertex_entry,
                        const std::string &fragment_entry, std::uint64_t expected_revision,
                        std::span<const std::byte> uniforms, const texture *sampled_image,
-                       pipeline_options options, const mesh *probe_mesh) {
+                       pipeline_options options, const mesh *probe_mesh,
+                       std::array<const texture *, 4> sampled_images) {
 	if (!implementation_)
 		implementation_ = std::make_unique<implementation>();
 	auto &state = *implementation_;
@@ -36,10 +37,25 @@ live_pipeline::prepare(device &gpu, const shader_snapshot &source, const std::st
 	auto candidate = gpu.prepare_pipeline(source, vertex_entry, fragment_entry, options);
 	if (!candidate)
 		return ice::unexpected(candidate.error());
-	const draw_item item{candidate->get(), probe_mesh, uniforms, sampled_image};
-	auto            probe = gpu.render_offscreen(frame_batch{std::span(&item, 1)}, 63, 31);
-	if (!probe)
-		return ice::unexpected(probe.error());
+	const draw_item   item{candidate->get(), probe_mesh, uniforms, sampled_image, sampled_images};
+	const frame_batch batch{std::span(&item, 1)};
+	if (options.target_format == color_format::rgba16_float) {
+		auto target = gpu.create_render_target({63, 31, options.target_format});
+		if (!target)
+			return ice::unexpected(target.error());
+		auto probe = gpu.render_into(**target, batch);
+		if (!probe)
+			return ice::unexpected(probe.error());
+		if (*probe != frame_status::submitted)
+			return failure("HDR pipeline probe is busy");
+		auto drained = gpu.wait_idle();
+		if (!drained)
+			return ice::unexpected(drained.error());
+	} else {
+		auto probe = gpu.render_offscreen(batch, 63, 31);
+		if (!probe)
+			return ice::unexpected(probe.error());
+	}
 	auto prepared = std::make_unique<prepared_state>(
 	    prepared_state{std::move(*candidate), source, gpu.identity(), state.revision});
 	state.staged = std::move(prepared);

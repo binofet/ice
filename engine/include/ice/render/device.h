@@ -22,7 +22,7 @@ struct shader_source {
 	std::string uri;
 	/// Vertex entry; pipeline_options selects procedural or fixed position/normal inputs.
 	std::string vertex_entry;
-	/// Fragment entry; optional buffer(0)/std140 bytes and sampled image zero are reflected.
+	/// Fragment entry; optional buffer(0)/std140 bytes and declared sampled slots are reflected.
 	std::string fragment_entry;
 };
 /// Device-owned prepared pipeline. Keep the authored URI/parameters separately for recreation.
@@ -58,7 +58,7 @@ private:
 	friend class device;
 	friend class presentation_surface;
 };
-/// Owned sampled RGBA8 image. Row zero is the top row and samples at UV y=0.
+/// Owned RGBA8 upload or borrowed render-target color/depth view. Row zero samples at UV y=0.
 /// Updates replace native storage so preceding submissions keep their original image.
 class texture {
 public:
@@ -76,6 +76,33 @@ private:
 	std::unique_ptr<implementation> implementation_;
 	friend class device;
 	friend class presentation_surface;
+	friend class render_target;
+};
+/// Device-owned, immutable-size color/depth target. Both borrowed texture views remain valid only
+/// while this owner lives, and can be sampled after its first successful pass submission.
+/// Do not retain a view beyond graph replacement. Submitted GPU commands
+/// retain native storage independently. Color is linear/bilinear-clamped; depth is
+/// raw/nearest-clamped.
+class render_target {
+public:
+	/// Release both attachments; earlier submissions retain referenced storage.
+	~render_target();
+	/// Borrow the top-origin color attachment for a later pass; never sample it while rendering
+	/// here.
+	const texture &color() const;
+	/// Borrow top-origin raw zero-to-one depth. Bind only in an explicitly declared depth slot.
+	const texture &depth() const;
+	/// Return the immutable size and color format used to allocate both attachments.
+	render_target_description description() const;
+
+private:
+	struct implementation;
+	explicit render_target(std::unique_ptr<implementation> implementation);
+	render_target(const render_target &other)                             = delete;
+	render_target                  &operator=(const render_target &other) = delete;
+	std::unique_ptr<implementation> implementation_;
+	friend class device;
+	friend struct detail::batch_access;
 };
 /// One borrowed draw, consumed synchronously. Indexed pipelines require geometry; procedural
 /// pipelines require null geometry. Each uniform block is copied before this call returns.
@@ -88,6 +115,9 @@ struct draw_item {
 	std::span<const std::byte> uniforms;
 	/// Optional image from the same device; required if the pipeline samples texture zero.
 	const texture *sampled_image = nullptr;
+	/// Sampled slots zero through three. Legacy sampled_image supplies slot zero only when absent;
+	/// two different slot-zero pointers are rejected. All owners live throughout this call.
+	std::array<const texture *, 4> sampled_images{};
 };
 /// Ordered one-pass batch, clearing color/depth exactly once before any draw.
 /// Up to 131072 draws and 64 MiB of aggregate uniform bytes. Invalid items reject the whole batch
@@ -135,6 +165,19 @@ public:
 	static ice::expected<std::unique_ptr<device>, diagnostic> create(backend_kind backend);
 	/// Release this owner; pipelines/surfaces retain their native device lifetime independently.
 	~device();
+	/// Allocate linear RGBA8/RGBA16F color and sampleable Depth32Float storage, without CPU pixels.
+	/// Dimensions are in [1,16384] within native limits; failure preserves existing resources.
+	ice::expected<std::unique_ptr<render_target>, diagnostic>
+	create_render_target(const render_target_description &description);
+	/// Validate the entire pass, then encode GPU-only writes ordered before later same-device
+	/// passes. No CPU readback/wait. Checked ownership/format/binding/feedback failures preserve
+	/// the target. Busy means nothing was submitted; native driver errors do not promise rollback.
+	ice::expected<frame_status, diagnostic> render_into(render_target     &target,
+	                                                    const frame_batch &batch);
+	/// Synchronously drain preceding logical-device work on the render/UI thread. Intended for
+	/// detached preparation, tests, handoff or shutdown, never the live postprocess pass chain.
+	/// Native failures return diagnostics; driver hangs are not contained by this call.
+	ice::expected<void, diagnostic> wait_idle();
 	/// Upload a validated immutable position/normal triangle list without retaining CPU aliases.
 	ice::expected<std::unique_ptr<mesh>, diagnostic> create_mesh(const mesh_data &description);
 	/// Synchronously capture an ordered indexed/procedural batch as top-row-first RGBA8.
@@ -157,7 +200,7 @@ public:
 	                 const std::string &fragment_entry, pipeline_options options = {});
 	/// Upload one tightly packed RGBA8 image with dimensions in [1,4096].
 	/// Sampling is linear/clamped without mipmaps; bind as texture(0)/sampler2D unit zero in either
-	/// shader stage.
+	/// shader stage; draw_batch can bind it to any declared slot0..3.
 	ice::expected<std::unique_ptr<texture>, diagnostic> create_texture(const image &pixels);
 	/// Attach to a desktop window. The window must have no other active renderer attached;
 	/// the caller keeps it alive through surface destruction.
