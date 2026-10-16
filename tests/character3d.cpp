@@ -130,6 +130,48 @@ int validation_and_handles() {
 	return 0;
 }
 
+int prepared_shape_lifetimes() {
+	world3d_description settings;
+	settings.gravity        = {};
+	settings.max_bodies     = 2;
+	settings.max_characters = 1;
+	auto world              = world3d::create(settings);
+	CHECK(world);
+	// Both the ordinary capsule and its zero-cylinder sphere must survive preparation,
+	// native settings destruction and a simulation tick, then release on character erase.
+	for (float height : {1.f, 2.f}) {
+		character3d_description description;
+		description.radius   = .5f;
+		description.height   = height;
+		description.position = {0, 2, 0};
+		for (unsigned repeat = 0; repeat < 32; ++repeat) {
+			auto character = world->create_character(description);
+			CHECK(character && ticks(*world, 1));
+			auto state = world->inspect_character(*character);
+			CHECK(state);
+			auto hit = world->ray_cast({0, 10, 0}, {0, -10, 0});
+			CHECK(hit && *hit && (*hit)->body == state->proxy);
+			CHECK(world->erase_character(*character));
+			CHECK(!world->body_count() && !world->character_count());
+			hit = world->ray_cast({0, 10, 0}, {0, -10, 0});
+			CHECK(hit && !*hit);
+		}
+	}
+	// The body adapter borrows the same native Result while settings retain the shape.
+	for (auto kind : {shape3d_kind::sphere, shape3d_kind::capsule, shape3d_kind::box}) {
+		body3d_description description;
+		description.shape.kind        = kind;
+		description.shape.half_height = 0;
+		description.position          = {0, 2, 0};
+		auto body                     = world->create_body(description);
+		CHECK(body && ticks(*world, 1));
+		auto hit = world->ray_cast({0, 10, 0}, {0, -10, 0});
+		CHECK(hit && *hit && (*hit)->body == *body);
+		CHECK(world->erase(*body) && !world->body_count());
+	}
+	return 0;
+}
+
 int ground_jump_and_queries() {
 	world3d_description settings;
 	settings.max_bodies = 8;
@@ -357,6 +399,7 @@ int pushing_and_contact_retirement() {
 } // namespace
 int main() {
 	CHECK(validation_and_handles() == 0);
+	CHECK(prepared_shape_lifetimes() == 0);
 	CHECK(ground_jump_and_queries() == 0);
 	CHECK(wall_ceiling_and_steps() == 0);
 	CHECK(slopes_and_characters() == 0);
