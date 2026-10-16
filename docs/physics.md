@@ -87,6 +87,30 @@ Such exhaustion can therefore terminate the process rather than return a diagnos
 The wrapper's faulted-world recovery path applies when the native call returns; it
 does not intercept that assertion or make undersized native budgets safe.
 
+## Analytic 3D planes
+
+Set `body3d_description::shape.kind=shape3d_kind::plane` and
+`motion=motion_type::static_body` for ground without a finite box edge. Its local
+surface is Y=0 and its local negative-Y half-space is solid. The ordinary body
+position translates it and the validated body rotation transforms its normal;
+for example, rotating local +Y onto +X makes a vertical wall. Dynamic and kinematic
+planes are rejected before insertion. Radius, half-height and box half-extents are
+unused for this shape.
+
+Collision uses Jolt's analytic `PlaneShape`, not a large thin box. Jolt still needs
+finite broadphase bounds. ICE sets their local half-extent to 8,000,000 meters,
+covering its accepted ±1,000,000-meter input coordinate domain with conservative
+margin for body transforms and bounded rays. This is not a promise of infinite
+numeric range, uniform precision at large coordinates or useful collision beyond
+those finite bounds. Use an origin-management policy for large simulations rather
+than treating floating-point world coordinates as unlimited.
+
+Plane sensors are supported as static half-space overlap reporters, without
+collision response. Ordinary ray queries exclude them like other sensors. A
+nonsensor ray starting inside the solid negative half-space reports fraction zero;
+the returned normal is the transformed local +Y normal. Planes use the same body
+identities, event storage and retirement rules as other collision shapes.
+
 ## World-owned 3D characters
 
 `ice/physics/character3d.h` defines the portable capsule description, intent, identity
@@ -166,7 +190,10 @@ that a queued end event still names the original engine body. The sanitizer
 configuration instruments the upstream dependency as well as the wrapper.
 
 `ice_physics3d_tests` covers the equivalent ownership, fixed-step, impulse and closest-hit
-contracts, plus continuous casting against a thin wall. A two-body world exercises 512
+contracts, plus continuous casting against a thin wall. Plane regressions cover
+translation/rotation, queries at the coordinate-domain corners, rigid-body and character
+support beyond 10,000 meters, walking beyond a former finite stage edge, static-only
+validation, and sensor contact/retirement without response. A two-body world exercises 512
 create/erase operations between ticks while a removed sensor contact is pending. Jolt's
 eight-bit native ID sequence never substitutes for the engine's identity: stepped native
 bodies remain quarantined until the next successful update retires their manifolds.

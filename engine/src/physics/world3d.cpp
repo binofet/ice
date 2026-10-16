@@ -16,6 +16,7 @@
 #include <Jolt/Physics/Collision/RayCast.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
+#include <Jolt/Physics/Collision/Shape/PlaneShape.h>
 #include <Jolt/Physics/Collision/Shape/RotatedTranslatedShape.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
 #include <Jolt/Physics/PhysicsSystem.h>
@@ -30,7 +31,10 @@
 namespace ice::physics {
 namespace {
 constexpr JPH::ObjectLayer inactive_character_layer = 2;
-bool                       finite(const math::vec3 &value, float bound = 1.0e6f) {
+// Analytic planes need a conservative finite broadphase bound. This covers the ±1e6 input
+// domain even with translated/rotated body frames and bounded ray endpoints, with margin.
+constexpr float plane_half_extent = 8000000.f;
+bool            finite(const math::vec3 &value, float bound = 1.0e6f) {
     return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z) &&
            std::abs(value.x) <= bound && std::abs(value.y) <= bound && std::abs(value.z) <= bound;
 }
@@ -129,6 +133,11 @@ ice::expected<JPH::RefConst<JPH::Shape>, diagnostic> prepare(const shape3d_descr
 		result = shape.half_height == 0
 		             ? JPH::SphereShapeSettings(shape.radius).Create()
 		             : JPH::CapsuleShapeSettings(shape.half_height, shape.radius).Create();
+		break;
+	case shape3d_kind::plane:
+		result =
+		    JPH::PlaneShapeSettings(JPH::Plane(JPH::Vec3::sAxisY(), 0), nullptr, plane_half_extent)
+		        .Create();
 		break;
 	default:
 		return ice::unexpected(diagnostic{"Unknown 3D collision shape"});
@@ -471,6 +480,9 @@ ice::expected<body_id, diagnostic> world3d::create_body(const body3d_description
 	    description.friction > 10 || !std::isfinite(description.restitution) ||
 	    description.restitution < 0 || description.restitution > 1)
 		return ice::unexpected(diagnostic{"Invalid body pose, velocity, mass or material"});
+	if (description.shape.kind == shape3d_kind::plane &&
+	    description.motion != motion_type::static_body)
+		return ice::unexpected(diagnostic{"Plane collision shapes require a static body"});
 	if (state.free.empty())
 		return ice::unexpected(diagnostic{"3D body budget exhausted"});
 	auto shape = prepare(description.shape);

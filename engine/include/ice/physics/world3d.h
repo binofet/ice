@@ -9,16 +9,18 @@
 
 namespace ice::physics {
 /// Native collision geometry supported by the first Jolt integration.
-enum class shape3d_kind { sphere, box, capsule };
+enum class shape3d_kind { sphere, box, capsule, plane };
 /// Local collision geometry in meters; a capsule extends along local Y.
+/// A plane is local Y=0 with -Y solid, transformed by the body pose; only static bodies accept it.
+/// Plane broadphase bounds cover the finite engine coordinate domain, not mathematical infinity.
 struct shape3d_description {
 	/// Shape to prepare without mutating an active world.
 	shape3d_kind kind = shape3d_kind::box;
 	/// Box half sizes, strictly positive; ignored by other shapes.
 	math::vec3 half_extent{0.5f};
-	/// Sphere/capsule radius, strictly positive; ignored by boxes.
+	/// Sphere/capsule radius, strictly positive; ignored by boxes and planes.
 	float radius = 0.5f;
-	/// Capsule cylinder half length, excluding hemispheres; may be zero.
+	/// Capsule cylinder half length, excluding hemispheres; may be zero; ignored by other shapes.
 	float half_height = 0.5f;
 };
 /// Fixed-step world settings. The caller decides when to step, pause and catch up.
@@ -41,7 +43,7 @@ struct world3d_description {
 struct body3d_description {
 	/// Static, explicitly moved kinematic, or simulated dynamic motion.
 	motion_type motion = motion_type::dynamic;
-	/// Collision shape centered at the body's local origin.
+	/// Local collision shape anchored at the body's origin; a plane passes through that origin.
 	shape3d_description shape;
 	/// Initial world translation in meters.
 	math::vec3 position{0};
