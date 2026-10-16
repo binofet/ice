@@ -84,6 +84,13 @@ struct render_target::implementation {
 	// Destroy borrowed wrappers before the native target which owns their textures.
 	std::unique_ptr<texture> color, depth;
 };
+struct borrowed_destination::implementation {
+	std::shared_ptr<const int> token;
+	render_target_description  description;
+#ifdef ICE_RENDER_OPENGL
+	std::unique_ptr<gl::borrowed_destination> opengl;
+#endif
+};
 struct presentation_surface::implementation {
 	// Destroy the native endpoint before releasing its exclusive logical-window lease.
 	std::unique_ptr<window_lease> lease;
@@ -219,8 +226,9 @@ ice::expected<std::unique_ptr<device>, diagnostic> device::create(backend_kind b
 	}
 #endif
 #ifdef ICE_RENDER_OPENGL
-	if (backend == backend_kind::opengl) {
-		auto native = gl::device::create();
+	if (backend == backend_kind::opengl || backend == backend_kind::opengles) {
+		auto native = gl::device::create(
+		    backend == backend_kind::opengles ? gl::profile::embedded : gl::profile::desktop_core);
 		if (!native)
 			return ice::unexpected(native.error());
 		result->opengl = std::move(*native);
@@ -349,6 +357,76 @@ ice::expected<frame_status, diagnostic> device::render_into(render_target     &t
 	}
 #endif
 	return failure("Graphics backend unavailable");
+}
+borrowed_destination::borrowed_destination(std::unique_ptr<implementation> implementation)
+    : implementation_(std::move(implementation)) {}
+borrowed_destination::~borrowed_destination() = default;
+render_target_description borrowed_destination::description() const {
+	return implementation_->description;
+}
+ice::expected<acquisition_lease, diagnostic>
+borrowed_destination::begin_acquisition(std::uint64_t generation) {
+#ifdef ICE_RENDER_OPENGL
+	if (implementation_->opengl)
+		return implementation_->opengl->begin_acquisition(generation);
+#else
+	(void)generation;
+#endif
+	return failure("Borrowed image acquisition is unsupported by this backend");
+}
+ice::expected<gl::egl_binding, diagnostic> device::egl_context() const {
+#ifdef ICE_RENDER_OPENGL
+	if (implementation_->opengl)
+		return implementation_->opengl->egl_context();
+#endif
+	return failure("Owned EGL context is unsupported by this backend/build");
+}
+ice::expected<std::unique_ptr<borrowed_destination>, diagnostic>
+device::import_destination(const gl::destination_description &description) {
+#ifdef ICE_RENDER_OPENGL
+	if (implementation_->opengl) {
+		auto native = implementation_->opengl->import_destination(description);
+		if (!native)
+			return ice::unexpected(native.error());
+		auto result         = std::make_unique<borrowed_destination::implementation>();
+		result->token       = implementation_->token;
+		result->description = (*native)->description();
+		result->opengl      = std::move(*native);
+		// Ownership transfers through tl::expected.
+		// NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks)
+		return std::unique_ptr<borrowed_destination>(new borrowed_destination(std::move(result)));
+	}
+#else
+	(void)description;
+#endif
+	return failure("Borrowed GL destinations are unsupported by this backend/build");
+}
+ice::expected<frame_status, diagnostic> device::render_into(borrowed_destination    &destination,
+                                                            const acquisition_lease &lease,
+                                                            const frame_batch       &batch) {
+	if (destination.implementation_->token != implementation_->token)
+		return failure("Borrowed destination belongs to a different logical device");
+	auto valid = detail::batch_access::validate(implementation_->token, batch,
+	                                            destination.description().format);
+	if (!valid)
+		return ice::unexpected(valid.error());
+#ifdef ICE_RENDER_OPENGL
+	if (implementation_->opengl && destination.implementation_->opengl) {
+		auto items = detail::batch_access::gl_items(batch);
+		return implementation_->opengl->render_into(*destination.implementation_->opengl, lease,
+		                                            {items, batch.clear_color});
+	}
+#else
+	(void)lease;
+#endif
+	return failure("Borrowed destination rendering is unsupported by this backend/build");
+}
+ice::expected<void, diagnostic> device::flush() {
+#ifdef ICE_RENDER_OPENGL
+	if (implementation_->opengl)
+		return implementation_->opengl->flush();
+#endif
+	return failure("Explicit GL flush is unsupported by this backend/build");
 }
 ice::expected<void, diagnostic> device::wait_idle() {
 #ifdef ICE_RENDER_METAL

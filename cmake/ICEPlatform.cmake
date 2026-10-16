@@ -1,7 +1,17 @@
 include_guard(GLOBAL)
 include("${CMAKE_CURRENT_LIST_DIR}/ICEStandards.cmake")
 get_filename_component(ICE_PLATFORM_ROOT "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
+# NDKr26 target compilation uses ICEStandards' c++2b spelling. Nested CMake probes
+# reconstruct compiler defaults and lose that override; pthread availability is a C
+# facility, so probe it in the supported20 mode, then restore the actual target level.
+set(ICE_THREAD_PROBE_STANDARD "${CMAKE_CXX_STANDARD}")
+if(ANDROID AND ICE_CXX_STANDARD STREQUAL "23" AND ICE_ANDROID_CPP23_DRAFT_SPELLING
+        AND NOT ICE_ANDROID_CPP23_FINAL_SPELLING)
+    set(CMAKE_CXX_STANDARD 20)
+endif()
 find_package(Threads REQUIRED)
+set(CMAKE_CXX_STANDARD "${ICE_THREAD_PROBE_STANDARD}")
+unset(ICE_THREAD_PROBE_STANDARD)
 add_library(ICEPlatformRuntime STATIC
     "${ICE_PLATFORM_ROOT}/engine/src/platform/host.cpp"
     "${ICE_PLATFORM_ROOT}/engine/src/platform/platform_events.cpp")

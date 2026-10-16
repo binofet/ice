@@ -1,19 +1,24 @@
 #include "ice/render/gl/device.h"
 #include "../batch_validation.h"
+#include "../lease_state.h"
 #include "api.h"
 #include "ice/core/utf8.h"
 #include <algorithm>
 #include <cctype>
 #include <cstring>
+#include <set>
 #include <utility>
 namespace ice::render::gl {
 namespace detail {
 struct device_state {
 	std::shared_ptr<native_context> context;
 	functions                       api;
+	bool                            embedded = false;
+	int                             major = 0, minor = 0;
 	GLuint                          vao = 0, uniforms = 0;
 	std::size_t                     uniform_limit = 0;
 	std::string                     error;
+	std::set<GLuint>                borrowed_colors;
 	GLsync                          pending = nullptr;
 	void                            wait_pending() {
         if (pending) {
@@ -94,6 +99,23 @@ struct render_target::implementation {
 		}
 	}
 };
+struct borrowed_destination::implementation {
+	std::shared_ptr<detail::device_state> state;
+	gl::destination_description           description;
+	ice::render::detail::lease_source     acquisitions;
+	GLuint                                framebuffer = 0, depth = 0;
+	bool                                  registered = false;
+	~implementation() {
+		if (registered)
+			state->borrowed_colors.erase(description.color_image);
+		if (state && state->context->make_current()) {
+			if (framebuffer)
+				state->api.DeleteFramebuffers(1, &framebuffer);
+			if (depth)
+				state->api.DeleteTextures(1, &depth);
+		}
+	}
+};
 struct presentation_surface::implementation {
 	std::shared_ptr<detail::device_state>   state;
 	std::shared_ptr<detail::native_context> context;
@@ -147,8 +169,10 @@ std::string shader_log(detail::functions &api, GLuint object, bool program) {
 }
 ice::expected<GLuint, diagnostic> compile(detail::functions &api, GLenum stage,
                                           const std::string &source, const std::string &entry,
-                                          const std::string &uri) {
-	std::string prefix = "#version 410 core\n#define ";
+                                          const std::string &uri, bool embedded) {
+	std::string prefix = embedded ? "#version 300 es\nprecision highp float;\nprecision highp "
+	                                "int;\nprecision highp sampler2D;\n#define "
+	                              : "#version 410 core\n#define ";
 	prefix += stage == GL_VERTEX_SHADER ? "ICE_VERTEX_STAGE\n" : "ICE_FRAGMENT_STAGE\n";
 	if (entry != "main")
 		prefix += "#define " + entry + " main\n";
@@ -251,15 +275,25 @@ struct detail::batch_access {
 		}
 		return {};
 	}
-	static void encode(functions &api, const frame_batch &batch, GLuint vao, GLuint buffer,
-	                   int width, int height) {
+	static void encode(device_state &state, const frame_batch &batch, GLuint vao, GLuint buffer,
+	                   int width, int height, color_format format = color_format::rgba8_unorm) {
+		auto &api = state.api;
 		api.Viewport(0, 0, width, height);
 		api.Disable(GL_CULL_FACE);
+		api.FrontFace(GL_CCW);
 		api.Disable(GL_SCISSOR_TEST);
-		api.Disable(GL_FRAMEBUFFER_SRGB);
+		if (!state.embedded) {
+			if (format == color_format::rgba8_srgb)
+				api.Enable(GL_FRAMEBUFFER_SRGB);
+			else
+				api.Disable(GL_FRAMEBUFFER_SRGB);
+		}
 		// A preceding overlay may have disabled depth writes. Clear with writes enabled.
 		api.DepthMask(GL_TRUE);
-		api.ClearDepth(1.0);
+		if (state.embedded)
+			api.ClearDepthf(1.f);
+		else
+			api.ClearDepth(1.0);
 		api.ClearColor(batch.clear_color[0], batch.clear_color[1], batch.clear_color[2],
 		               batch.clear_color[3]);
 		api.Clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -373,21 +407,39 @@ presentation_surface::presentation_surface(std::unique_ptr<implementation> imple
 presentation_surface::~presentation_surface() = default;
 device::device(std::shared_ptr<detail::device_state> state) : state_(std::move(state)) {}
 device::~device() = default;
-ice::expected<std::unique_ptr<device>, diagnostic> device::create() {
-	auto context = detail::create_context();
+ice::expected<std::unique_ptr<device>, diagnostic> device::create(profile api_profile) {
+	ice::expected<std::shared_ptr<detail::native_context>, std::string> context =
+	    ice::unexpected(std::string("Requested native GL profile is unavailable"));
+#ifdef ICE_GL_DESKTOP_CONTEXT
+	if (api_profile == profile::desktop_core)
+		context = detail::create_context();
+#endif
+#ifdef ICE_GL_EGL_CONTEXT
+	if (api_profile == profile::embedded)
+		context = detail::create_gles_context();
+#endif
 	if (!context)
 		return failure(context.error());
-	auto state     = std::make_shared<detail::device_state>();
-	state->context = std::move(*context);
+	auto state      = std::make_shared<detail::device_state>();
+	state->context  = std::move(*context);
+	state->embedded = api_profile == profile::embedded;
 	std::string error;
-	if (!state->api.load(*state->context, error))
+	if (!state->api.load(*state->context, error, state->embedded))
 		return failure(error);
-	GLint major = 0, minor = 0, profile = 0;
+	GLint major = 0, minor = 0, native_profile = 0;
 	state->api.GetIntegerv(GL_MAJOR_VERSION, &major);
 	state->api.GetIntegerv(GL_MINOR_VERSION, &minor);
-	state->api.GetIntegerv(GL_CONTEXT_PROFILE_MASK, &profile);
-	if (major < 4 || (major == 4 && minor < 1) || !(profile & GL_CONTEXT_CORE_PROFILE_BIT))
-		return failure("OpenGL 4.1 or newer core profile is required");
+	state->major = major;
+	state->minor = minor;
+	if (state->embedded) {
+		if (major < 3)
+			return failure("OpenGL ES3 or newer is required");
+	} else {
+		state->api.GetIntegerv(GL_CONTEXT_PROFILE_MASK, &native_profile);
+		if (major < 4 || (major == 4 && minor < 1) ||
+		    !(native_profile & GL_CONTEXT_CORE_PROFILE_BIT))
+			return failure("OpenGL 4.1 or newer core profile is required");
+	}
 	GLint uniform_limit = 0;
 	state->api.GetIntegerv(GL_MAX_UNIFORM_BLOCK_SIZE, &uniform_limit);
 	if (uniform_limit < GLint(max_uniform_bytes))
@@ -438,7 +490,10 @@ device::create_render_target(const render_target_description &description) {
 		                            : description.format == color_format::rgba16_float ? GL_RGBA16F
 		                                                                               : GL_RGBA8;
         api.TexImage2D(GL_TEXTURE_2D, 0, GLint(internal), description.width, description.height, 0,
-                       depth ? GL_DEPTH_COMPONENT : GL_RGBA, GL_FLOAT, nullptr);
+                       depth ? GL_DEPTH_COMPONENT : GL_RGBA,
+                       depth || description.format == color_format::rgba16_float ? GL_FLOAT
+		                                                                               : GL_UNSIGNED_BYTE,
+		                     nullptr);
         api.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
                           depth || !sampled ? GL_NEAREST : GL_LINEAR);
         api.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER,
@@ -508,7 +563,7 @@ ice::expected<frame_status, diagnostic> device::render_into(render_target     &t
 	auto &api = state_->api;
 	state_->wait_pending();
 	api.BindFramebuffer(GL_FRAMEBUFFER, output.framebuffer);
-	detail::batch_access::encode(api, batch, state_->vao, state_->uniforms,
+	detail::batch_access::encode(*state_, batch, state_->vao, state_->uniforms,
 	                             output.description.width, output.description.height);
 	// Canonical sampled views have top-origin UVs like uploaded images and Metal.
 	// Resolve both attachments entirely on GPU; scissor must not clip the blit.
@@ -526,6 +581,120 @@ ice::expected<frame_status, diagnostic> device::render_into(render_target     &t
 	output.color->implementation_->initialized = true;
 	output.depth->implementation_->initialized = true;
 	return frame_status::submitted;
+}
+borrowed_destination::borrowed_destination(std::unique_ptr<implementation> implementation)
+    : implementation_(std::move(implementation)) {}
+borrowed_destination::~borrowed_destination() = default;
+ice::expected<acquisition_lease, diagnostic>
+borrowed_destination::begin_acquisition(std::uint64_t generation) {
+	return implementation_->acquisitions.acquire(generation);
+}
+render_target_description borrowed_destination::description() const {
+	const auto &value = implementation_->description;
+	return {value.width, value.height, value.format};
+}
+ice::expected<gl::egl_binding, diagnostic> device::egl_context() const {
+	const auto binding = state_->context->egl();
+	if (!binding.identity)
+		return failure("This graphics profile has no owned EGL root context");
+	if (!state_->context->make_current())
+		return failure("Cannot activate EGL root context");
+	return binding;
+}
+ice::expected<std::unique_ptr<borrowed_destination>, diagnostic>
+device::import_destination(const gl::destination_description &description) {
+	auto binding = egl_context();
+	if (!binding)
+		return ice::unexpected(binding.error());
+	if (description.context != *binding)
+		return failure("Borrowed color image belongs to a different EGL context/lifetime");
+	if (!state_->api.GetTexLevelParameteriv ||
+	    (state_->embedded && state_->major == 3 && state_->minor < 1))
+		return failure("Exact borrowed image validation requires GLES3.1 texture-level queries");
+	if (!description.color_image || description.width < 1 || description.height < 1 ||
+	    description.width > 16384 || description.height > 16384 ||
+	    (description.format != color_format::rgba8_unorm &&
+	     description.format != color_format::rgba8_srgb &&
+	     description.format != color_format::rgba16_float))
+		return failure("Invalid borrowed color image dimensions/name/format");
+	if (state_->borrowed_colors.contains(description.color_image))
+		return failure("This native color image already has a destination/lease owner");
+	auto &api = state_->api;
+	if (!api.IsTexture(description.color_image))
+		return failure("Borrowed color name does not identify an existing texture in this context");
+	api.ActiveTexture(GL_TEXTURE0);
+	api.BindTexture(GL_TEXTURE_2D, description.color_image);
+	GLint width = 0, height = 0, format = 0, limit = 0;
+	api.GetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &width);
+	api.GetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &height);
+	api.GetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_INTERNAL_FORMAT, &format);
+	api.GetIntegerv(GL_MAX_TEXTURE_SIZE, &limit);
+	const auto expected_format = description.format == color_format::rgba8_srgb ? GL_SRGB8_ALPHA8
+	                             : description.format == color_format::rgba16_float ? GL_RGBA16F
+	                                                                                : GL_RGBA8;
+	if (auto error = check(*state_); !error.empty())
+		return failure(error);
+	if (width != description.width || height != description.height ||
+	    format != GLint(expected_format) || width > limit || height > limit)
+		return failure("Borrowed color descriptor does not match its exact native image");
+	auto output         = std::make_unique<borrowed_destination::implementation>();
+	output->state       = state_;
+	output->description = description;
+	api.GenTextures(1, &output->depth);
+	api.BindTexture(GL_TEXTURE_2D, output->depth);
+	api.BindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+	api.TexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, width, height, 0, GL_DEPTH_COMPONENT,
+	               GL_UNSIGNED_INT, nullptr);
+	api.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	api.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	api.GenFramebuffers(1, &output->framebuffer);
+	api.BindFramebuffer(GL_FRAMEBUFFER, output->framebuffer);
+	api.FramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
+	                         description.color_image, 0);
+	api.FramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, output->depth, 0);
+	const auto status = api.CheckFramebufferStatus(GL_FRAMEBUFFER);
+	api.BindFramebuffer(GL_FRAMEBUFFER, 0);
+	if (auto error = check(*state_); !error.empty())
+		return failure(error);
+	if (!output->depth || !output->framebuffer || status != GL_FRAMEBUFFER_COMPLETE)
+		return failure("Borrowed color/local-depth framebuffer is incomplete");
+	state_->borrowed_colors.insert(description.color_image);
+	output->registered = true;
+	// Ownership transfers through the result; native color is deliberately never owned here.
+	// NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks)
+	return std::unique_ptr<borrowed_destination>(new borrowed_destination(std::move(output)));
+}
+ice::expected<frame_status, diagnostic> device::render_into(borrowed_destination    &destination,
+                                                            const acquisition_lease &lease,
+                                                            const frame_batch       &batch) {
+	auto &output = *destination.implementation_;
+	if (output.state != state_ || output.description.context != state_->context->egl())
+		return failure("Borrowed destination belongs to another device/context");
+	auto acquired = output.acquisitions.validate(lease);
+	if (!acquired)
+		return ice::unexpected(acquired.error());
+	auto valid = detail::batch_access::validate(state_, batch, output.description.format,
+	                                            output.description.color_image, output.depth);
+	if (!valid)
+		return ice::unexpected(valid.error());
+	if (!state_->context->make_current())
+		return failure("Cannot activate borrowed destination context");
+	state_->wait_pending();
+	state_->api.BindFramebuffer(GL_FRAMEBUFFER, output.framebuffer);
+	detail::batch_access::encode(*state_, batch, state_->vao, state_->uniforms,
+	                             output.description.width, output.description.height,
+	                             output.description.format);
+	if (auto error = check(*state_); !error.empty())
+		return failure(error);
+	return frame_status::submitted;
+}
+ice::expected<void, diagnostic> device::flush() {
+	if (!state_->context->make_current())
+		return failure("Cannot activate GL flush context");
+	state_->api.Flush();
+	if (auto error = check(*state_); !error.empty())
+		return failure(error);
+	return {};
 }
 ice::expected<void, diagnostic> device::wait_idle() {
 	if (!state_->context->make_current())
@@ -606,10 +775,10 @@ device::prepare_pipeline(const shader_snapshot &snapshot, const std::string &ver
 	if (!state_->context->make_current())
 		return failure("Cannot activate OpenGL preparation context");
 	auto &api    = state_->api;
-	auto  vertex = compile(api, GL_VERTEX_SHADER, source, vertex_entry, uri);
+	auto  vertex = compile(api, GL_VERTEX_SHADER, source, vertex_entry, uri, state_->embedded);
 	if (!vertex)
 		return ice::unexpected(vertex.error());
-	auto fragment = compile(api, GL_FRAGMENT_SHADER, source, fragment_entry, uri);
+	auto fragment = compile(api, GL_FRAGMENT_SHADER, source, fragment_entry, uri, state_->embedded);
 	if (!fragment) {
 		api.DeleteShader(*vertex);
 		return ice::unexpected(fragment.error());
@@ -747,6 +916,12 @@ ice::expected<std::unique_ptr<texture>, diagnostic> device::create_texture(const
 }
 ice::expected<std::unique_ptr<presentation_surface>, diagnostic>
 device::attach(ice::platform::desktop_window &window) {
+#ifndef ICE_GL_DESKTOP_CONTEXT
+	(void)window;
+	return failure("Desktop drawables are unavailable in the EGL GLES profile");
+#else
+	if (state_->embedded)
+		return failure("EGL GLES uses explicit borrowed destinations, not desktop swaps");
 	auto handle  = window.native_handle();
 	auto context = detail::create_context(state_->context, &handle);
 	if (!context)
@@ -764,6 +939,7 @@ device::attach(ice::platform::desktop_window &window) {
 	auto size   = window.extent();
 	result->resize(size.pixel_width, size.pixel_height);
 	return result;
+#endif
 }
 bool presentation_surface::resize(int width, int height) {
 	if (width < 0 || height < 0 || width > 16384 || height > 16384)
@@ -793,7 +969,7 @@ ice::expected<frame_status, diagnostic> presentation_surface::draw_batch(const f
 		return failure("Cannot activate OpenGL presentation context");
 	data.state->wait_pending();
 	data.state->api.BindFramebuffer(GL_FRAMEBUFFER, 0);
-	detail::batch_access::encode(data.state->api, batch, data.vao, data.uniforms, data.width,
+	detail::batch_access::encode(*data.state, batch, data.vao, data.uniforms, data.width,
 	                             data.height);
 	if (auto error = check(*data.state); !error.empty())
 		return failure(error);
@@ -864,7 +1040,7 @@ ice::expected<image, diagnostic> device::render_offscreen(const frame_batch &bat
 	api.FramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, target.depth, 0);
 	if (api.CheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
 		return failure("OpenGL capture framebuffer is incomplete");
-	detail::batch_access::encode(api, batch, state_->vao, state_->uniforms, width, height);
+	detail::batch_access::encode(*state_, batch, state_->vao, state_->uniforms, width, height);
 	image result{width, height, std::vector<std::uint8_t>(std::size_t(width) * height * 4)};
 	api.PixelStorei(GL_PACK_ALIGNMENT, 1);
 	api.ReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, result.rgba.data());

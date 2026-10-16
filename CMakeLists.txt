@@ -14,6 +14,7 @@ if(APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "watchOS")
 endif()
 option(ICE_BUILD_METAL "Build the native Metal presentation module" ${metal_default})
 option(ICE_BUILD_OPENGL "Build the native OpenGL 4.1+ core presentation module" ${ICE_BUILD_DESKTOP})
+option(ICE_BUILD_GLES "Build the reusable EGL OpenGL ES3 renderer profile" OFF)
 if(APPLE AND (ICE_BUILD_DESKTOP OR ICE_BUILD_METAL OR ICE_BUILD_OPENGL))
     enable_language(OBJCXX)
 endif()
@@ -26,6 +27,22 @@ if(BUILD_TESTING)
         target_link_libraries(${target} PRIVATE ${module})
         ice_strict_target(${target})
     endfunction()
+    if(TARGET ice::render_leases)
+        ice_test(ice_acquisition_lease_tests tests/acquisition_lease.cpp ice::render_leases)
+        add_test(NAME ice_acquisition_lease COMMAND ice_acquisition_lease_tests)
+    endif()
+    if(ICE_BUILD_GLES)
+        ice_test(ice_gles_tests tests/gles.cpp ice::render)
+        if(ANDROID)
+            target_link_libraries(ice_gles_tests PRIVATE EGL GLESv2)
+        else()
+            find_path(ICE_GLES_TEST_INCLUDE GLES3/gl3.h REQUIRED)
+            find_library(ICE_GLES_TEST_LIBRARY GLESv2 REQUIRED)
+            target_include_directories(ice_gles_tests SYSTEM PRIVATE "${ICE_GLES_TEST_INCLUDE}")
+            target_link_libraries(ice_gles_tests PRIVATE OpenGL::EGL "${ICE_GLES_TEST_LIBRARY}")
+        endif()
+        add_test(NAME ice_gles COMMAND ice_gles_tests "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/gles")
+    endif()
     ice_test(ice_host_tests tests/host_runtime.cpp ice::platform)
     add_test(NAME ice_host_runtime COMMAND ice_host_tests)
     ice_test(ice_input_action_tests tests/input_actions.cpp ice::input)
@@ -100,25 +117,25 @@ if(BUILD_TESTING)
                 $<$<BOOL:${ICE_BUILD_METAL}>:ICE_TEST_METAL=1>
                 $<$<BOOL:${ICE_BUILD_OPENGL}>:ICE_TEST_OPENGL=1>)
             set_target_properties(ice_hdr_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+            ice_test(ice_mesh_tests tests/mesh.cpp ice::render)
+            target_link_libraries(ice_mesh_tests PRIVATE ice::window)
+            target_compile_definitions(ice_mesh_tests PRIVATE
+                $<$<BOOL:${ICE_BUILD_METAL}>:ICE_TEST_METAL=1>
+                $<$<BOOL:${ICE_BUILD_OPENGL}>:ICE_TEST_OPENGL=1>)
+            set_target_properties(ice_mesh_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+            ice_test(ice_textured_mesh_tests tests/textured_mesh.cpp ice::render)
+            target_link_libraries(ice_textured_mesh_tests PRIVATE ice::window)
+            target_compile_definitions(ice_textured_mesh_tests PRIVATE
+                $<$<BOOL:${ICE_BUILD_METAL}>:ICE_TEST_METAL=1>
+                $<$<BOOL:${ICE_BUILD_OPENGL}>:ICE_TEST_OPENGL=1>)
+            set_target_properties(ice_textured_mesh_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+            ice_test(ice_skinned_mesh_tests tests/skinned_mesh.cpp ice::render)
+            target_link_libraries(ice_skinned_mesh_tests PRIVATE ice::window ice::math)
+            target_compile_definitions(ice_skinned_mesh_tests PRIVATE
+                $<$<BOOL:${ICE_BUILD_METAL}>:ICE_TEST_METAL=1>
+                $<$<BOOL:${ICE_BUILD_OPENGL}>:ICE_TEST_OPENGL=1>)
+            set_target_properties(ice_skinned_mesh_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
         endif()
-        ice_test(ice_mesh_tests tests/mesh.cpp ice::render)
-        target_link_libraries(ice_mesh_tests PRIVATE ice::window)
-        target_compile_definitions(ice_mesh_tests PRIVATE
-            $<$<BOOL:${ICE_BUILD_METAL}>:ICE_TEST_METAL=1>
-            $<$<BOOL:${ICE_BUILD_OPENGL}>:ICE_TEST_OPENGL=1>)
-        set_target_properties(ice_mesh_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
-        ice_test(ice_textured_mesh_tests tests/textured_mesh.cpp ice::render)
-        target_link_libraries(ice_textured_mesh_tests PRIVATE ice::window)
-        target_compile_definitions(ice_textured_mesh_tests PRIVATE
-            $<$<BOOL:${ICE_BUILD_METAL}>:ICE_TEST_METAL=1>
-            $<$<BOOL:${ICE_BUILD_OPENGL}>:ICE_TEST_OPENGL=1>)
-        set_target_properties(ice_textured_mesh_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
-        ice_test(ice_skinned_mesh_tests tests/skinned_mesh.cpp ice::render)
-        target_link_libraries(ice_skinned_mesh_tests PRIVATE ice::window ice::math)
-        target_compile_definitions(ice_skinned_mesh_tests PRIVATE
-            $<$<BOOL:${ICE_BUILD_METAL}>:ICE_TEST_METAL=1>
-            $<$<BOOL:${ICE_BUILD_OPENGL}>:ICE_TEST_OPENGL=1>)
-        set_target_properties(ice_skinned_mesh_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
         ice_test(ice_live_pipeline_tests tests/live_pipeline.cpp ice::render)
         target_compile_definitions(ice_live_pipeline_tests PRIVATE
             $<$<BOOL:${ICE_BUILD_METAL}>:ICE_TEST_METAL=1>

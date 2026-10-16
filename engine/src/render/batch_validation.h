@@ -58,7 +58,8 @@ inline bool valid_options(const pipeline_options &options) {
 	        options.vertices == vertex_layout::position_normal_uv_skin) &&
 	       (!options.depth_write || options.depth_test) &&
 	       (options.target_format == color_format::rgba8_unorm ||
-	        options.target_format == color_format::rgba16_float) &&
+	        options.target_format == color_format::rgba16_float ||
+	        options.target_format == color_format::rgba8_srgb) &&
 	       (options.sampled_bindings <= 15 || options.sampled_bindings == 0xff) &&
 	       options.depth_sampled_bindings <= 15 &&
 	       (options.sampled_bindings == 0xff

@@ -29,8 +29,10 @@
 #include "ice/platform/host.h"
 #include "ice/platform/input_types.h"
 #include "ice/platform/platform_events.h"
+#include "ice/render/acquisition_lease.h"
 #include "ice/render/camera.h"
 #include "ice/render/device.h"
+#include "ice/render/gl/egl.h"
 #include "ice/render/live_pipeline.h"
 #include "ice/render/scene_camera.h"
 #include "ice/render/shader_snapshot.h"
@@ -40,7 +42,7 @@
 #ifdef ICE_HAS_METAL
 #include "ice/render/metal/device.h"
 #endif
-#ifdef ICE_HAS_OPENGL
+#if defined(ICE_HAS_OPENGL) || defined(ICE_HAS_GLES)
 #include "ice/render/gl/device.h"
 #endif
 #include "ice/util/join_qr.h"

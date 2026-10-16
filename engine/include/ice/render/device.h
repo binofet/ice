@@ -3,6 +3,8 @@
 #include "ice/io/resource_uri.h"
 #include "ice/platform/desktop_window.h"
 #include "ice/platform/host.h"
+#include "ice/render/acquisition_lease.h"
+#include "ice/render/gl/egl.h"
 #include "ice/render/shader_snapshot.h"
 #include "ice/render/types.h"
 #include <memory>
@@ -13,7 +15,7 @@ namespace detail {
 struct batch_access;
 } // namespace detail
 /// Explicit backend selection. Availability depends on the host/build; failures are diagnostics.
-enum class backend_kind { metal, opengl };
+enum class backend_kind { metal, opengl, opengles };
 /// A backend-specific URI library and its explicit vertex/fragment entry names.
 /// Authored shader packages may retain one variant per backend; no implicit source translation
 /// occurs.
@@ -104,6 +106,29 @@ private:
 	friend class device;
 	friend struct detail::batch_access;
 };
+/// Immutable native color-image wrapper owning only its local framebuffer/depth resources.
+/// The runtime owns color storage and must retain it until this wrapper is destroyed. Retire
+/// wrappers before native swapchain/session/context teardown; destruction never releases an image.
+/// Render-thread only. Resizing/recreation imports a replacement before retiring this wrapper.
+class borrowed_destination {
+public:
+	/// Retire owned framebuffer/depth resources, invalidating outstanding acquisition leases.
+	/// No native release, swap, CPU readback or per-image GPU finish is performed.
+	~borrowed_destination();
+	/// Begin a trusted host acquisition with a strictly increasing nonzero generation.
+	/// A wait timeout retains the existing lease instead of beginning another acquisition.
+	ice::expected<acquisition_lease, diagnostic> begin_acquisition(std::uint64_t generation);
+	/// Return the exact immutable extent/format checked at import.
+	render_target_description description() const;
+
+private:
+	struct implementation;
+	explicit borrowed_destination(std::unique_ptr<implementation> implementation);
+	borrowed_destination(const borrowed_destination &)                      = delete;
+	borrowed_destination           &operator=(const borrowed_destination &) = delete;
+	std::unique_ptr<implementation> implementation_;
+	friend class device;
+};
 /// One borrowed draw, consumed synchronously. Indexed pipelines require geometry; procedural
 /// pipelines require null geometry. Each uniform block is copied before this call returns.
 struct draw_item {
@@ -174,6 +199,21 @@ public:
 	/// the target. Busy means nothing was submitted; native driver errors do not promise rollback.
 	ice::expected<frame_status, diagnostic> render_into(render_target     &target,
 	                                                    const frame_batch &batch);
+	/// Activate the owned EGL root context and borrow its handles for an exact native session
+	/// binding. Unavailable backends return a diagnostic; caller never destroys these handles.
+	ice::expected<gl::egl_binding, diagnostic> egl_context() const;
+	/// Validate and wrap a native image without taking color ownership; EGL GLES3.1+ only.
+	/// Exact native dimensions/internal format must match the descriptor. No implicit acquire.
+	ice::expected<std::unique_ptr<borrowed_destination>, diagnostic>
+	import_destination(const gl::destination_description &description);
+	/// Validate device/context, live waited generation, the entire batch and texture feedback
+	/// before clearing/drawing. Does not flush, swap, read back or release the native image.
+	ice::expected<frame_status, diagnostic> render_into(borrowed_destination    &destination,
+	                                                    const acquisition_lease &lease,
+	                                                    const frame_batch       &batch);
+	/// Flush submitted GL commands before the trusted adapter releases a runtime image.
+	/// Does not wait for GPU completion; non-GL backends return an unsupported diagnostic.
+	ice::expected<void, diagnostic> flush();
 	/// Synchronously drain preceding logical-device work on the render/UI thread. Intended for
 	/// detached preparation, tests, handoff or shutdown, never the live postprocess pass chain.
 	/// Native failures return diagnostics; driver hangs are not contained by this call.

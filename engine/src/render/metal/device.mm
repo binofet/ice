@@ -323,6 +323,8 @@ device::prepare_pipeline(const ice::io::resource_resolver &resolver, const std::
 ice::expected<std::unique_ptr<pipeline>, diagnostic>
 device::prepare_pipeline(const shader_snapshot &snapshot, const std::string &vertex_entry,
                          const std::string &fragment_entry, pipeline_options options) {
+	if (options.target_format == color_format::rgba8_srgb)
+		return failure("sRGB imported destinations are not supported by the Metal profile");
 	if (!ice::render::detail::valid_options(options))
 		return failure("Invalid vertex layout or depth-write without depth-test");
 	@autoreleasepool {
