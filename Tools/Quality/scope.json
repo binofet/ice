@@ -77,7 +77,12 @@
     "tests/primitive_mesh.cpp",
     "engine/include/ice/script/lua_program.h",
     "engine/src/script/lua_program.cpp",
-    "tests/script_lua.cpp"
+    "tests/script_lua.cpp",
+    "engine/include/ice/audio/capture.h",
+    "engine/include/ice/audio/android_capture.h",
+    "engine/src/audio/capture.cpp",
+    "engine/src/audio/android_capture.cpp",
+    "tests/audio_capture.cpp"
   ],
   "lint": [
     "tests/mesh.cpp",
@@ -117,7 +122,9 @@
     "tests/physics3d.cpp",
     "tests/primitive_mesh.cpp",
     "engine/src/script/lua_program.cpp",
-    "tests/script_lua.cpp"
+    "tests/script_lua.cpp",
+    "engine/src/audio/capture.cpp",
+    "tests/audio_capture.cpp"
   ],
   "lint_platform": {
     "Darwin": [

@@ -1,6 +1,6 @@
 ---
 Checks: '-*,clang-analyzer-core.*,clang-analyzer-cplusplus.*,bugprone-use-after-move,bugprone-sizeof-expression,bugprone-suspicious-memset-usage,bugprone-dangling-handle'
 WarningsAsErrors: '*'
-HeaderFilterRegex: '[/\\](engine[/\\](include[/\\]ice|src)[/\\](assets|animation|commands|core|data|io|meta|physics|platform|render|script)|tests[/\\](commands|data_graph|data_json|desktop_window|mesh|physics2d|physics3d|script_lua|primitive_mesh|scene_animation|gltf_asset|meta_runtime|resource_uri))'
+HeaderFilterRegex: '[/\\](engine[/\\](include[/\\]ice|src)[/\\](assets|animation|audio|commands|core|data|io|meta|physics|platform|render|script)|tests[/\\](commands|data_graph|data_json|desktop_window|mesh|physics2d|physics3d|script_lua|audio_capture|primitive_mesh|scene_animation|gltf_asset|meta_runtime|resource_uri))'
 FormatStyle: file
 ...

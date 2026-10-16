@@ -11,6 +11,7 @@
 
 #include "../debug_trace.h"
 #include "../space_anchor.h"
+#include "ice/audio/android_capture.h"
 #include "ice/math/types.h"
 #include "ice/platform/host.h"
 #include <algorithm>
@@ -101,6 +102,7 @@ class xr_probe {
 public:
 	explicit xr_probe(android_app &app) : app_(app), host_(client_) {}
 	~xr_probe() {
+		cancel_voice("shutdown");
 		XR_LOG("Probe teardown begins: running=%d session_state=%d frames=%llu", running_,
 		       static_cast<int>(state_), static_cast<unsigned long long>(submitted_frames_));
 		shutdown_session();
@@ -300,6 +302,9 @@ public:
 			resumed_ = true;
 		if (command == APP_CMD_PAUSE)
 			resumed_ = false;
+		if (command == APP_CMD_PAUSE || command == APP_CMD_STOP || command == APP_CMD_LOST_FOCUS ||
+		    command == APP_CMD_TERM_WINDOW || command == APP_CMD_DESTROY)
+			cancel_voice(command_name(command));
 		update_lifecycle();
 	}
 	bool running() const { return running_; }
@@ -323,6 +328,7 @@ public:
 			if (!check(result, "poll runtime events"))
 				return false;
 			if (event.type == XR_TYPE_EVENT_DATA_INSTANCE_LOSS_PENDING) {
+				cancel_voice("instance loss");
 				runtime_lost_ = true;
 				running_      = false;
 				finished_     = true;
@@ -361,6 +367,8 @@ public:
 			if (change.session != session_)
 				continue;
 			state_ = change.state;
+			if (state_ != XR_SESSION_STATE_FOCUSED)
+				cancel_voice("session not focused");
 			XR_LOG("OpenXR session state=%d", static_cast<int>(state_));
 			if (state_ == XR_SESSION_STATE_READY && !shutting_down_) {
 				auto begin = xr_structure<XrSessionBeginInfo>(XR_TYPE_SESSION_BEGIN_INFO);
@@ -732,12 +740,23 @@ void main(){ float light=.25+.75*max(dot(normalize(world_normal),normalize(vec3(
 		if (!check(xrCreateAction(controller_actions_, &action, &trigger_action_),
 		           "create trigger action"))
 			return false;
-		std::array<XrActionSuggestedBinding, 4> bindings{};
-		const std::array<const char *, 4>       paths{
+		action.actionType          = XR_ACTION_TYPE_BOOLEAN_INPUT;
+		action.countSubactionPaths = 1;
+		std::snprintf(action.actionName, XR_MAX_ACTION_NAME_SIZE, "%s", "push_to_talk");
+		std::snprintf(action.localizedActionName, XR_MAX_LOCALIZED_ACTION_NAME_SIZE, "%s",
+		              "Hold X to record microphone");
+		if (!check(xrCreateAction(controller_actions_, &action, &voice_action_),
+		           "create push-to-talk action"))
+			return false;
+		std::array<XrActionSuggestedBinding, 5> bindings{};
+		const std::array<const char *, 5>       paths{
             "/user/hand/left/input/grip/pose", "/user/hand/right/input/grip/pose",
-            "/user/hand/left/input/trigger/value", "/user/hand/right/input/trigger/value"};
+            "/user/hand/left/input/trigger/value", "/user/hand/right/input/trigger/value",
+            "/user/hand/left/input/x/click"};
 		for (std::size_t index = 0; index < bindings.size(); ++index) {
-			bindings[index].action = index < 2 ? grip_action_ : trigger_action_;
+			bindings[index].action = index < 2   ? grip_action_
+			                         : index < 4 ? trigger_action_
+			                                     : voice_action_;
 			if (!check(xrStringToPath(instance_, paths[index], &bindings[index].binding),
 			           "controller binding path"))
 				return false;
@@ -775,16 +794,20 @@ void main(){ float light=.25+.75*max(dot(normalize(world_normal),normalize(vec3(
 			controller.valid   = false;
 			controller.trigger = 0;
 		}
-		if (state_ != XR_SESSION_STATE_FOCUSED)
+		if (state_ != XR_SESSION_STATE_FOCUSED || !resumed_) {
+			cancel_voice("controller focus lost");
 			return true;
+		}
 		XrActiveActionSet active{};
 		active.actionSet           = controller_actions_;
 		auto sync                  = xr_structure<XrActionsSyncInfo>(XR_TYPE_ACTIONS_SYNC_INFO);
 		sync.countActiveActionSets = 1;
 		sync.activeActionSets      = &active;
 		auto synchronized          = xrSyncActions(session_, &sync);
-		if (synchronized == XR_SESSION_NOT_FOCUSED)
+		if (synchronized == XR_SESSION_NOT_FOCUSED) {
+			cancel_voice("action sync not focused");
 			return true;
+		}
 		if (!check(synchronized, "sync controller actions"))
 			return false;
 		for (auto &controller : controllers_) {
@@ -811,7 +834,207 @@ void main(){ float light=.25+.75*max(dot(normalize(world_normal),normalize(vec3(
 			if (trigger.isActive && std::isfinite(trigger.currentState))
 				controller.trigger = std::clamp(trigger.currentState, 0.f, 1.f);
 		}
+		auto get_voice          = xr_structure<XrActionStateGetInfo>(XR_TYPE_ACTION_STATE_GET_INFO);
+		get_voice.action        = voice_action_;
+		get_voice.subactionPath = controllers_[0].hand;
+		auto voice              = xr_structure<XrActionStateBoolean>(XR_TYPE_ACTION_STATE_BOOLEAN);
+		if (!check(xrGetActionStateBoolean(session_, &get_voice, &voice),
+		           "read push-to-talk action"))
+			return false;
+		if (!voice.isActive)
+			cancel_voice("PTT action inactive");
+		else
+			update_voice(voice.currentState);
 		return true;
+	}
+	bool microphone_permission(bool request) {
+		JNIEnv *environment = nullptr;
+		if (app_.activity->vm->GetEnv(reinterpret_cast<void **>(&environment), JNI_VERSION_1_6) !=
+		    JNI_OK)
+			return false;
+		jclass    activity = environment->GetObjectClass(app_.activity->clazz);
+		jmethodID has      = activity
+		                         ? environment->GetMethodID(activity, "hasMicrophonePermission", "()Z")
+		                         : nullptr;
+		if (environment->ExceptionCheck() || !has) {
+			environment->ExceptionClear();
+			if (activity)
+				environment->DeleteLocalRef(activity);
+			XR_ERROR("Voice permission host unavailable");
+			return false;
+		}
+		bool granted = environment->CallBooleanMethod(app_.activity->clazz, has) == JNI_TRUE;
+		if (environment->ExceptionCheck()) {
+			environment->ExceptionClear();
+			granted = false;
+		}
+		if (request && !granted) {
+			jmethodID ask =
+			    environment->GetMethodID(activity, "requestMicrophonePermission", "()V");
+			if (ask)
+				environment->CallVoidMethod(app_.activity->clazz, ask);
+			if (environment->ExceptionCheck()) {
+				environment->ExceptionClear();
+				XR_ERROR("Voice permission request failed");
+			}
+			XR_LOG("Voice permission requested; release X and press again after granting");
+		}
+		environment->DeleteLocalRef(activity);
+		return granted;
+	}
+	void cancel_voice(const char *reason) {
+		if (voice_active_ || microphone_.recording())
+			XR_LOG("Voice cancelled reason=%s; unfinished PCM discarded", reason);
+		auto stopped = microphone_.stop();
+		if (!stopped)
+			XR_ERROR("Voice cancellation stop failed: %s", stopped.error().message.c_str());
+		microphone_.discard();
+		voice_active_ = false;
+		voice_armed_  = false; // A release is required after focus/permission changes.
+	}
+	void update_voice(bool down) {
+		if (!down) {
+			if (voice_active_)
+				finish_voice("release");
+			voice_armed_ = true;
+			return;
+		}
+		if (voice_armed_) {
+			voice_armed_ = false;
+			voice_saved_ = false;
+			if (!microphone_permission(true)) {
+				voice_permission_needed_ = true;
+				return;
+			}
+			voice_permission_needed_ = false;
+			auto started             = microphone_.start();
+			if (!started) {
+				XR_ERROR("Voice start rejected: %s native=%d", started.error().message.c_str(),
+				         started.error().native_code);
+				return;
+			}
+			voice_active_    = true;
+			voice_first_pcm_ = false;
+			++voice_sequence_;
+			voice_started_ms_ =
+			    static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+			                                   std::chrono::system_clock::now().time_since_epoch())
+			                                   .count());
+			XR_LOG("Voice started id=%d-%llu rate=%u cap_frames=%zu input=X held", getpid(),
+			       static_cast<unsigned long long>(voice_sequence_),
+			       microphone_.buffer()->sample_rate(), microphone_.buffer()->capacity_frames());
+		}
+		if (!voice_active_)
+			return;
+		if (!microphone_permission(false)) {
+			cancel_voice("permission lost");
+			voice_permission_needed_ = true;
+			return;
+		}
+		auto captured = microphone_.poll();
+		if (!captured) {
+			XR_ERROR("Voice capture failed: %s native=%d", captured.error().message.c_str(),
+			         captured.error().native_code);
+			cancel_voice("capture error");
+			return;
+		}
+		if (!voice_first_pcm_ && microphone_.buffer() && !microphone_.buffer()->samples().empty()) {
+			voice_first_pcm_ = true;
+			XR_LOG("Voice first PCM id=%d-%llu frames=%zu rate=%u", getpid(),
+			       static_cast<unsigned long long>(voice_sequence_),
+			       microphone_.buffer()->samples().size(), microphone_.buffer()->sample_rate());
+		}
+		if (!microphone_.recording())
+			finish_voice("duration_limit");
+	}
+	static bool write_private_file(const std::string &path, std::span<const std::byte> bytes) {
+		FILE *file = std::fopen(path.c_str(), "wb");
+		if (!file)
+			return false;
+		const bool wrote   = std::fwrite(bytes.data(), 1, bytes.size(), file) == bytes.size();
+		const bool flushed = std::fflush(file) == 0;
+		const bool closed  = std::fclose(file) == 0;
+		return wrote && flushed && closed;
+	}
+	void finish_voice(const char *reason) {
+		voice_active_ = false;
+		auto stopped  = microphone_.stop();
+		if (!stopped) {
+			XR_ERROR("Voice stop failed: %s", stopped.error().message.c_str());
+			microphone_.discard();
+			return;
+		}
+		const auto *buffer = microphone_.buffer();
+		if (!buffer || buffer->samples().empty() || !app_.activity->internalDataPath) {
+			XR_LOG("Voice finished with no PCM frames reason=%s; no file published", reason);
+			microphone_.discard();
+			return;
+		}
+		auto wav = ice::audio::encode_wav(*buffer);
+		if (!wav) {
+			XR_ERROR("Voice WAV failed: %s", wav.error().message.c_str());
+			microphone_.discard();
+			return;
+		}
+		const std::string directory = std::string(app_.activity->internalDataPath) + "/";
+		const std::string manifest  = directory + "voice-latest.json";
+		// Two fixed WAV slots bound disk usage across launches. Publish the metadata
+		// pointer only after the inactive slot is complete; readers start at that file.
+		if (voice_slot_ < 0) {
+			std::array<char, 2048> prior{};
+			FILE                  *file = std::fopen(manifest.c_str(), "rb");
+			if (file) {
+				std::fread(prior.data(), 1, prior.size() - 1, file);
+				std::fclose(file);
+			}
+			voice_slot_ = std::strstr(prior.data(), "\"slot\":0") ? 0 : 1;
+		}
+		const int         slot    = 1 - voice_slot_;
+		const std::string name    = slot ? "voice-1.wav" : "voice-0.wav";
+		const std::string path    = directory + name;
+		std::int32_t      peak    = 0;
+		double            squared = 0;
+		for (auto sample : buffer->samples()) {
+			const auto value = std::int32_t(sample);
+			peak             = std::max(peak, value < 0 ? -value : value);
+			squared += double(value) * value;
+		}
+		const double           rms = std::sqrt(squared / double(buffer->samples().size()));
+		std::array<char, 2048> metadata{};
+		const int              size = std::snprintf(
+            metadata.data(), metadata.size(),
+            "{\"version\":1,\"slot\":%d,\"file\":\"%s\",\"source\":\"aaudio_microphone\","
+		                 "\"consent\":\"user_push_to_talk_X\",\"build\":\"space-anchor-v2+voice-v2\","
+		                 "\"session\":\"xr-%d-%llu\",\"recording_id\":\"%d-%llu\",\"started_unix_ms\":%llu,"
+		                 "\"format\":\"pcm_s16le\",\"channels\":1,\"sample_rate\":%u,\"frames\":%zu,"
+		                 "\"dropped_frames\":%llu,\"xruns\":%d,\"peak_pcm16\":%d,\"rms_pcm16\":%u,"
+		                 "\"stop_reason\":\"%s\",\"automatic_sharing\":false}\n",
+            slot, name.c_str(), getpid(), static_cast<unsigned long long>(voice_session_ms_),
+            getpid(), static_cast<unsigned long long>(voice_sequence_),
+            static_cast<unsigned long long>(voice_started_ms_), buffer->sample_rate(),
+            buffer->samples().size(), static_cast<unsigned long long>(buffer->dropped_frames()),
+            microphone_.xruns(), peak, static_cast<unsigned>(std::lround(rms)), reason);
+		const bool valid_size = size > 0 && std::size_t(size) < metadata.size();
+		const auto manifest_bytes =
+		    std::as_bytes(std::span(metadata.data(), valid_size ? std::size_t(size) : 0));
+		bool saved = valid_size && write_private_file(path + ".tmp", *wav) &&
+		             write_private_file(manifest + ".tmp", manifest_bytes) &&
+		             std::rename((path + ".tmp").c_str(), path.c_str()) == 0 &&
+		             std::rename((manifest + ".tmp").c_str(), manifest.c_str()) == 0;
+		if (saved) {
+			voice_slot_  = slot;
+			voice_saved_ = true;
+			XR_LOG("Voice saved id=%d-%llu file=%s rate=%u frames=%zu dropped=%llu xruns=%d "
+			       "peak=%d rms=%.1f reason=%s",
+			       getpid(), static_cast<unsigned long long>(voice_sequence_), name.c_str(),
+			       buffer->sample_rate(), buffer->samples().size(),
+			       static_cast<unsigned long long>(buffer->dropped_frames()), microphone_.xruns(),
+			       peak, rms, reason);
+		} else
+			XR_ERROR("Voice private WAV/metadata publication failed");
+		std::remove((path + ".tmp").c_str());
+		std::remove((manifest + ".tmp").c_str());
+		microphone_.discard();
 	}
 
 	bool initialize_swapchains() {
@@ -970,6 +1193,12 @@ void main(){ float light=.25+.75*max(dot(normalize(world_normal),normalize(vec3(
 			     {.85f, .5f, .12f});
 			cube(scene_view_projection, {2, floor_height_ + 1, -3}, {.12f, 2, .12f},
 			     {.85f, .5f, .12f});
+			const glm::vec3 voice_color = voice_active_              ? glm::vec3(1, .04f, .03f)
+			                              : voice_permission_needed_ ? glm::vec3(.95f, .55f, .03f)
+			                              : voice_saved_             ? glm::vec3(.08f, .9f, .3f)
+			                                                         : glm::vec3(.1f, .15f, .2f);
+			cube(scene_view_projection, {0, floor_height_ + .8f, -2}, {.35f, .06f, .06f},
+			     voice_color);
 			for (std::size_t hand = 0; hand < controllers_.size(); ++hand) {
 				const auto &controller = controllers_[hand];
 				if (!controller.valid)
@@ -984,6 +1213,8 @@ void main(){ float light=.25+.75*max(dot(normalize(world_normal),normalize(vec3(
 				glm::vec3 color =
 				    hand == 0 ? glm::vec3(.08f, .45f, .9f) : glm::vec3(.9f, .45f, .08f);
 				color = glm::mix(color, glm::vec3(1), controller.trigger * .7f);
+				if (hand == 0 && voice_active_)
+					color = glm::vec3(1, .04f, .03f);
 				draw_cube(view_projection, model, color);
 			}
 
@@ -1014,7 +1245,17 @@ void main(){ float light=.25+.75*max(dot(normalize(world_normal),normalize(vec3(
 	XrSpace        space_              = XR_NULL_HANDLE;
 	XrActionSet    controller_actions_ = XR_NULL_HANDLE;
 	XrAction       grip_action_ = XR_NULL_HANDLE, trigger_action_ = XR_NULL_HANDLE;
+	XrAction       voice_action_ = XR_NULL_HANDLE;
 	std::array<controller_state, 2> controllers_;
+	ice::audio::android_capture     microphone_;
+	bool voice_active_ = false, voice_armed_ = false, voice_saved_ = false,
+	     voice_first_pcm_ = false, voice_permission_needed_ = false;
+	int                 voice_slot_     = -1;
+	std::uint64_t       voice_sequence_ = 0, voice_started_ms_ = 0;
+	const std::uint64_t voice_session_ms_ =
+	    static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+	                                   std::chrono::system_clock::now().time_since_epoch())
+	                                   .count());
 
 	XrReferenceSpaceType            space_type_ = XR_REFERENCE_SPACE_TYPE_LOCAL;
 	ice::examples::xr::space_anchor anchor_;
@@ -1039,6 +1280,8 @@ void android_main(android_app *app) {
 		    app->activity->internalDataPath && trace.initialize(app->activity->internalDataPath);
 		XR_LOG("Build marker=space-anchor-v2 cplusplus=%ld pid=%d private_trace=%d", __cplusplus,
 		       static_cast<int>(getpid()), trace_ready);
+		XR_LOG("Voice marker=voice-v2-state-pump explicit_PTT=left_X max_seconds=10; no automatic "
+		       "ASR/sharing");
 		xr_probe probe(*app);
 		app->userData = &probe;
 		app->onAppCmd = [](android_app *owner, std::int32_t command) {

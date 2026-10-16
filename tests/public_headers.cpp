@@ -1,6 +1,9 @@
 #include "ice/data/json.h"
 // Compile supported public APIs together as an external consumer.
 #include "ice/animation/scene_animation.h"
+#ifdef ICE_HAS_AUDIO
+#include "ice/audio/capture.h"
+#endif
 #include "ice/assets/primitive_mesh.h"
 #include "ice/assets/scene_asset.h"
 #include "ice/commands/service.h"

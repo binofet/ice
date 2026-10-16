@@ -118,3 +118,54 @@ Long sessions, an application-requested stop while actively running, process
 recreation, runtime-loss recovery and recenter timing under load still need
 dedicated coverage. The current scene intentionally has
 no artificial locomotion, hand skeletons, passthrough or general interaction system.
+
+## Voice capture follow-up — 2026-10-15
+
+Version `0.2` / code `2` uses `org.ice.xrprobe/.CaptureActivity` for the standard
+Android runtime microphone permission UI. The user granted `RECORD_AUDIO`; no ADB
+permission grant or scripted recording input was used. The fixed C++23 APK SHA-256 is
+`96bb9831ec894d8147b87a2e4b89e28a3ae7ffef1692c6e0ea077f7126dfd285`.
+
+The first build produced zero PCM despite successful starts. The NDK contract
+identified the bug: `AAudioStream_getState` returns cached state; a nonblocking
+`waitForStateChange(UNKNOWN, timeout=0)` is needed to update it before the STARTING
+guard. The fixed retained trace identifies `voice-v2-state-pump`, process `10770`,
+focused tracked stereo, real first-PCM records and completed captures.
+
+The user confirmed the bar/grip stays red while X is held and turns green on
+release. Several successful private captures negotiated mono PCM16 at 48000 Hz:
+
+- Recording `10770-8`: 113280 frames / 2.36 seconds, peak 19321, rounded RMS 369,
+  zero rejected frames and zero reported xruns; `voice-1.wav`, 226604 bytes.
+- Recording `10770-9`: 63360 frames / 1.32 seconds, peak 7825, rounded RMS 242,
+  zero rejected frames and zero reported xruns; `voice-0.wav`, 126764 bytes.
+- Recording `10770-10`: 188160 frames / 3.92 seconds, peak 7782, rounded RMS 1097,
+  zero rejected frames and zero reported xruns; completed by ordinary release
+  after a 4.104-second button hold.
+
+Their latest metadata session is `xr-10770-1792110639986`, build
+`space-anchor-v2+voice-v2`, explicit user-PTT consent and release completion. These
+are actual acoustic PCM/retention results. Short clips 8/9 yielded only non-speech
+labels from the developer-hosted recognizer, so those did not prove intelligibility.
+The distinct retained recording `10770-10` was then explicitly retrieved for the
+requested local transcription. Whisper `tiny.en` recognized exactly:
+
+> Ignition, let there be light and drop a blue teapot.
+
+The recognizer was independently checked against a known speech sample. This proves
+intelligible user speech through the Quest capture/WAV path, followed by an explicit
+developer-hosted recognition step. The APK does not contain ASR or automatically
+share audio. Only two completed clips survive on-device, with the older slot
+overwritten by the next successful recording. Local proof copies use unique
+recording IDs so later slot reuse does not replace their evidence.
+
+The observed wall-held durations were about 0.15–0.18 seconds longer than the
+retained PCM because the stream opens/starts on demand. Very short taps can record
+nothing and publish no file. All these completions were ordinary button releases,
+not an unexpected short duration cap.
+
+Menu/pause cancellation, no restart on resume, the ten-second cap and permission
+denial/revocation still need dedicated physical voice coverage. C++20/C++23 signed
+arm64 APK builds pass, as do portable buffer/WAV tests in both modes, ASan/UBSan,
+retained anchoring/trace host regressions, pinned native analysis and public API
+documentation checks. The older tracking/anchoring evidence above remains unchanged.

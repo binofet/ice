@@ -14,6 +14,8 @@ also require X11 and OpenGL development headers. Enabled physics modules downloa
 immutable, hash-checked Box2D/Jolt source archives at first configure; see the
 [offline overrides and provenance](docs/physics.md). Checked-in Metagen outputs need
 no private SDK/submodule checkout.
+The optional interpreted Lua module also fetches pinned official source; its
+[runtime and offline build contract](docs/scripting.md) documents the limits.
 
 ```sh
 cmake -S . -B build/desktop -DICE_CXX_STANDARD=23 -DCMAKE_BUILD_TYPE=Debug
@@ -45,6 +47,7 @@ though the optional companion protocol tests use local sockets. Select
 | `ice::render` | Backend selection, URI pipelines, indexed/procedural batches, depth, blending and captures |
 | `ice::physics2d`, `ice::physics3d` | Default Box2D/Jolt adapters with explicit fixed ticks and owned body identities |
 | `ice::script_lua` | Protected interpreted Lua calls with explicit memory/instruction budgets |
+| `ice::audio` | Bounded mono PCM/WAV recording buffers and Android AAudio capture |
 | `ice::metal`, `ice::opengl` | Native backends with independently retained resource lifetimes |
 | `ice::meta`, `ice::data` | Scalar settings proof and validated rich graph preparation/publication |
 | `ice::commands` | Optional headless command discovery, schema validation, session revisions and bounded retry receipts |

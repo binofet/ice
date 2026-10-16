@@ -13,6 +13,16 @@ small blue (left) and orange (right) blocks. Squeezing a trigger brightens and w
 its block, proving independent pose and pressure actions. The
 headset's system/menu button returns to the shell.
 
+Hold **X on the left controller** for explicit push-to-talk microphone capture.
+On the first press, accept the Android microphone permission prompt, then release
+X and press/hold it again. Red on the small bar below the cube and the left grip
+means recording; amber means permission is needed; green means a clip was saved.
+Release saves up to ten seconds of negotiated-rate mono PCM16 to app-private WAV.
+The cap stops capture and requires a release before starting another. Pause, focus
+loss, controller-action loss and permission revocation cancel/discard unfinished
+audio. Returning to the app never starts it automatically. Nothing is uploaded,
+transcribed or sent to an LLM by this probe.
+
 OpenXR controls frame timing and supplies both view poses at predicted display
 time. The app handles ready/running/stopping, visible/focused transitions and
 instance loss; ICE's existing host observes application activity. Opaque stereo blend
@@ -30,7 +40,7 @@ retains coordinates and logs the loss of known physical continuity; persistent
 spatial anchors are a future capability.
 
 GPU work is bounded: two eyes, at most 1600×1600 each, one sample, at most eight
-runtime swapchain images per eye, a fixed cube mesh and at most 16 cube draws per eye.
+runtime swapchain images per eye, a fixed cube mesh and at most 17 cube draws per eye.
 Color images belong to the runtime; the app acquires, waits, renders, flushes and
 releases before submitting its projection layer. Availability checks never release
 an image after a timeout: ownership is retained and the same image is retried in
@@ -79,7 +89,7 @@ headset. Connect by a USB data cable and choose the authorized headset serial:
 ```sh
 adb devices -l
 adb -s SERIAL install -r build/xr/android-23/ICE-XR-Lab.apk
-adb -s SERIAL shell am start -W -a android.intent.action.MAIN -c com.oculus.intent.category.VR -n org.ice.xrprobe/android.app.NativeActivity
+adb -s SERIAL shell am start -W -a android.intent.action.MAIN -c com.oculus.intent.category.VR -n org.ice.xrprobe/.CaptureActivity
 adb -s SERIAL logcat -s ICE-XR OpenXR-Loader
 ```
 
@@ -121,6 +131,22 @@ adb -s SERIAL shell run-as org.ice.xrprobe cat files/ice-xr-trace.log
 adb -s SERIAL shell run-as org.ice.xrprobe cat files/ice-xr-trace.log.previous
 ```
 
+The `voice-v2-state-pump` marker identifies the fixed PTT build. Its latest clip metadata is
+`files/voice-latest.json`; it names `voice-0.wav` or `voice-1.wav`. Only these two
+bounded slots are retained. After explicit recording, inspect the manifest and
+retrieve its selected file yourself (replace `SLOT` with that manifest's filename):
+
+```sh
+adb -s SERIAL shell run-as org.ice.xrprobe cat files/voice-latest.json
+adb -s SERIAL exec-out run-as org.ice.xrprobe cat files/SLOT > quest-recording.wav
+```
+
+The JSON includes consent/source/build/session identity, negotiated format/rate,
+frames, dropped frames, observed xruns and signal peak/RMS. It publishes only after
+the WAV is written; do not assume a new clip exists after a cancellation or error.
+See [audio capture](../../docs/audio-capture.md) for the reusable engine API,
+resource/privacy limits and the planned recognizer→typed-command-service path.
+
 The `.previous` file appears after the first rotation. A successful Activity launch
 or an IDLE session is initialization proof; a `Stereo frame=...` record in the
 identified process is required to claim rendering. If the headset shell keeps the
@@ -137,6 +163,19 @@ app paused, open **ICE XR Lab** from its unknown-source library while wearing it
    the headset. Check focused/visible lifecycle transitions and resumed tracking.
 4. Exit normally and launch again. Confirm the first stereo submission log and
    the absence of OpenXR/GLES errors.
+5. Press/release X once for permission. After granting, press/hold X, say a short
+   test phrase, then release. Confirm the red indicator, green completion and a
+   new `Voice saved` record with nonzero frames and a matching private WAV/metadata.
+6. While holding X, open the system menu or remove the headset. Confirm cancellation
+   and that returning does not resume capture until X is released and pressed again.
+
+Microphone permission, the held-X indicator and intelligible speech through the
+PCM/private WAV path have now passed on the Quest. A developer-hosted recognizer
+transcribed the user's test phrase; no recognizer is embedded in this APK.
+Voice-specific menu/pause cancellation and
+the ten-second cap remain pending. The older hardware results below describe the
+previously verified graphics/anchoring build; the separate hardware record now
+also contains the exact fixed voice APK and capture evidence.
 
 Build verification covers strict arm64 C++20/C++23 compile/link, signed APK
 contents/manifest, origin-transform/retained-trace host regressions and real Mesa
