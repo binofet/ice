@@ -214,9 +214,18 @@ Metagen; native runtime XML/compression codecs and typed materialization remain 
 Native JSON now reads/writes the existing owned data tree, with strict Unicode, exact
 64-bit integers, duplicate-key rejection and shared resource budgets. The generic
 command/session boundary is implemented in `ice::commands`; its descriptors reuse
-the existing scalar Metagen consumer. See [the contract](docs/commands.md). Scene
-editing, runtime scripting, durable history and collaborative authority remain later slices.
-See `Tools/MetagenIntegration/README.md` for the exact supported native contract.
+the existing scalar Metagen consumer. Ignition uses it for transactional scene edits,
+guarded local MCP commands and one-shot Lua authoring scripts. Optional Box2D/Jolt
+modules provide owned body identities, fixed ticks, queries and contact events. Jolt
+also owns grounded capsule motors with queued jumping, slopes, stairs and protected
+collision proxies. `ice::input` supplies semantic actions, source contributions and
+explicit context/tick frames. Ignition connects these to developer navigation and an
+attached desktop player camera, with disposable play checkpoints and authoring undo.
+Persistent tick/event gameplay scripts, general component attachment, durable history
+and collaborative authority remain later slices. See [commands](docs/commands.md),
+[scripting](docs/scripting.md), [physics](docs/physics.md),
+[input actions](docs/input-actions.md) and `Tools/MetagenIntegration/README.md` for
+the exact supported contracts.
 
 The cleanup retains CPU math, URI, glTF/animation, host/input, companion and data modules.
 Native AppKit/Win32/X11 windows no longer own graphics contexts. EngineTest, disposable
@@ -224,36 +233,38 @@ prototype games, old platform/device APIs and unused historical dependencies are
 Airhockey and SkeeBall source/art/physics snapshots remain in `examples`; they are not
 build targets until ported. Native iOS/Android/watchOS probes remain independent examples.
 
-1. The clean core/window checkpoint is merged into `master` at `249485d`. Complete review
-   of the first Metal/OpenGL parity slice and external Ignition boot study, including
-   C++20/23, real GPU captures, Linux software GPU and Windows cross-link coverage.
-2. The independent OpenXR stereo/action/lifecycle bootstrap now runs on Quest 3,
-   and the iOS companion uses shared Metal with native multiwindow surfaces. Continue
-   desktop text/IME and input routing for Ignition's terminal. Expand shared rendering
-   with buffers, textures, indexed meshes and depth before porting glTF materials.
-3. Connect typed command operations and prepared resource/data activation at a host boundary.
-   Inspect, pause/step, edit, capture, undo and save through a shared service; add MCP as a
-   client adapter. Add bounded interpreted scripting and staged script replacement.
-4. Re-establish animated glTF/materials on both backends, resource reload and retained
-   scene state. Extend the existing procedural renderer-switch proof to these resources;
-   add Vulkan and D3D12 against the same tests as hardware/capabilities allow.
-5. Add optional engine physics modules and port Airhockey/SkeeBall onto them. Mobile
-   companion/browser party input, QR join and multiple players remain useful integration
-   examples. Revisit SkeeBall tuning after that shared interaction stack works.
-6. Connect first-class mobile and Quest/OpenXR surfaces/input to the shared rendering and
-   session model. The Watch can be a lightweight
-   remote client; no current physical Watch deployment is claimed. AR-driven physical
-   interaction and screen casting are later experiments with explicit device capabilities.
-7. Run docs/MCP-only exploratory agents once the surface is useful. Record reproducible
-   failures, missing capabilities and measurements; do not equate a generated scene with
-   correct physics or rendering merely because the command succeeded.
+1. Preserve the delivered C++20/23 core, Metal/OpenGL, typed commands, Lua authoring,
+   semantic input and grounded-character contracts. Keep native GPU and cross-platform
+   gates before advancing tested dependency pins. Windows currently has cross-link
+   coverage rather than observed runtime behavior.
+2. Make scene state queryable per object, support bounded inspection/replanning, and
+   expose complete authoring operations. Route model camera intents through the separate
+   view service; report confirmed effects rather than treating an inspection as an edit.
+3. Prove one Mac-authoritative room rendered on Mac, iPad and Quest, initially using the
+   prebundled asset catalog. Define stable identities, published snapshots, asset hashes,
+   late join/reconnect and participant-local views. The iPad needs an Ignition Metal
+   client; Quest needs shared rendering into acquired OpenXR eye images. Current probes
+   are separate proofs, and companion/browser transport is not generic scene replication.
+4. Build reusable entity/component recipes, persistent tick/event scripts and durable
+   prototype catalogs. Keep simulation/player motion separate from authoring revisions;
+   add named cameras and RTS rigs through the existing view/input contracts.
+5. Extend shared rendering to UV/material inputs and animated/skinned glTF on both
+   backends. Preserve those resources through renderer replacement; add Vulkan and D3D12
+   as capabilities and test hardware allow. The first shared room need not wait for this.
+6. Port Airhockey/SkeeBall onto shared rendering and physics. Restore mobile/browser
+   interaction before SkeeBall tuning. Watch clients, PC-rendered XR, AR interaction and
+   casting remain future host profiles; no physical Watch deployment is claimed.
+7. Continue docs/MCP-only exploratory agents. Record reproducible failures and evidence;
+   a successful invocation alone does not establish correct gameplay, physics or rendering.
 
 Ignition's private design records the teapot/bunny conversation as a planned acceptance
 scenario. It requires contextual scene selection, PBR chrome/environment lighting, fur,
 deformable bodies, instanced construction, bounded automatic spawning, first-person input
 and rigged physics ragdolls. These capabilities are not implemented by this cleanup.
 A static bunny asset does not supply skeleton/joints/limits or skin weights automatically.
-Each operation should be inspectable and independently undoable while the session stays live.
+Authored operations should be inspectable and undoable in authoring mode. Play disables
+undo, including paused play, and stop restores the authored checkpoint; runtime undo
+remains a separate problem.
 
 ## Live sound authoring and collaborative rooms
 
