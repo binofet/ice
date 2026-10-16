@@ -26,7 +26,7 @@ or prepared-resource owner retires.
 `import_destination(gl::destination_description)` validates an existing,
 single-sample, single-layer `GL_TEXTURE_2D` image, exact dimensions/internal format,
 context identity and framebuffer completeness. Exact texture-level interrogation
-requires GLES3.1 or newer; a GLES3.0-only device reports unsupported import. The
+requires GLES3.1 or newer; a GLES3.0-only device reports unsupported import.
 One native color name has one live wrapper/lease owner per device; duplicate
 imports reject until that wrapper retires. The wrapper owns only its cached FBO and local Depth24 storage. It never deletes the
 runtime color image. No OpenXR SDK handles enter this API.
