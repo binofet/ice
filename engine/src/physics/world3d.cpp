@@ -13,6 +13,7 @@
 #include <Jolt/Physics/Character/CharacterVirtual.h>
 #include <Jolt/Physics/Collision/CastResult.h>
 #include <Jolt/Physics/Collision/ContactListener.h>
+#include <Jolt/Physics/Collision/PhysicsMaterial.h>
 #include <Jolt/Physics/Collision/RayCast.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
@@ -69,6 +70,7 @@ bool valid_static_pose(const JPH::Shape &shape, const math::vec3 &position,
 	return true;
 }
 struct backend_runtime {
+	JPH::RefConst<JPH::PhysicsMaterial> default_material;
 	backend_runtime() {
 		// One module-owned registration lifetime, shared by all independent ICE worlds.
 		if (JPH::Factory::sInstance)
@@ -76,9 +78,14 @@ struct backend_runtime {
 		JPH::RegisterDefaultAllocator();
 		JPH::Factory::sInstance = new JPH::Factory();
 		JPH::RegisterTypes();
+		default_material = JPH::PhysicsMaterial::sDefault;
 	}
 	~backend_runtime() {
-		JPH::UnregisterTypes();
+		// Global cooked owners can retire after Jolt's sDefault RefConst destructor.
+		// UnregisterTypes assigns into that global, so split its two cleanup actions:
+		// clear the registry here, and let each material reference release naturally.
+		// Our independent reference keeps material storage alive in either exit order.
+		JPH::Factory::sInstance->Clear();
 		delete JPH::Factory::sInstance;
 		JPH::Factory::sInstance = nullptr;
 	}

@@ -16,3 +16,5 @@
 # Python quality-tool and schema-reader caches.
 __pycache__/
 *.py[cod]
+/Tools/NetworkMetadata/bin/
+/Tools/NetworkMetadata/obj/
