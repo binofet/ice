@@ -31,7 +31,14 @@ instance loss; ICE's existing host observes application activity. Opaque stereo 
 support is checked before rendering. Normal exit requests a session stop and observes
 STOPPING before ending it; a two-second stop-event deadline permits final handle
 destruction if the runtime is lost or stops responding. Head/controller tracking poses and actions
-remain explicit OpenXR values in this probe, pending a shared XR pose/action API.
+remain explicit OpenXR values in this probe. The reusable client boundary additionally
+reports native Touch thumbsticks, squeeze pressure and the separate tracked aim pose.
+Clients can supply a rigid yaw/translation `world_from_room()` navigation transform
+without changing the retained physical room anchor. The host samples it before the
+one application update and refreshes head/grip/aim afterward; both eyes use that
+post-update reference, so teleport/snap does not advance simulation twice. The lab
+default remains identity; application navigation policy belongs to its client.
+Nonfinite, scaled, tilted or reflected navigation rejects with a diagnostic.
 If position/orientation is invalid the app submits no scene layer. Stage space is
 preferred; local space uses a synthetic floor 1.5 m below its initial origin.
 The room is placed in front of the first fully tracked head pose. Session stop/start

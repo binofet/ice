@@ -1,4 +1,5 @@
 #include "../view_camera.h"
+#include "../android/host.h"
 #include "../space_anchor.h"
 #include <cmath>
 #include <cstdio>
@@ -51,6 +52,39 @@ int main() {
 	auto after = make_eye_camera(glm::inverse(old_from_new) * reference_from_eye,
 	                             anchor.transform(), fov, 1600, 1440);
 	CHECK(after && close(after->view, first->view));
+	// App teleport/yaw transforms all native eye/grip/aim poses through the same reference.
+	const auto navigation =
+	    glm::translate(mat4(1), vec3(12, 0, -9)) * glm::rotate(mat4(1), .6f, vec3(0, 1, 0));
+	const auto room =
+	    glm::translate(mat4(1), vec3(1, -.2f, -3)) * glm::rotate(mat4(1), -.3f, vec3(0, 1, 0));
+	auto reference = make_world_reference(room, navigation);
+	CHECK(reference);
+	auto physical  = make_eye_camera(reference_from_eye, room, fov, 1600, 1440);
+	auto navigated = make_eye_camera(reference_from_eye, *reference, fov, 1600, 1440);
+	CHECK(physical && navigated &&
+	      close(glm::inverse(navigated->view), navigation * glm::inverse(physical->view)));
+	const auto grip = glm::translate(mat4(1), vec3(.3f, 1.2f, -.5f));
+	const auto aim  = grip * glm::rotate(mat4(1), .4f, vec3(1, 0, 0));
+	CHECK(close(glm::inverse(*reference) * grip, navigation * glm::inverse(room) * grip));
+	CHECK(close(glm::inverse(*reference) * aim, navigation * glm::inverse(room) * aim));
+	// One navigation snapshot gives both eyes the same update, preserving physical stereo spacing.
+	const auto left_eye = glm::translate(mat4(1), vec3(-.032f, 1.6f, 0));
+	auto       left     = make_eye_camera(left_eye, *reference, fov, 1600, 1440);
+	CHECK(left && std::abs(glm::length(left->eye - navigated->eye) - .064f) < 1e-4f);
+	// A simultaneous runtime recenter changes native coordinates, never application navigation.
+	auto shifted_reference = make_world_reference(glm::inverse(old_from_new) * room, navigation);
+	CHECK(shifted_reference);
+	auto recentered = make_eye_camera(glm::inverse(old_from_new) * reference_from_eye,
+	                                  *shifted_reference, fov, 1600, 1440);
+	CHECK(recentered && close(recentered->view, navigated->view));
+	// Navigation cannot tilt gravity, scale/shear/mirror the room, or introduce invalid numbers.
+	CHECK(!make_world_reference(room, glm::rotate(mat4(1), .3f, vec3(1, 0, 0))));
+	CHECK(!make_world_reference(room, glm::scale(mat4(1), vec3(2))));
+	CHECK(!make_world_reference(room, glm::scale(mat4(1), vec3(-1, 1, 1))));
+	CHECK(!make_world_reference(mat4(0), navigation));
+	auto invalid_navigation  = navigation;
+	invalid_navigation[3][0] = std::numeric_limits<float>::infinity();
+	CHECK(!make_world_reference(room, invalid_navigation));
 	// A synthetic local-reference floor moves native head height into canonical world Y.
 	auto local =
 	    make_eye_camera(mat4(1), glm::translate(mat4(1), vec3(0, -1.5f, 0)), fov, 1600, 1440);
@@ -64,5 +98,5 @@ int main() {
 	invalid[0][0] = std::numeric_limits<float>::quiet_NaN();
 	CHECK(!make_eye_camera(invalid, mat4(1), fov, 1600, 1440));
 	std::puts("XR cameras: asymmetric stereo, zero-to-one clip, retained origin and synthetic "
-	          "floor passed");
+	          "floor, application teleport/yaw and shared eye/grip/aim reference passed");
 }

@@ -29,6 +29,7 @@
 #include <string>
 #include <thread>
 #include <unistd.h>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -89,11 +90,12 @@ public:
 	}
 };
 struct controller_state {
-	XrSpace space = XR_NULL_HANDLE;
-	XrPath  hand  = XR_NULL_PATH;
-	XrPosef pose{};
-	float   trigger = 0;
-	bool    valid = false, primary = false;
+	XrSpace         space = XR_NULL_HANDLE, aim_space = XR_NULL_HANDLE;
+	XrPath          hand = XR_NULL_PATH;
+	XrPosef         pose{}, aim_pose{};
+	float           trigger = 0, squeeze = 0;
+	ice::math::vec2 thumbstick{0};
+	bool            valid = false, primary = false, aim_valid = false, thumbstick_active = false;
 };
 struct eye_target {
 	XrSwapchain                                                     swapchain = XR_NULL_HANDLE;
@@ -138,9 +140,12 @@ public:
 		for (auto &eye : eyes_)
 			if (eye.swapchain)
 				xrDestroySwapchain(eye.swapchain);
-		for (auto &controller : controllers_)
+		for (auto &controller : controllers_) {
 			if (controller.space)
 				xrDestroySpace(controller.space);
+			if (controller.aim_space)
+				xrDestroySpace(controller.aim_space);
+		}
 		if (space_)
 			xrDestroySpace(space_);
 		if (session_)
@@ -454,55 +459,20 @@ public:
 		observations.recording         = voice_active_;
 		observations.permission_needed = voice_permission_needed_;
 		observations.clip_saved        = voice_saved_;
-		if (observations.tracked) {
-			const auto &eye  = views[0];
-			const auto &pose = eye.pose;
-			const auto  reference_from_head =
-			    glm::translate(
-			        ice::math::mat4(1),
-			        ice::math::vec3((pose.position.x + views[1].pose.position.x) * .5f,
-			                        (pose.position.y + views[1].pose.position.y) * .5f,
-			                        (pose.position.z + views[1].pose.position.z) * .5f)) *
-			    glm::mat4_cast(glm::quat(pose.orientation.w, pose.orientation.x, pose.orientation.y,
-			                             pose.orientation.z));
-			auto head_camera = make_eye_camera(
-			    reference_from_head, reference_from_world(),
-			    {eye.fov.angleLeft, eye.fov.angleRight, eye.fov.angleDown, eye.fov.angleUp},
-			    int(eyes_[0].width), int(eyes_[0].height));
-			if (!head_camera) {
-				fail(head_camera.error().message);
-				render_ok            = false;
-				observations.tracked = false;
-			} else {
-				observations.head.position = head_camera->eye;
-				observations.head.orientation =
-				    glm::normalize(glm::quat_cast(glm::mat3(glm::inverse(head_camera->view))));
-			}
-		}
-		if (anchor_.ready()) {
-			const auto world_from_reference = glm::inverse(reference_from_world());
-			for (std::size_t hand = 0; hand < controllers_.size(); ++hand) {
-				const auto &source = controllers_[hand];
-				const auto &pose   = source.pose;
-				auto       &output = observations.controllers[hand];
-				output.valid       = source.valid && observations.focused && observations.tracked;
-				output.trigger     = output.valid ? source.trigger : 0;
-				output.primary     = output.valid && source.primary;
-				output.transform =
-				    world_from_reference *
-				    glm::translate(
-				        ice::math::mat4(1),
-				        ice::math::vec3(pose.position.x, pose.position.y, pose.position.z)) *
-				    glm::mat4_cast(glm::quat(pose.orientation.w, pose.orientation.x,
-				                             pose.orientation.y, pose.orientation.z));
-			}
-		}
-		// The authority is updated once here, never in either eye callback.
-		auto updated = application_.update(observations);
-		if (!updated) {
-			fail(updated.error().message);
+		if (render_ok && !refresh_observations(views, observations))
 			render_ok = false;
+		// The authority is updated once here, never in either eye callback. A rejected
+		// navigation/native frame is contained before application mutation or target clear.
+		if (render_ok) {
+			auto updated = application_.update(observations);
+			if (!updated) {
+				fail(updated.error().message);
+				render_ok = false;
+			}
 		}
+		// Navigation may change during update; refresh the same native samples once for both eyes.
+		if (render_ok && !refresh_observations(views, observations))
+			render_ok = false;
 		std::array<XrCompositionLayerProjectionView, 2> projection_views{};
 		submitted = render_ok && timing.shouldRender && observations.tracked;
 		if (submitted) {
@@ -559,6 +529,73 @@ public:
 	}
 
 private:
+	bool refresh_observations(const std::array<XrView, 2> &views, frame_observation &observations) {
+		auto reference =
+		    make_world_reference(reference_from_room(), application_.world_from_room());
+		if (!reference) {
+			observations.tracked = false;
+			return fail(reference.error().message);
+		}
+		reference_from_world_ = *reference;
+		if (observations.tracked) {
+			const auto &eye  = views[0];
+			const auto &pose = eye.pose;
+			const auto  reference_from_head =
+			    glm::translate(
+			        ice::math::mat4(1),
+			        ice::math::vec3((pose.position.x + views[1].pose.position.x) * .5f,
+			                        (pose.position.y + views[1].pose.position.y) * .5f,
+			                        (pose.position.z + views[1].pose.position.z) * .5f)) *
+			    glm::mat4_cast(glm::quat(pose.orientation.w, pose.orientation.x, pose.orientation.y,
+			                             pose.orientation.z));
+			auto head_camera = make_eye_camera(
+			    reference_from_head, reference_from_world_,
+			    {eye.fov.angleLeft, eye.fov.angleRight, eye.fov.angleDown, eye.fov.angleUp},
+			    int(eyes_[0].width), int(eyes_[0].height));
+			if (!head_camera) {
+				observations.tracked = false;
+				return fail(head_camera.error().message);
+			} else {
+				observations.head.position = head_camera->eye;
+				observations.head.orientation =
+				    glm::normalize(glm::quat_cast(glm::mat3(glm::inverse(head_camera->view))));
+			}
+		}
+		if (anchor_.ready()) {
+			const auto world_from_reference = glm::inverse(reference_from_world_);
+			for (std::size_t hand = 0; hand < controllers_.size(); ++hand) {
+				const auto &source = controllers_[hand];
+				const auto &pose   = source.pose;
+				auto       &output = observations.controllers[hand];
+				output.valid       = source.valid && observations.focused && observations.tracked;
+				output.trigger     = output.valid ? source.trigger : 0;
+				output.aim_valid = source.aim_valid && observations.focused && observations.tracked;
+				const bool usable        = output.valid || output.aim_valid;
+				output.primary           = usable && source.primary;
+				output.squeeze           = usable ? source.squeeze : 0;
+				output.thumbstick_active = usable && source.thumbstick_active;
+				output.thumbstick =
+				    output.thumbstick_active ? source.thumbstick : ice::math::vec2(0);
+				const auto &aim = source.aim_pose;
+				if (output.aim_valid)
+					output.aim_transform =
+					    world_from_reference *
+					    glm::translate(
+					        ice::math::mat4(1),
+					        ice::math::vec3(aim.position.x, aim.position.y, aim.position.z)) *
+					    glm::mat4_cast(glm::quat(aim.orientation.w, aim.orientation.x,
+					                             aim.orientation.y, aim.orientation.z));
+				output.transform =
+				    world_from_reference *
+				    glm::translate(
+				        ice::math::mat4(1),
+				        ice::math::vec3(pose.position.x, pose.position.y, pose.position.z)) *
+				    glm::mat4_cast(glm::quat(pose.orientation.w, pose.orientation.x,
+				                             pose.orientation.y, pose.orientation.z));
+			}
+		}
+		return true;
+	}
 	void release_owned_images() {
 		for (auto &eye : eyes_) {
 			if (!eye.acquired)
@@ -720,12 +757,30 @@ private:
 		if (!check(xrCreateAction(controller_actions_, &action, &grip_action_),
 		           "create grip action"))
 			return false;
+		std::snprintf(action.actionName, XR_MAX_ACTION_NAME_SIZE, "%s", "aim_pose");
+		std::snprintf(action.localizedActionName, XR_MAX_LOCALIZED_ACTION_NAME_SIZE, "%s",
+		              "Controller Aim");
+		if (!check(xrCreateAction(controller_actions_, &action, &aim_action_), "create aim action"))
+			return false;
 		action.actionType = XR_ACTION_TYPE_FLOAT_INPUT;
 		std::snprintf(action.actionName, XR_MAX_ACTION_NAME_SIZE, "%s", "trigger");
 		std::snprintf(action.localizedActionName, XR_MAX_LOCALIZED_ACTION_NAME_SIZE, "%s",
 		              "Trigger Pressure");
 		if (!check(xrCreateAction(controller_actions_, &action, &trigger_action_),
 		           "create trigger action"))
+			return false;
+		std::snprintf(action.actionName, XR_MAX_ACTION_NAME_SIZE, "%s", "squeeze");
+		std::snprintf(action.localizedActionName, XR_MAX_LOCALIZED_ACTION_NAME_SIZE, "%s",
+		              "Grip Squeeze");
+		if (!check(xrCreateAction(controller_actions_, &action, &squeeze_action_),
+		           "create squeeze action"))
+			return false;
+		action.actionType = XR_ACTION_TYPE_VECTOR2F_INPUT;
+		std::snprintf(action.actionName, XR_MAX_ACTION_NAME_SIZE, "%s", "thumbstick");
+		std::snprintf(action.localizedActionName, XR_MAX_LOCALIZED_ACTION_NAME_SIZE, "%s",
+		              "Controller Thumbstick");
+		if (!check(xrCreateAction(controller_actions_, &action, &thumbstick_action_),
+		           "create thumbstick action"))
 			return false;
 		action.actionType          = XR_ACTION_TYPE_BOOLEAN_INPUT;
 		action.countSubactionPaths = 1;
@@ -742,18 +797,24 @@ private:
 		if (!check(xrCreateAction(controller_actions_, &action, &primary_action_),
 		           "create primary button action"))
 			return false;
-		std::array<XrActionSuggestedBinding, 7> bindings{};
-		const std::array<const char *, 7>       paths{
-            "/user/hand/left/input/grip/pose",     "/user/hand/right/input/grip/pose",
-            "/user/hand/left/input/trigger/value", "/user/hand/right/input/trigger/value",
-            "/user/hand/left/input/x/click",       "/user/hand/left/input/y/click",
-            "/user/hand/right/input/a/click"};
+		std::array<XrActionSuggestedBinding, 13>                bindings{};
+		const std::array<std::pair<XrAction, const char *>, 13> paths{
+		    {{grip_action_, "/user/hand/left/input/grip/pose"},
+		     {grip_action_, "/user/hand/right/input/grip/pose"},
+		     {aim_action_, "/user/hand/left/input/aim/pose"},
+		     {aim_action_, "/user/hand/right/input/aim/pose"},
+		     {trigger_action_, "/user/hand/left/input/trigger/value"},
+		     {trigger_action_, "/user/hand/right/input/trigger/value"},
+		     {squeeze_action_, "/user/hand/left/input/squeeze/value"},
+		     {squeeze_action_, "/user/hand/right/input/squeeze/value"},
+		     {thumbstick_action_, "/user/hand/left/input/thumbstick"},
+		     {thumbstick_action_, "/user/hand/right/input/thumbstick"},
+		     {voice_action_, "/user/hand/left/input/x/click"},
+		     {primary_action_, "/user/hand/left/input/y/click"},
+		     {primary_action_, "/user/hand/right/input/a/click"}}};
 		for (std::size_t index = 0; index < bindings.size(); ++index) {
-			bindings[index].action = index < 2    ? grip_action_
-			                         : index < 4  ? trigger_action_
-			                         : index == 4 ? voice_action_
-			                                      : primary_action_;
-			if (!check(xrStringToPath(instance_, paths[index], &bindings[index].binding),
+			bindings[index].action = paths[index].first;
+			if (!check(xrStringToPath(instance_, paths[index].second, &bindings[index].binding),
 			           "controller binding path"))
 				return false;
 		}
@@ -782,14 +843,19 @@ private:
 			if (!check(xrCreateActionSpace(session_, &create, &controller.space),
 			           "create controller grip space"))
 				return false;
+			create.action = aim_action_;
+			if (!check(xrCreateActionSpace(session_, &create, &controller.aim_space),
+			           "create controller aim space"))
+				return false;
 		}
 		return true;
 	}
 	bool update_controllers(XrTime display_time) {
 		for (auto &controller : controllers_) {
-			controller.valid   = false;
-			controller.trigger = 0;
-			controller.primary = false;
+			controller.valid = controller.aim_valid = controller.primary = false;
+			controller.trigger = controller.squeeze = 0;
+			controller.thumbstick                   = {};
+			controller.thumbstick_active            = false;
 		}
 		if (!application_active_) {
 			cancel_voice("controller focus lost");
@@ -809,27 +875,51 @@ private:
 			return false;
 		for (auto &controller : controllers_) {
 			auto get          = xr_structure<XrActionStateGetInfo>(XR_TYPE_ACTION_STATE_GET_INFO);
-			get.action        = grip_action_;
 			get.subactionPath = controller.hand;
-			auto pose         = xr_structure<XrActionStatePose>(XR_TYPE_ACTION_STATE_POSE);
-			if (!check(xrGetActionStatePose(session_, &get, &pose), "read grip action"))
+			auto pose         = [&](XrAction action, XrSpace space, XrPosef &output, bool &valid) {
+                get.action = action;
+                auto state = xr_structure<XrActionStatePose>(XR_TYPE_ACTION_STATE_POSE);
+                if (!check(xrGetActionStatePose(session_, &get, &state),
+				                   "read controller pose action"))
+                    return false;
+                if (!state.isActive)
+                    return true;
+                auto location = xr_structure<XrSpaceLocation>(XR_TYPE_SPACE_LOCATION);
+                if (!check(xrLocateSpace(space, space_, display_time, &location),
+				                   "locate controller pose"))
+                    return false;
+                constexpr XrSpaceLocationFlags flags =
+                    XR_SPACE_LOCATION_ORIENTATION_VALID_BIT | XR_SPACE_LOCATION_POSITION_VALID_BIT;
+                valid  = (location.locationFlags & flags) == flags;
+                output = location.pose;
+                return true;
+			};
+			if (!pose(grip_action_, controller.space, controller.pose, controller.valid) ||
+			    !pose(aim_action_, controller.aim_space, controller.aim_pose, controller.aim_valid))
 				return false;
-			if (!pose.isActive)
-				continue;
-			auto location = xr_structure<XrSpaceLocation>(XR_TYPE_SPACE_LOCATION);
-			if (!check(xrLocateSpace(controller.space, space_, display_time, &location),
-			           "locate controller grip"))
+			auto scalar = [&](XrAction action, float &output) {
+				get.action = action;
+				auto state = xr_structure<XrActionStateFloat>(XR_TYPE_ACTION_STATE_FLOAT);
+				if (!check(xrGetActionStateFloat(session_, &get, &state),
+				           "read controller pressure"))
+					return false;
+				if (state.isActive && std::isfinite(state.currentState))
+					output = std::clamp(state.currentState, 0.f, 1.f);
+				return true;
+			};
+			if (!scalar(trigger_action_, controller.trigger) ||
+			    !scalar(squeeze_action_, controller.squeeze))
 				return false;
-			constexpr XrSpaceLocationFlags valid =
-			    XR_SPACE_LOCATION_ORIENTATION_VALID_BIT | XR_SPACE_LOCATION_POSITION_VALID_BIT;
-			controller.valid = (location.locationFlags & valid) == valid;
-			controller.pose  = location.pose;
-			get.action       = trigger_action_;
-			auto trigger     = xr_structure<XrActionStateFloat>(XR_TYPE_ACTION_STATE_FLOAT);
-			if (!check(xrGetActionStateFloat(session_, &get, &trigger), "read trigger action"))
+			get.action = thumbstick_action_;
+			auto stick = xr_structure<XrActionStateVector2f>(XR_TYPE_ACTION_STATE_VECTOR2F);
+			if (!check(xrGetActionStateVector2f(session_, &get, &stick), "read thumbstick action"))
 				return false;
-			if (trigger.isActive && std::isfinite(trigger.currentState))
-				controller.trigger = std::clamp(trigger.currentState, 0.f, 1.f);
+			if (stick.isActive && std::isfinite(stick.currentState.x) &&
+			    std::isfinite(stick.currentState.y)) {
+				controller.thumbstick_active = true;
+				controller.thumbstick        = {std::clamp(stick.currentState.x, -1.f, 1.f),
+				                                std::clamp(stick.currentState.y, -1.f, 1.f)};
+			}
 			get.action   = primary_action_;
 			auto primary = xr_structure<XrActionStateBoolean>(XR_TYPE_ACTION_STATE_BOOLEAN);
 			if (!check(xrGetActionStateBoolean(session_, &get, &primary), "read primary button"))
@@ -1139,7 +1229,7 @@ private:
 		       center.z, yaw);
 	}
 
-	ice::math::mat4 reference_from_world() const {
+	ice::math::mat4 reference_from_room() const {
 		return anchor_.transform() *
 		       glm::translate(ice::math::mat4(1), ice::math::vec3(0, floor_height_, 0));
 	}
@@ -1151,7 +1241,7 @@ private:
 		    glm::mat4_cast(glm::quat(pose.orientation.w, pose.orientation.x, pose.orientation.y,
 		                             pose.orientation.z));
 		auto camera = make_eye_camera(
-		    reference_from_eye, reference_from_world(),
+		    reference_from_eye, reference_from_world_,
 		    {view.fov.angleLeft, view.fov.angleRight, view.fov.angleDown, view.fov.angleUp},
 		    int(eye.width), int(eye.height));
 		bool ready = bool(camera);
@@ -1207,6 +1297,8 @@ private:
 	XrActionSet    controller_actions_ = XR_NULL_HANDLE;
 	XrAction       grip_action_ = XR_NULL_HANDLE, trigger_action_ = XR_NULL_HANDLE;
 	XrAction       voice_action_ = XR_NULL_HANDLE, primary_action_ = XR_NULL_HANDLE;
+	XrAction       aim_action_ = XR_NULL_HANDLE, squeeze_action_ = XR_NULL_HANDLE,
+	         thumbstick_action_ = XR_NULL_HANDLE;
 	std::array<controller_state, 2> controllers_;
 	ice::audio::android_capture     microphone_;
 	bool voice_active_ = false, voice_armed_ = false, voice_saved_ = false,
@@ -1220,6 +1312,7 @@ private:
 
 	XrReferenceSpaceType            space_type_ = XR_REFERENCE_SPACE_TYPE_LOCAL;
 	ice::examples::xr::space_anchor anchor_;
+	ice::math::mat4                 reference_from_world_{1};
 
 	std::array<eye_target, 2>             eyes_;
 	ice::render::gl::egl_binding          binding_;

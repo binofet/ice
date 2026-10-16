@@ -2,6 +2,7 @@
 #include "../view_camera.h"
 #include "ice/render/device.h"
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <string_view>
 
@@ -14,7 +15,48 @@ struct controller_sample {
 	bool            valid   = false;
 	/// Optional left-Y/right-A action; left-X remains exclusively push-to-talk.
 	bool primary = false;
+	/// Native Touch thumbstick axes in [-1,1]; neutral when inactive/unfocused.
+	ice::math::vec2 thumbstick{0};
+	/// Whether a focused finite native thumbstick action is active. Inactive is not neutral
+	/// release: clients must cancel/rearm pending actions rather than committing them.
+	bool thumbstick_active = false;
+	/// Native squeeze pressure in [0,1], distinct from the index trigger.
+	float squeeze = 0;
+	/// Tracked native aim pose in application world coordinates, independent of grip tracking.
+	ice::math::mat4 aim_transform{1};
+	/// Whether aim_transform is a valid tracked sample; never synthesize aim from the grip.
+	bool aim_valid = false;
 };
+/// Compose a physical room anchor with application-owned translation/yaw navigation.
+/// Reject nonfinite, nonrigid or tilted navigation; the physical anchor is never modified.
+/// The resulting matrix maps application world coordinates into native reference space.
+inline ice::expected<ice::math::mat4, ice::render::diagnostic>
+make_world_reference(const ice::math::mat4 &reference_from_room,
+                     const ice::math::mat4 &world_from_room) {
+	using namespace ice::math;
+	auto rigid = [](const mat4 &pose) {
+		for (float value : elements(pose))
+			if (!std::isfinite(value))
+				return false;
+		for (int n = 0; n < 3; ++n)
+			if (std::abs(glm::length(vec3(pose[n])) - 1.f) > 1e-4f || std::abs(pose[n][3]) > 1e-5f)
+				return false;
+		return std::abs(pose[3][3] - 1.f) < 1e-5f &&
+		       std::abs(glm::determinant(glm::mat3(pose)) - 1.f) < 1e-4f &&
+		       std::abs(glm::dot(vec3(pose[0]), vec3(pose[1]))) < 1e-4f &&
+		       std::abs(glm::dot(vec3(pose[0]), vec3(pose[2]))) < 1e-4f &&
+		       std::abs(glm::dot(vec3(pose[1]), vec3(pose[2]))) < 1e-4f;
+	};
+	if (!rigid(reference_from_room) || !rigid(world_from_room) ||
+	    glm::length(vec3(world_from_room[1]) - vec3(0, 1, 0)) > 1e-4f)
+		return ice::unexpected(ice::render::diagnostic{
+		    "Invalid room anchor or navigation: require rigid yaw and translation"});
+	auto result = reference_from_room * glm::inverse(world_from_room);
+	if (!rigid(result))
+		return ice::unexpected(
+		    ice::render::diagnostic{"Navigation reference cannot be represented"});
+	return result;
+}
 /// One native frame's immutable observations, shared by both eyes; no application clock is owned.
 struct frame_observation {
 	std::uint64_t                    index             = 0;
@@ -36,6 +78,10 @@ public:
 	/// Report foreground/focused state; cancel held controls and suspend/resume the one
 	/// application.
 	virtual void lifecycle(bool active) = 0;
+	/// Application-owned rigid yaw/translation from retained physical room to application world.
+	/// Called before update and again afterward; teleport/snap applies to both eyes that frame.
+	/// It must not advance simulation, mutate anchors or perform native graphics work.
+	virtual ice::math::mat4 world_from_room() const { return ice::math::mat4(1); }
 	/// Advance at most once per native frame, before either eye, including frames with no layer.
 	virtual ice::expected<void, ice::render::diagnostic> update(const frame_observation &frame) = 0;
 	/// Return borrowed draws valid until the synchronous encoder completes, before the next eye.
