@@ -54,11 +54,12 @@
     {
       "name": "headless-tiny",
       "inherits": "headless-debug",
-      "displayName": "Minimal headless core (no physics downloads)",
+      "displayName": "Minimal headless core (no physics or scripting downloads)",
       "binaryDir": "${sourceDir}/build/headless-tiny",
       "cacheVariables": {
         "ICE_BUILD_PHYSICS_2D": "OFF",
-        "ICE_BUILD_PHYSICS_3D": "OFF"
+        "ICE_BUILD_PHYSICS_3D": "OFF",
+        "ICE_BUILD_SCRIPTING": "OFF"
       }
     }
   ],

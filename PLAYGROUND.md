@@ -47,14 +47,32 @@ Generate C/C++ declarations and ABI adapters, serializers, migration scaffolding
 
 The scalar settings proof and rich graph/container conformance now establish native round trips, migration and independent provider/generator examples. Continue proving concrete consumers before expanding the attribute library. Cache compiler outputs so shipping an ordinary native build can consume generated artifacts without starting .NET.
 
-## Four languages, different jobs
+## Language runtimes and shared bindings
 
-- Lua: compact embedded gameplay/configuration with an interpreter baseline; optional JIT where the target permits it. The old binding was removed and does not define the new interface.
-- Python: experiments, numerical tools, asset pipelines and automation. Use batch interfaces instead of crossing into Python per particle or per vertex.
-- C#: authored object definitions and optionally managed gameplay/tools. Define whether a module uses hosted .NET or Native AOT. Native AOT can export explicit C entry points; it does not mean arbitrary managed plugins can be hot-reloaded. [Native AOT interop](https://learn.microsoft.com/en-us/dotnet/core/deploying/native-aot/interop).
-- JavaScript: interactive tools and experiments. Choose and isolate a runtime when the first sample needs one; require jobs, error handling and lifetime ownership to be explicit.
+- Interpreted Lua: the first compact embedded gameplay runtime, with protected calls,
+  bounded memory/instructions, source URI diagnostics and prepared replacement.
+- LuaJIT: an additional optional backend, with explicit language compatibility and JIT
+  capability reporting. It is not assumed to accept every script authored for newer Lua.
+- CPython: experiments, numerical tools, asset pipelines and automation. Use batch
+  interfaces instead of crossing into Python per particle or per vertex.
+- Hosted .NET, with C# as the primary gameplay/tool language: distinct from the existing
+  C# Metagen source provider. Native AOT is another deployment profile, not arbitrary
+  assembly hot reload. [Native AOT interop](https://learn.microsoft.com/en-us/dotnet/core/deploying/native-aot/interop).
+- V8: the JavaScript runtime adapter, with explicit jobs, isolate ownership, termination,
+  resource budgets and platform capabilities.
 
-All adapters share Metagen schema semantics and ABI rules. C# assemblies and Python definitions are alternative authoring inputs; a universal garbage collector is not required. Each runtime owns its managed objects; native handles mediate references. Unload/reload needs generations and explicit teardown so stale callbacks cannot invoke dead runtimes. None of these runtimes is implemented by the new event foundation.
+All adapters share Metagen schema semantics and ABI rules. C# assemblies and Python
+definitions are already alternative authoring inputs; that does not embed either runtime
+in the engine. Each runtime owns its managed objects; native handles mediate references.
+Unload/reload needs generations and explicit teardown so stale callbacks cannot invoke
+dead runtimes. Implement and prove interpreted Lua first, then optional .NET/C#, CPython,
+V8 and LuaJIT consumers of the same binding contracts. Do not turn every target into a
+mandatory SDK download. Report interpreter/JIT/AOT and isolation capabilities per target;
+an in-process interpreter is not a security boundary against native extension failures.
+
+Use [entity composition](docs/object-composition.md) for gameplay: stable objects with
+optional render, material, body, script and trigger features. Scripting must drive those
+features through the same validated scene operations available to humans and agents.
 
 ## Rendering across eras
 

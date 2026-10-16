@@ -44,6 +44,7 @@ though the optional companion protocol tests use local sockets. Select
 | `ice::assets` | CPU glTF import, animation/skinning, primitive meshes and camera math |
 | `ice::render` | Backend selection, URI pipelines, indexed/procedural batches, depth, blending and captures |
 | `ice::physics2d`, `ice::physics3d` | Default Box2D/Jolt adapters with explicit fixed ticks and owned body identities |
+| `ice::script_lua` | Protected interpreted Lua calls with explicit memory/instruction budgets |
 | `ice::metal`, `ice::opengl` | Native backends with independently retained resource lifetimes |
 | `ice::meta`, `ice::data` | Scalar settings proof and validated rich graph preparation/publication |
 | `ice::commands` | Optional headless command discovery, schema validation, session revisions and bounded retry receipts |
@@ -53,7 +54,9 @@ though the optional companion protocol tests use local sockets. Select
 Disable `ICE_BUILD_DESKTOP`, `ICE_BUILD_METAL`, `ICE_BUILD_OPENGL`,
 `ICE_BUILD_COMPANION` and `ICE_BUILD_TOOLS` for a minimal headless build. The
 `headless-debug` preset sets all five. `headless-tiny` also disables both physics
-modules and their downloads. Applications can link only the modules they use.
+modules and `ICE_BUILD_SCRIPTING`, including their downloads. Applications can link
+only the modules they use. Additional .NET/C#, CPython, V8 and LuaJIT adapters remain
+planned; Metagen source providers do not embed those gameplay runtimes.
 
 Metal is enabled by default on supported Apple SDKs; desktop OpenGL defaults to the
 desktop-window option. Linux GPU tests can run with Mesa under `xvfb-run -a` and

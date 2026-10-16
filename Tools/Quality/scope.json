@@ -74,7 +74,10 @@
     "engine/src/assets/primitive_mesh.cpp",
     "tests/physics2d.cpp",
     "tests/physics3d.cpp",
-    "tests/primitive_mesh.cpp"
+    "tests/primitive_mesh.cpp",
+    "engine/include/ice/script/lua_program.h",
+    "engine/src/script/lua_program.cpp",
+    "tests/script_lua.cpp"
   ],
   "lint": [
     "tests/mesh.cpp",
@@ -112,7 +115,9 @@
     "engine/src/assets/primitive_mesh.cpp",
     "tests/physics2d.cpp",
     "tests/physics3d.cpp",
-    "tests/primitive_mesh.cpp"
+    "tests/primitive_mesh.cpp",
+    "engine/src/script/lua_program.cpp",
+    "tests/script_lua.cpp"
   ],
   "lint_platform": {
     "Darwin": [

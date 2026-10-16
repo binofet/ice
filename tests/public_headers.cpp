@@ -26,6 +26,9 @@
 #include "ice/render/live_pipeline.h"
 #include "ice/render/scene_camera.h"
 #include "ice/render/shader_snapshot.h"
+#ifdef ICE_HAS_SCRIPTING
+#include "ice/script/lua_program.h"
+#endif
 #ifdef ICE_HAS_METAL
 #include "ice/render/metal/device.h"
 #endif
