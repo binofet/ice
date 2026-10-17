@@ -65,7 +65,7 @@ public:
 	bool make_current() override {
 		return eglMakeCurrent(owner->display, surface, surface, context) == EGL_TRUE;
 	}
-	void resize(int, int) override {}
+	void resize([[maybe_unused]] int width, [[maybe_unused]] int height) override {}
 	bool present() override { return false; } // No implicit Android/native swap or runtime release.
 	raw_proc resolve(const char *name) override {
 		auto result = reinterpret_cast<raw_proc>(eglGetProcAddress(name));

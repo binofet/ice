@@ -116,6 +116,17 @@ public:
 	/// are contained by the host; this is not a background thread or an Android foreground
 	/// service guarantee, and OS process suspension/termination still stops polling.
 	virtual void poll_services() {}
+	/// Synchronously cancel presentation/synthesis immediately before actual microphone start,
+	/// after permission, negotiated input and bounded PCM preparation. Called on this owner
+	/// thread; rejection/exception prevents capture. Every attempted call is balanced by one
+	/// after_microphone_stop, including a rejected/throwing call. Defaults preserve existing
+	/// clients. Do not start capture or retain native frame resources from this callback.
+	virtual ice::expected<void, ice::audio::diagnostic> before_microphone_start() { return {}; }
+	/// Balance an attempted before_microphone_start after native stop/close is attempted, even
+	/// on startup failure, focus loss or teardown. Exceptions are contained. A stop diagnostic
+	/// does not prove hardware cessation. False requires keeping output suppressed until native
+	/// uncertainty is explicitly resolved; no notification permits replaying cancelled audio.
+	virtual void after_microphone_stop([[maybe_unused]] bool native_stop_confirmed) {}
 	/// Application-owned rigid yaw/translation from retained physical room to application world.
 	/// Called before update and again afterward; teleport/snap applies to both eyes that frame.
 	/// It must not advance simulation, mutate anchors or perform native graphics work.

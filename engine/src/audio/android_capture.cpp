@@ -5,6 +5,7 @@
 #include <chrono>
 #include <new>
 #include <optional>
+#include <utility>
 
 namespace ice::audio {
 namespace {
@@ -15,11 +16,14 @@ diagnostic native_error(const char *operation, aaudio_result_t code) {
 struct android_capture::implementation {
 	AAudioStream                         *stream = nullptr;
 	std::optional<capture_buffer>         capture;
-	std::int32_t                          xruns = 0;
+	std::int32_t                          xruns       = 0;
+	std::uint32_t                         duration_ms = 0;
+	bool                                  started     = false;
 	std::chrono::steady_clock::time_point deadline;
 	~implementation() {
 		if (stream) {
-			AAudioStream_requestStop(stream);
+			if (started)
+				AAudioStream_requestStop(stream);
 			AAudioStream_close(stream);
 		}
 	}
@@ -27,7 +31,14 @@ struct android_capture::implementation {
 android_capture::android_capture()  = default;
 android_capture::~android_capture() = default;
 ice::expected<void, diagnostic> android_capture::start(std::uint32_t duration_ms) {
-	if (recording())
+	auto prepared = prepare(duration_ms);
+	return prepared ? start_prepared() : prepared;
+}
+ice::expected<void, diagnostic> android_capture::prepare(std::uint32_t duration_ms) {
+	if (stop_failure_)
+		return ice::unexpected(
+		    native_error("Prior microphone stop/close was not confirmed", stop_failure_));
+	if (state_ && state_->stream)
 		return ice::unexpected(diagnostic{"Microphone capture is already active"});
 	if (!duration_ms || duration_ms > 10000)
 		return ice::unexpected(diagnostic{"Microphone capture requires 1..10000 ms"});
@@ -56,16 +67,28 @@ ice::expected<void, diagnostic> android_capture::start(std::uint32_t duration_ms
 		if (!buffer)
 			return ice::unexpected(buffer.error());
 		candidate->capture.emplace(std::move(*buffer));
-		result = AAudioStream_requestStart(candidate->stream);
-		if (result != AAUDIO_OK)
-			return ice::unexpected(native_error("Start microphone input", result));
-		candidate->deadline =
-		    std::chrono::steady_clock::now() + std::chrono::milliseconds(duration_ms);
-		state_ = std::move(candidate);
+		candidate->duration_ms = duration_ms;
+		state_                 = std::move(candidate);
 		return {};
 	} catch (const std::bad_alloc &) {
 		return ice::unexpected(diagnostic{"Cannot allocate microphone capture owner"});
 	}
+}
+ice::expected<void, diagnostic> android_capture::start_prepared() {
+	if (!state_ || !state_->stream || !state_->capture || state_->started)
+		return ice::unexpected(diagnostic{"Microphone input is not prepared for start"});
+	const auto result = AAudioStream_requestStart(state_->stream);
+	if (result != AAUDIO_OK) {
+		auto cleanup = stop();
+		auto failure = native_error("Start microphone input", result);
+		if (!cleanup)
+			failure.message += "; cleanup: " + cleanup.error().message;
+		return ice::unexpected(std::move(failure));
+	}
+	state_->started = true;
+	state_->deadline =
+	    std::chrono::steady_clock::now() + std::chrono::milliseconds(state_->duration_ms);
+	return {};
 }
 ice::expected<void, diagnostic> android_capture::poll() {
 	if (!recording())
@@ -109,17 +132,25 @@ ice::expected<void, diagnostic> android_capture::poll() {
 	return {};
 }
 ice::expected<void, diagnostic> android_capture::stop() {
-	if (!recording())
+	if (stop_failure_)
+		return ice::unexpected(
+		    native_error("Prior microphone stop/close was not confirmed", stop_failure_));
+	if (!state_ || !state_->stream)
 		return {};
 	auto *stream       = state_->stream;
 	state_->stream     = nullptr;
-	const auto stopped = AAudioStream_requestStop(stream);
+	const auto stopped = state_->started ? AAudioStream_requestStop(stream) : AAUDIO_OK;
+	state_->started    = false;
 	const auto closed  = AAudioStream_close(stream);
-	if (closed != AAUDIO_OK)
+	if (closed != AAUDIO_OK) {
+		stop_failure_ = closed;
 		return ice::unexpected(native_error("Close microphone input", closed));
+	}
 	if (stopped != AAUDIO_OK && stopped != AAUDIO_ERROR_DISCONNECTED &&
-	    stopped != AAUDIO_ERROR_INVALID_STATE)
+	    stopped != AAUDIO_ERROR_INVALID_STATE) {
+		stop_failure_ = stopped;
 		return ice::unexpected(native_error("Stop microphone input", stopped));
+	}
 	return {};
 }
 void android_capture::discard() {
@@ -128,7 +159,7 @@ void android_capture::discard() {
 		state_->capture->reset();
 	state_.reset();
 }
-bool                  android_capture::recording() const { return state_ && state_->stream; }
+bool android_capture::recording() const { return state_ && state_->stream && state_->started; }
 const capture_buffer *android_capture::buffer() const {
 	return state_ && state_->capture ? &*state_->capture : nullptr;
 }
