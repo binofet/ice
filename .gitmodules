@@ -1,3 +1,3 @@
 [submodule "Tools/Metagen"]
-	path = Tools/Metagen
+	path = tools/metagen
 	url = git@github.com:binofet/metagen.git

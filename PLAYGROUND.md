@@ -24,16 +24,16 @@ Optional modules should be removable. A shader experiment should not require Pyt
 
 ## Metagen: authored schemas and shared consumers
 
-C# declarations and attributes compile into a definition DLL, which is authoritative for a C#-authored schema. Python declarations should also be able to author a schema, through an explicit Metagen provider and constrained metadata conventions. Choose one authoritative source per schema type; do not maintain equivalent C# and Python definitions by hand. Separate equivalence fixtures can describe the same test schema to verify the providers. The current scalar proof reads C# assemblies and passive Python declarations, and routes both through the consumption SDK. See [Tools/Metagen/README.md](Tools/Metagen/README.md).
+C# declarations and attributes compile into a definition DLL, which is authoritative for a C#-authored schema. Python declarations should also be able to author a schema, through an explicit Metagen provider and constrained metadata conventions. Choose one authoritative source per schema type; do not maintain equivalent C# and Python definitions by hand. Separate equivalence fixtures can describe the same test schema to verify the providers. The current scalar proof reads C# assemblies and passive Python declarations, and routes both through the consumption SDK. See [tools/metagen/README.md](tools/metagen/README.md).
 
 A shared Metagen reader interprets the reflected metadata consistently and exposes consumption interfaces. Emit a neutral manifest only when a real consumer benefits: native builds without .NET, language tools that cannot load managed assemblies, deployment compatibility checks, or small retro targets. Such a manifest is a derived view of a specific DLL, identified by a fingerprint and generator version, not a second source of truth. Compiler integration through [Roslyn](https://learn.microsoft.com/en-us/dotnet/api/microsoft.codeanalysis.iincrementalgenerator) is optional; an ordinary reflection-based generator is a valid first prototype. Use attribute metadata inspection where possible, so reading declarations does not execute gameplay or attribute constructors. Native and managed memory layout still remain separate from serialized and network formats.
 
 Metagen itself is a reusable consumption SDK, not an engine-specific file generator. A reflected model offers source identity, types, members, relationships, attribute values and diagnostics through queryable interfaces. Consumers need not repeat reflection logic or know how another consumer works.
 
 **Independent Metagen project.** The toolkit now lives in a separate private repository,
-pinned by ICE as a Git submodule at `Tools/Metagen`. Its generic core and portable examples
+pinned by ICE as a Git submodule at `tools/metagen`. Its generic core and portable examples
 build/test without ICE. ICE's native consumers and generated caches live in
-[Tools/MetagenIntegration](Tools/MetagenIntegration/README.md). Public release remains a
+[tools/metagenintegration](tools/metagenintegration/README.md). Public release remains a
 separate decision after licensing, packaging, documentation and independent CI standards
 are met. See [DEVELOPMENT.md](DEVELOPMENT.md) for the dependency and branch strategy.
 
@@ -224,7 +224,7 @@ attached desktop player camera, with disposable play checkpoints and authoring u
 Persistent tick/event gameplay scripts, general component attachment, durable history
 and collaborative authority remain later slices. See [commands](docs/commands.md),
 [scripting](docs/scripting.md), [physics](docs/physics.md),
-[input actions](docs/input-actions.md) and `Tools/MetagenIntegration/README.md` for
+[input actions](docs/input-actions.md) and `tools/metagenintegration/README.md` for
 the exact supported contracts.
 
 The cleanup retains CPU math, URI, glTF/animation, host/input, companion and data modules.

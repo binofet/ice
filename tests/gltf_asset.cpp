@@ -17,7 +17,7 @@ int main(int argc, char **argv) {
 	std::string              root = argv[1], diagnostics;
 	ice::assets::scene_asset scene;
 	for (const char *name : {"Interleaved.gltf", "Interleaved-embedded.gltf", "Interleaved.glb"}) {
-		CHECK(ice::assets::load_gltf(root + "/Interleaved/" + name, scene, diagnostics));
+		CHECK(ice::assets::load_gltf(root + "/interleaved/" + name, scene, diagnostics));
 		CHECK(scene.nodes.size() == 3 && scene.instances.size() == 2 &&
 		      scene.primitives.size() == 1);
 		CHECK(std::fabs(scene.primitives[0].vertices[0].color[0] - 128.f / 255) < .0001f);
@@ -29,15 +29,15 @@ int main(int argc, char **argv) {
 	CHECK(diagnostics.find("Cannot open") != std::string::npos && scene.source == source);
 	for (const char *name :
 	     {"unsupported.gltf", "truncated.gltf", "cycle.gltf", "animation.gltf"}) {
-		CHECK(!ice::assets::load_gltf(root + "/Interleaved/" + name, scene, diagnostics));
+		CHECK(!ice::assets::load_gltf(root + "/interleaved/" + name, scene, diagnostics));
 		CHECK(!diagnostics.empty() && scene.source == source);
 	}
-	CHECK(ice::assets::load_gltf(root + "/Sparse/Sparse.gltf", scene, diagnostics));
+	CHECK(ice::assets::load_gltf(root + "/sparse/Sparse.gltf", scene, diagnostics));
 	CHECK(scene.primitives[0].indices.size() == 3);
 	CHECK(scene.primitives[0].vertices[1].position[0] == 1 &&
 	      scene.primitives[0].vertices[0].normal[2] > .99f);
 	for (const char *name : {"RenderProbe.gltf", "RenderProbe-embedded.gltf", "RenderProbe.glb"}) {
-		CHECK(ice::assets::load_gltf(root + "/RenderProbe/" + name, scene, diagnostics));
+		CHECK(ice::assets::load_gltf(root + "/renderprobe/" + name, scene, diagnostics));
 		CHECK(scene.images.size() == 3 && scene.instances.size() == 6);
 		CHECK(scene.images[0].rgba[0] == 255 && scene.images[0].rgba[8 + 2] == 255);
 		CHECK(scene.materials[2].base_color_map.uv_set == 1);

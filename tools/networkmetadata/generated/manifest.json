@@ -1,0 +1,25 @@
+{
+  "artifacts": {
+    "network.discovery.generated.json": "442cc11285dfaab75bb51d675d668994f4e8d94e6f57f55f92d9721edafaea23",
+    "network.generated.h": "d36e6f61c2b8b8384cc06cce58add786c3be243fb6ba4504ba8ef613ef481000",
+    "network.policy.generated.json": "407601574deea0f06b5f3390a65ae1e08682dc818215202e291f063a55f101be",
+    "network.types.generated.h": "5266025b10c67b7431cff9e193fe5f6e30ba0c0ff669f33f38f98443b90f0402"
+  },
+  "formatter": "clang-format 18.1.8",
+  "generator": "ice.network.scalar/1",
+  "inputs": {
+    ".clang-format": "1d6cbb253368a5275c88c246c1605f507f2ffe81b0b0878d99d52a87f624238b",
+    "tools/networkmetadata/Attributes.cs": "62042bb0824d1f2de32fadc984a015ad18ffabe44079854ed22475abbed30425",
+    "tools/networkmetadata/Definitions.cs": "0e038cd44b09da3c0be6b0311a95fd933b4ca5031c3d0df3f84475cdd3844143",
+    "tools/networkmetadata/Generator.cs": "9d2413d783f1d62b3f2dadcbc2cf7774dd068ff1974a9c3f6a1523bdd7f58d2e",
+    "tools/networkmetadata/NetworkMetadata.csproj": "c8ffc0436c5daf5c5130beeda4a19a264d3dfce783dd9730dd79cc75b568b989",
+    "tools/networkmetadata/NuGet.Config": "9508cae5f76364f56e80eb97cb16493977243cf38e5cca6284e3d74f83b20a2c",
+    "tools/networkmetadata/Policy.cs": "8edac3366bfd0232e8a9d6813b88200fea51f279f46d1a2f8727fdf692785a12",
+    "tools/networkmetadata/Program.cs": "74ca2bc96b90d3145eb9a47a42b3dabd08d095b7c822f065fd2c9be94a703ff3",
+    "tools/networkmetadata/check.py": "3502ff06282fd2df59c78f82216be25e204fdee38dfe9cef54be05894445bdf1",
+    "tools/networkmetadata/fixtures.py": "272d5b1461786d99578e4b3f770a081087acd653a2993096cfa4ccc0ab1dffb0",
+    "tools/networkmetadata/native/runtime.h": "a7ff3cdd8f292ae192c3d1b05800269c8643e06b00aeee04d2d0870fd4b1d888"
+  },
+  "metagen_commit": "0db45440b115c8665e178c17b233c9b5688447f3",
+  "profile": "ice.network.scalar/1"
+}

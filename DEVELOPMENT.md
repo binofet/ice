@@ -22,18 +22,18 @@ protections/release automation are follow-up configuration, not already enabled 
 - ICE owns reusable runtime/platform/render/data APIs, native integration and tests.
 - Private Ignition owns the application experience, scenes and agent orchestration.
 
-ICE pins Metagen at `Tools/Metagen`. Ignition pins ICE at `deps/ice`. Git records exact
+ICE pins Metagen at `tools/metagen`. Ignition pins ICE at `deps/ice`. Git records exact
 commits, not automatically floating branches. Work on named branches inside submodules;
 commit/push a child before committing the parent's pointer. Review generated-cache and
 behavior changes in that parent update. A normal ICE build uses checked-in consumer
 caches and does not require private Metagen source; source regeneration is explicit.
 
 ```sh
-git submodule update --init Tools/Metagen
-# Inside Tools/Metagen: create/use a named branch, edit, validate, commit and push.
-python3 Tools/MetagenIntegration/check.py --update
-git add Tools/Metagen Tools/MetagenIntegration/Generated
-python3 Tools/MetagenIntegration/check.py --cached-only
+git submodule update --init tools/metagen
+# Inside tools/metagen: create/use a named branch, edit, validate, commit and push.
+python3 tools/metagenintegration/check.py --update
+git add tools/metagen tools/metagenintegration/generated
+python3 tools/metagenintegration/check.py --cached-only
 # Validate, review and commit the engine dependency update.
 ```
 

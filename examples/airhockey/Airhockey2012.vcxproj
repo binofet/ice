@@ -75,24 +75,24 @@
     <_ProjectFileVersion>11.0.60315.1</_ProjectFileVersion>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
-    <OutDir>$(SolutionDir)\GameFolder\</OutDir>
+    <OutDir>$(SolutionDir)\gamefolder\</OutDir>
     <IntDir>$(Configuration)\</IntDir>
     <LinkIncremental>true</LinkIncremental>
     <TargetName>$(ProjectName)D</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <OutDir>$(SolutionDir)\GameFolder\</OutDir>
+    <OutDir>$(SolutionDir)\gamefolder\</OutDir>
     <IntDir>$(Platform)\$(Configuration)\</IntDir>
     <LinkIncremental>true</LinkIncremental>
     <TargetName>$(ProjectName)Dx64</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
-    <OutDir>$(SolutionDir)\GameFolder\</OutDir>
+    <OutDir>$(SolutionDir)\gamefolder\</OutDir>
     <IntDir>$(Configuration)\</IntDir>
     <LinkIncremental>false</LinkIncremental>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <OutDir>$(SolutionDir)\GameFolder\</OutDir>
+    <OutDir>$(SolutionDir)\gamefolder\</OutDir>
     <IntDir>$(Platform)\$(Configuration)\</IntDir>
     <LinkIncremental>false</LinkIncremental>
     <TargetName>$(ProjectName)x64</TargetName>
@@ -100,7 +100,7 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>..\..\Common\libs;..\..\Engine\include;..\..\Engine\3rdparty;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\..\common\libs;..\..\Engine\include;..\..\Engine\3rdparty;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <MinimalRebuild>true</MinimalRebuild>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
@@ -126,7 +126,7 @@
     </Midl>
     <ClCompile>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>..\..\Common\libs;..\..\Engine\include;..\..\Engine\3rdparty;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\..\common\libs;..\..\Engine\include;..\..\Engine\3rdparty;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <MinimalRebuild>true</MinimalRebuild>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
@@ -148,7 +148,7 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
-      <AdditionalIncludeDirectories>..\..\Common\libs;..\..\Engine\include;..\..\Engine\3rdparty;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\..\common\libs;..\..\Engine\include;..\..\Engine\3rdparty;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <PrecompiledHeader />
@@ -172,7 +172,7 @@
       <TargetEnvironment>X64</TargetEnvironment>
     </Midl>
     <ClCompile>
-      <AdditionalIncludeDirectories>..\..\Common\libs;..\..\Engine\include;..\..\Engine\3rdparty;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\..\common\libs;..\..\Engine\include;..\..\Engine\3rdparty;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <PrecompiledHeader />
@@ -224,20 +224,20 @@
     <ClCompile Include="Box2D\Dynamics\Joints\b2PrismaticJoint.cpp" />
     <ClCompile Include="Box2D\Dynamics\Joints\b2PulleyJoint.cpp" />
     <ClCompile Include="Box2D\Dynamics\Joints\b2RevoluteJoint.cpp" />
-    <ClCompile Include="Source\AiInput.cpp" />
-    <ClCompile Include="Source\airhockey.cpp" />
-    <ClCompile Include="Source\gamestate.cpp" />
-    <ClCompile Include="Source\main.cpp" />
-    <ClCompile Include="Source\main_menu.cpp" />
-    <ClCompile Include="Source\NetworkInput.cpp" />
-    <ClCompile Include="Source\net_menu.cpp" />
-    <ClCompile Include="Source\paddle.cpp" />
-    <ClCompile Include="Source\pause_menu.cpp" />
-    <ClCompile Include="Source\PlayerInput.cpp" />
-    <ClCompile Include="Source\puck.cpp" />
-    <ClCompile Include="Source\settings_menu.cpp" />
-    <ClCompile Include="Source\spinstate.cpp" />
-    <ClCompile Include="Source\table.cpp" />
+    <ClCompile Include="source\AiInput.cpp" />
+    <ClCompile Include="source\airhockey.cpp" />
+    <ClCompile Include="source\gamestate.cpp" />
+    <ClCompile Include="source\main.cpp" />
+    <ClCompile Include="source\main_menu.cpp" />
+    <ClCompile Include="source\NetworkInput.cpp" />
+    <ClCompile Include="source\net_menu.cpp" />
+    <ClCompile Include="source\paddle.cpp" />
+    <ClCompile Include="source\pause_menu.cpp" />
+    <ClCompile Include="source\PlayerInput.cpp" />
+    <ClCompile Include="source\puck.cpp" />
+    <ClCompile Include="source\settings_menu.cpp" />
+    <ClCompile Include="source\spinstate.cpp" />
+    <ClCompile Include="source\table.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Box2D\Box2D.h" />
@@ -272,21 +272,21 @@
     <ClInclude Include="Box2D\Dynamics\Joints\b2PulleyJoint.h" />
     <ClInclude Include="Box2D\Dynamics\Joints\b2RevoluteJoint.h" />
     <ClInclude Include="resource.h" />
-    <ClInclude Include="Source\AiInput.h" />
-    <ClInclude Include="Source\airhockey.h" />
-    <ClInclude Include="Source\airhockey_settings.h" />
-    <ClInclude Include="Source\gamestate.h" />
-    <ClInclude Include="Source\InputHandler.h" />
-    <ClInclude Include="Source\main_menu.h" />
-    <ClInclude Include="Source\NetworkInput.h" />
-    <ClInclude Include="Source\net_menu.h" />
-    <ClInclude Include="Source\paddle.h" />
-    <ClInclude Include="Source\pause_menu.h" />
-    <ClInclude Include="Source\PlayerInput.h" />
-    <ClInclude Include="Source\puck.h" />
-    <ClInclude Include="Source\settings_menu.h" />
-    <ClInclude Include="Source\spinstate.h" />
-    <ClInclude Include="Source\table.h" />
+    <ClInclude Include="source\AiInput.h" />
+    <ClInclude Include="source\airhockey.h" />
+    <ClInclude Include="source\airhockey_settings.h" />
+    <ClInclude Include="source\gamestate.h" />
+    <ClInclude Include="source\InputHandler.h" />
+    <ClInclude Include="source\main_menu.h" />
+    <ClInclude Include="source\NetworkInput.h" />
+    <ClInclude Include="source\net_menu.h" />
+    <ClInclude Include="source\paddle.h" />
+    <ClInclude Include="source\pause_menu.h" />
+    <ClInclude Include="source\PlayerInput.h" />
+    <ClInclude Include="source\puck.h" />
+    <ClInclude Include="source\settings_menu.h" />
+    <ClInclude Include="source\spinstate.h" />
+    <ClInclude Include="source\table.h" />
   </ItemGroup>
   <ItemGroup>
     <Image Include="icon1.ico" />

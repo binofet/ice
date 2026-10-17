@@ -64,35 +64,35 @@ set(SOURCE_FILES
     Box2D/Dynamics/b2WorldCallbacks.cpp
     Box2D/Dynamics/b2WorldCallbacks.h
     Box2D/Box2D.h
-    Source/AiInput.cpp
-    Source/AiInput.h
-    Source/airhockey.cpp
-    Source/airhockey.h
-    Source/airhockey_settings.h
-    Source/gamestate.cpp
-    Source/gamestate.h
-    Source/InputHandler.h
-    Source/main.cpp
-    Source/main_menu.cpp
-    Source/main_menu.h
-    Source/net_menu.cpp
-    Source/net_menu.h
-    Source/NetworkInput.cpp
-    Source/NetworkInput.h
-    Source/paddle.cpp
-    Source/paddle.h
-    Source/pause_menu.cpp
-    Source/pause_menu.h
-    Source/PlayerInput.cpp
-    Source/PlayerInput.h
-    Source/puck.cpp
-    Source/puck.h
-    Source/settings_menu.cpp
-    Source/settings_menu.h
-    Source/spinstate.cpp
-    Source/spinstate.h
-    Source/table.cpp
-    Source/table.h)
+    source/AiInput.cpp
+    source/AiInput.h
+    source/airhockey.cpp
+    source/airhockey.h
+    source/airhockey_settings.h
+    source/gamestate.cpp
+    source/gamestate.h
+    source/InputHandler.h
+    source/main.cpp
+    source/main_menu.cpp
+    source/main_menu.h
+    source/net_menu.cpp
+    source/net_menu.h
+    source/NetworkInput.cpp
+    source/NetworkInput.h
+    source/paddle.cpp
+    source/paddle.h
+    source/pause_menu.cpp
+    source/pause_menu.h
+    source/PlayerInput.cpp
+    source/PlayerInput.h
+    source/puck.cpp
+    source/puck.h
+    source/settings_menu.cpp
+    source/settings_menu.h
+    source/spinstate.cpp
+    source/spinstate.h
+    source/table.cpp
+    source/table.h)
 
 include_directories( ../../engine/src ../../engine/include ../../engine/3rdparty )
 
@@ -101,8 +101,8 @@ add_executable(Airhockey MACOSX_BUNDLE ${SOURCE_FILES})
 target_link_libraries(Airhockey PRIVATE ICEngine)
 target_include_directories(Airhockey PRIVATE .)
 set_target_properties(Airhockey PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
-add_custom_command(TARGET Airhockey POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/GameFolder/Resource" "$<TARGET_FILE_DIR:Airhockey>/Resource")
-add_custom_command(TARGET Airhockey POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/GameFolder/settings.ini" "$<TARGET_FILE_DIR:Airhockey>/settings.ini")
+add_custom_command(TARGET Airhockey POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/gamefolder/resource" "$<TARGET_FILE_DIR:Airhockey>/resource")
+add_custom_command(TARGET Airhockey POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/gamefolder/settings.ini" "$<TARGET_FILE_DIR:Airhockey>/settings.ini")
 
 set_target_properties(Airhockey PROPERTIES MACOSX_BUNDLE_GUI_IDENTIFIER "com.infinitecombustion.airhockey" MACOSX_BUNDLE_BUNDLE_NAME "Airhockey" MACOSX_BUNDLE_BUNDLE_VERSION "0.1.0" MACOSX_BUNDLE_SHORT_VERSION_STRING "0.1.0")
 if(WIN32)
