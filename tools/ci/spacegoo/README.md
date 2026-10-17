@@ -117,6 +117,29 @@ account creation, shadow access, systemd isolation or provider integration.
 
 ## Remaining owner stages and real commissioning
 
+### One-command owner setup for the reviewed Spacegoo packet
+
+Joel can run the reviewed `owner_setup.py` wrapper as ordinary `jmax` over
+interactive SSH instead of copying the three handoff blocks. The wrapper is
+specific to packet `84e93cc` and the independently reviewed 42-action plan; it
+accepts no replacement paths, hashes or approval flags. It refuses root execution.
+Its `--check` mode checks the existing packet without sudo or filesystem changes.
+
+The owner-run wrapper first gives sudo only the literal system shell/install/hash
+commands from the reviewed handoff. After all eight sealed-file hashes match, it
+runs the sealed installer in read-only plan mode, independently recomputes the
+plan digest, and applies only the exact previously reviewed plan. The installer
+repeats preflight and enforces that same digest. Sudo prompts on the controlling
+terminal; the wrapper neither reads nor stores the password.
+
+Each invocation retains a fresh private `owner-command-*` record directory under
+the existing owner handoff directory. A failed or partial attempt stops without
+repair, deletion or retry. Existing root staging also refuses: ask the team to
+inspect the retained state rather than repeating the command. Successful output
+means **disabled foundation only**: no service, dispatch, sudo delegation, provider
+registration, CI job or spending setting is enabled. Later commissioning remains
+the separate work described below.
+
 These are explicit owner actions, not actions performed by importing these files.
 Do not execute an uninstalled checkout copy as root.
 
