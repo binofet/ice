@@ -1,6 +1,6 @@
 {
   "repository": "https://github.com/binofet/metagen",
-  "commit": "0db45440b115c8665e178c17b233c9b5688447f3",
+  "commit": "ebc053f1e3c057588e2e3c9a41592b7a57a4cea6",
   "files": {
     "containers.generated.h": "7137c13d33bf59ba40688caf754d56392a8517a8823f6b7e39ad4ad6a911d230",
     "data.generated.rs": "d311962ebf7cf5b5a6a6306a67a5c6ac7c3ca79fc5fe59a1ed3d1a1d2566d398",
