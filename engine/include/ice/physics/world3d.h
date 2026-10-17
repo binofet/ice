@@ -153,6 +153,35 @@ struct ray_hit3d {
 	/// Multiplier applied to the supplied ray displacement.
 	float fraction = 0;
 };
+/// One static nonsensor body's requested rigid pose; no shape/motion/player change is implied.
+struct body3d_pose_update {
+	body_id    body;
+	math::vec3 position{0};
+	math::quat rotation{1, 0, 0, 0};
+};
+/// Owner-thread prepared static-body poses. Preparation never changes the world. Preview poses
+/// are the exact accepted body-origin/quaternion readback, including off-origin collider math.
+/// Moving/discarding a plan is inert; its preview span expires on move, apply or destruction.
+class prepared_pose_batch {
+public:
+	prepared_pose_batch();
+	~prepared_pose_batch();
+	prepared_pose_batch(prepared_pose_batch &&) noexcept;
+	prepared_pose_batch &operator=(prepared_pose_batch &&) noexcept;
+	prepared_pose_batch(const prepared_pose_batch &)                           = delete;
+	prepared_pose_batch                &operator=(const prepared_pose_batch &) = delete;
+	std::span<const body3d_pose_update> poses() const noexcept;
+
+private:
+	friend class world3d;
+	struct implementation;
+	std::unique_ptr<implementation> state_;
+};
+#ifdef ICE_PHYSICS_POSE_BATCH_TESTING
+namespace detail {
+struct pose_batch_test_access;
+}
+#endif
 /// Explicit single-host-thread Jolt world, independent of windows and rendering.
 /// Fixed-step integration is approximate and not a cross-platform lockstep guarantee.
 /// A native step-budget error faults further stepping; inspection/destruction remain available.
@@ -178,10 +207,33 @@ public:
 	ice::expected<void, diagnostic> erase(body_id body);
 	/// Copy current body state without advancing simulation.
 	ice::expected<body3d_snapshot, diagnostic> inspect(body_id body) const;
-	/// Place a body explicitly, optionally clearing velocity; wake dynamic bodies.
+	/// Place a body explicitly, optionally clearing velocity; wake changed dynamic bodies.
+	/// Exact readback/equivalent normalized q/-q with no velocity reset is a no-op.
 	ice::expected<void, diagnostic> set_pose(body_id body, const math::vec3 &position,
 	                                         const math::quat &rotation,
 	                                         bool              reset_velocity = true);
+	/// Validate all unique live static nonsensor targets, poses and bounds, and allocate accepted
+	/// previews, native rollback journals and sleeping-neighbor wake lists before any mutation.
+	/// Span/journal/lock/wake capacity is max_bodies; support flags are bounded by max_characters.
+	/// No characters, sensors, heightfields/planes, dynamic/kinematic bodies or shape changes.
+	/// Empty/equivalent q/-q batches are no-ops. Plans are world/epoch-bound; every non-no-op
+	/// mutation invalidates them.
+	/// Normalized rotations within four float epsilons, including sign equivalents, retain the
+	/// existing canonical native quaternion. Each journal is capped at 128 bytes and validated.
+	ice::expected<prepared_pose_batch, diagnostic>
+	prepare_poses(std::span<const body3d_pose_update> updates) const;
+	/// Every attempt consumes its plan, including rejection. Valid plans survive moving their
+	/// world owner, and apply only to that moved-to owner; moved-from/destroyed/foreign worlds
+	/// reject. Changed apply/rollback/finalize allocates nothing in the supported native profile.
+	/// Preserve IDs, cooks, last-step contacts and character intent/jump; dirty affected support
+	/// until the next tick and wake overlapping sleeping dynamic bodies on success only.
+	/// Return whether any pose changed. Failure restores public state; broadphase caches may
+	/// conservatively widen. No step, collision sweep, OOM/crash containment or callbacks occur.
+	ice::expected<bool, diagnostic> apply_poses(prepared_pose_batch &&batch);
+	/// Native plan freshness only, not a command revision/permission or a cross-host clock.
+	/// Non-wrapping: changed operations reject at exhaustion; true no-ops remain available.
+	/// A native step attempt invalidates plans before touching state, even if it later faults.
+	std::uint64_t mutation_epoch() const noexcept;
 	/// Apply a center-of-mass impulse in kilogram-meters/second; only dynamic bodies accept it.
 	ice::expected<void, diagnostic> apply_impulse(body_id body, const math::vec3 &impulse);
 	/// Prepare a +Y-up capsule motor and protected collision proxy; failure preserves live actors.
@@ -227,8 +279,23 @@ public:
 	std::uint32_t character_count() const;
 
 private:
+#ifdef ICE_PHYSICS_POSE_BATCH_TESTING
+	friend struct detail::pose_batch_test_access;
+#endif
 	struct implementation;
 	explicit world3d(std::unique_ptr<implementation> state);
 	std::unique_ptr<implementation> state_;
 };
+#ifdef ICE_PHYSICS_POSE_BATCH_TESTING
+namespace detail {
+/// Fixture-only controls, absent from ordinary module builds; never a runtime capability.
+struct pose_batch_test_access {
+	static void          fail_after_writes(world3d &, std::size_t count);
+	static void          set_epoch(world3d &, std::uint64_t epoch);
+	static void          set_faulted(world3d &, bool faulted);
+	static std::uint64_t body_state_hash(const world3d &, body_id);
+	static std::uint64_t character_state_hash(const world3d &, character_id);
+};
+} // namespace detail
+#endif
 } // namespace ice::physics

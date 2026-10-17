@@ -10,6 +10,7 @@
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
 #include <Jolt/Physics/Body/BodyFilter.h>
 #include <Jolt/Physics/Body/BodyLock.h>
+#include <Jolt/Physics/Body/BodyLockMulti.h>
 #include <Jolt/Physics/Character/CharacterVirtual.h>
 #include <Jolt/Physics/Collision/CastResult.h>
 #include <Jolt/Physics/Collision/ContactListener.h>
@@ -23,13 +24,18 @@
 #include <Jolt/Physics/Collision/Shape/RotatedTranslatedShape.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
 #include <Jolt/Physics/PhysicsSystem.h>
+#include <Jolt/Physics/StateRecorder.h>
 #include <Jolt/RegisterTypes.h>
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <chrono>
 #include <cmath>
+#include <cstring>
 #include <limits>
 #include <stdexcept>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
 namespace ice::physics {
@@ -69,6 +75,58 @@ bool valid_static_pose(const JPH::Shape &shape, const math::vec3 &position,
 	}
 	return true;
 }
+bool equivalent_rotation(const JPH::Quat &first, const JPH::Quat &second) {
+	const auto a = portable(first), b = portable(second);
+	return std::min(glm::length(a - b), glm::length(a + b)) <=
+	       4 * std::numeric_limits<float>::epsilon();
+}
+bool static_pose_profile(const JPH::Body &body) {
+	if (!body.IsStatic() || body.IsSensor() || body.GetMotionPropertiesUnchecked())
+		return false;
+	// Only actor primitives/rest-bounds meshes in this first proof. Terrain/planes, compounds,
+	// dynamic/kinematic motion and character proxies do not enter the fast publication seam.
+	const auto type = body.GetShape()->GetSubType();
+	return type == JPH::EShapeSubType::Box || type == JPH::EShapeSubType::Sphere ||
+	       type == JPH::EShapeSubType::Capsule || type == JPH::EShapeSubType::Mesh;
+}
+// Pinned Jolt static SaveBodyState writes active, COM and rotation only. A fixed recorder
+// avoids stringstream allocation and preserves exact COM bytes during prefix rollback.
+struct static_pose_record final : JPH::StateRecorder {
+	static constexpr std::size_t    capacity = 128;
+	std::array<std::byte, capacity> bytes{};
+	std::size_t                     size = 0, cursor = 0;
+	bool                            failed = false;
+	void                            WriteBytes(const void *data, std::size_t count) override {
+        if (count > capacity - size) {
+            failed = true;
+            return;
+        }
+        std::memcpy(bytes.data() + size, data, count);
+        size += count;
+	}
+	void ReadBytes(void *data, std::size_t count) override {
+		if (count > size - cursor) {
+			failed = true;
+			return;
+		}
+		std::memcpy(data, bytes.data() + cursor, count);
+		cursor += count;
+	}
+	bool IsEOF() const override { return cursor == size; }
+	bool IsFailed() const override { return failed; }
+	void rewind() noexcept { cursor = 0; }
+	bool validate_static_payload() {
+		bool       active = true;
+		JPH::RVec3 position;
+		JPH::Quat  rotation;
+		Read(active);
+		Read(position);
+		Read(rotation);
+		const bool valid = !failed && IsEOF() && !active;
+		rewind();
+		return valid;
+	}
+};
 struct backend_runtime {
 	JPH::RefConst<JPH::PhysicsMaterial> default_material;
 	backend_runtime() {
@@ -273,6 +331,36 @@ struct contact_cache {
 };
 } // namespace
 
+struct prepared_pose_batch::implementation {
+	struct entry {
+		body_id            body;
+		JPH::BodyID        native_id;
+		JPH::RVec3         requested_origin = JPH::RVec3::sZero();
+		JPH::RVec3         accepted_com     = JPH::RVec3::sZero();
+		JPH::Quat          rotation         = JPH::Quat::sIdentity();
+		JPH::AABox         old_bounds, new_bounds;
+		static_pose_record before;
+		std::size_t        lock_index = 0;
+		bool               changed    = false;
+	};
+	std::uint64_t                   owner = 0, epoch = 0;
+	std::size_t                     changed_count = 0;
+	std::vector<entry>              entries;
+	std::vector<body3d_pose_update> previews;
+	// Immutable lock/journal indices never go through Jolt's mutable broadphase ID sort.
+	std::vector<JPH::BodyID> lock_ids, wake_ids;
+	std::vector<std::size_t> wake_lock_indices, dirty_characters;
+	diagnostic               rollback_error{"Static pose batch was rolled back"};
+};
+prepared_pose_batch::prepared_pose_batch()                                           = default;
+prepared_pose_batch::~prepared_pose_batch()                                          = default;
+prepared_pose_batch::prepared_pose_batch(prepared_pose_batch &&) noexcept            = default;
+prepared_pose_batch &prepared_pose_batch::operator=(prepared_pose_batch &&) noexcept = default;
+std::span<const body3d_pose_update> prepared_pose_batch::poses() const noexcept {
+	return state_ ? std::span<const body3d_pose_update>(state_->previews)
+	              : std::span<const body3d_pose_update>{};
+}
+
 struct cooked_static_shape::implementation {
 	// Declaration order matters: registration is released after the native shape.
 	std::shared_ptr<backend_runtime> runtime;
@@ -421,9 +509,13 @@ struct world3d::implementation final : JPH::ContactListener {
 	};
 	std::shared_ptr<backend_runtime> runtime;
 	world3d_description              description;
-	std::uint64_t                    owner = 0, ticks = 0;
+	std::uint64_t                    owner = 0, ticks = 0, epoch = 0;
 	std::uint32_t                    count = 0, characters_count = 0;
 	bool faulted = false, stepping = false, truncated = false, pending_truncated = false;
+	bool applying_poses = false;
+#ifdef ICE_PHYSICS_POSE_BATCH_TESTING
+	std::size_t fail_after_writes = std::numeric_limits<std::size_t>::max();
+#endif
 	std::vector<slot>                                   slots;
 	std::vector<std::uint32_t>                          free;
 	std::vector<contact_event>                          events, pending;
@@ -630,9 +722,11 @@ ice::expected<world3d, diagnostic> world3d::create(const world3d_description &de
 	return world3d(std::move(state));
 }
 ice::expected<body_id, diagnostic> world3d::create_body(const body3d_description &description) {
-	if (!state_ || state_->faulted)
+	if (!state_ || state_->faulted || state_->stepping || state_->applying_poses)
 		return ice::unexpected(diagnostic{"3D world is unavailable/faulted"});
 	auto &state = *state_;
+	if (state_->epoch == std::numeric_limits<std::uint64_t>::max())
+		return ice::unexpected(diagnostic{"Native mutation epoch exhausted"});
 	if (!valid(description.motion) || !finite(description.position) ||
 	    !orientation(description.rotation) || !finite(description.linear_velocity, 10000) ||
 	    !finite(description.angular_velocity, 10000) || !std::isfinite(description.mass) ||
@@ -695,10 +789,11 @@ ice::expected<body_id, diagnostic> world3d::create_body(const body3d_description
 	                                 ? JPH::EActivation::DontActivate
 	                                 : JPH::EActivation::Activate);
 	++state.count;
+	++state.epoch;
 	return body_id{state.owner, index + 1, entry.generation};
 }
 ice::expected<void, diagnostic> world3d::erase(body_id body) {
-	if (!state_)
+	if (!state_ || state_->stepping || state_->applying_poses)
 		return ice::unexpected(diagnostic{"3D world is unavailable"});
 	auto resolved = state_->resolve(body);
 	if (!resolved)
@@ -707,6 +802,8 @@ ice::expected<void, diagnostic> world3d::erase(body_id body) {
 	if (entry.character_proxy)
 		return ice::unexpected(
 		    diagnostic{"Character proxies must be retired through erase_character"});
+	if (state_->epoch == std::numeric_limits<std::uint64_t>::max())
+		return ice::unexpected(diagnostic{"Native mutation epoch exhausted"});
 	auto &bodies = state_->system.GetBodyInterface();
 	bodies.RemoveBody(entry.native);
 	if (entry.stepped)
@@ -719,6 +816,7 @@ ice::expected<void, diagnostic> world3d::erase(body_id body) {
 		++entry.generation;
 		state_->free.push_back(std::uint32_t(*resolved));
 	}
+	++state_->epoch;
 	return {};
 }
 ice::expected<body3d_snapshot, diagnostic> world3d::inspect(body_id body) const {
@@ -745,8 +843,8 @@ ice::expected<body3d_snapshot, diagnostic> world3d::inspect(body_id body) const 
 }
 ice::expected<void, diagnostic> world3d::set_pose(body_id body, const math::vec3 &position,
                                                   const math::quat &rotation, bool reset_velocity) {
-	if (!state_ || state_->faulted)
-		return ice::unexpected(diagnostic{"3D world is unavailable/faulted"});
+	if (!state_ || state_->faulted || state_->stepping || state_->applying_poses)
+		return ice::unexpected(diagnostic{"3D world is unavailable/faulted/busy"});
 	auto resolved = state_->resolve(body);
 	if (!resolved)
 		return ice::unexpected(resolved.error());
@@ -756,20 +854,305 @@ ice::expected<void, diagnostic> world3d::set_pose(body_id body, const math::vec3
 	if (entry.character_proxy)
 		return ice::unexpected(
 		    diagnostic{"Character proxies must be moved through teleport_character"});
-	auto &bodies = state_->system.GetBodyInterface();
+	auto      &bodies = state_->system.GetBodyInterface();
+	JPH::RVec3 previous;
+	JPH::Quat  prior_rotation;
+	JPH::Vec3  linear, angular;
+	bodies.GetPositionAndRotation(entry.native, previous, prior_rotation);
+	bodies.GetLinearAndAngularVelocity(entry.native, linear, angular);
+	auto accepted_rotation = native(rotation);
+	if (equivalent_rotation(accepted_rotation, prior_rotation))
+		accepted_rotation = prior_rotation;
+	const bool pose_changed = position != portable(previous) || accepted_rotation != prior_rotation;
+	const bool velocity_changed = reset_velocity && entry.motion != motion_type::static_body &&
+	                              (linear != JPH::Vec3::sZero() || angular != JPH::Vec3::sZero());
+	if (!pose_changed && !velocity_changed)
+		return {};
+	if (state_->epoch == std::numeric_limits<std::uint64_t>::max())
+		return ice::unexpected(diagnostic{"Native mutation epoch exhausted"});
 	if (entry.static_shape_identity &&
-	    !valid_static_pose(*bodies.GetShape(entry.native), position, rotation))
+	    !valid_static_pose(*bodies.GetShape(entry.native), position, portable(accepted_rotation)))
 		return ice::unexpected(diagnostic{"Cooked surface body bounds exceed +/-1e6 world meters"});
-	bodies.SetPositionAndRotation(entry.native, native(position), native(rotation),
-	                              entry.motion == motion_type::static_body
-	                                  ? JPH::EActivation::DontActivate
-	                                  : JPH::EActivation::Activate);
+	if (pose_changed)
+		bodies.SetPositionAndRotation(entry.native, native(position), accepted_rotation,
+		                              entry.motion == motion_type::static_body
+		                                  ? JPH::EActivation::DontActivate
+		                                  : JPH::EActivation::Activate);
 	if (reset_velocity && entry.motion != motion_type::static_body)
 		bodies.SetLinearAndAngularVelocity(entry.native, JPH::Vec3::sZero(), JPH::Vec3::sZero());
+	++state_->epoch;
 	return {};
 }
+ice::expected<prepared_pose_batch, diagnostic>
+world3d::prepare_poses(std::span<const body3d_pose_update> updates) const {
+	if (!state_ || state_->faulted || state_->stepping || state_->applying_poses)
+		return ice::unexpected(diagnostic{"3D world is unavailable/faulted/busy"});
+	const auto &state = *state_;
+	if (updates.size() > state.count)
+		return ice::unexpected(diagnostic{"Pose span exceeds live body capacity"});
+	try {
+		prepared_pose_batch result;
+		result.state_ = std::make_unique<prepared_pose_batch::implementation>();
+		auto &plan    = *result.state_;
+		plan.owner    = state.owner;
+		plan.epoch    = state.epoch;
+		plan.entries.reserve(updates.size());
+		plan.previews.reserve(updates.size());
+		plan.lock_ids.reserve(state.count);
+		plan.wake_ids.reserve(state.count);
+		plan.wake_lock_indices.reserve(state.count);
+		plan.dirty_characters.reserve(state.characters_count);
+		std::vector<bool> seen(state.slots.size(), false);
+		for (const auto &update : updates) {
+			auto index = state.resolve(update.body);
+			if (!index)
+				return ice::unexpected(index.error());
+			if (seen[*index])
+				return ice::unexpected(diagnostic{"Duplicate pose body"});
+			seen[*index]           = true;
+			const auto       &slot = state.slots[*index];
+			JPH::BodyLockRead lock(state.system.GetBodyLockInterface(), slot.native);
+			if (slot.character_proxy || !lock.SucceededAndIsInBroadPhase() ||
+			    !static_pose_profile(lock.GetBody()))
+				return ice::unexpected(
+				    diagnostic{"Pose batches require static nonsensor actor bodies"});
+			if (!finite(update.position) || !orientation(update.rotation))
+				return ice::unexpected(diagnostic{"Invalid static pose"});
+			const auto &body     = lock.GetBody();
+			auto        rotation = native(update.rotation);
+			if (equivalent_rotation(rotation, body.GetRotation()))
+				rotation = body.GetRotation();
+			if (!valid_static_pose(*body.GetShape(), update.position, portable(rotation)))
+				return ice::unexpected(diagnostic{"Static pose bounds exceed world domain"});
+			prepared_pose_batch::implementation::entry entry;
+			entry.body             = update.body;
+			entry.native_id        = slot.native;
+			entry.requested_origin = native(update.position);
+			entry.rotation         = rotation;
+			entry.accepted_com =
+			    entry.requested_origin + rotation * body.GetShape()->GetCenterOfMass();
+			// Reusing an exact readback with an equivalent rotation must not round through COM
+			// again, wake neighbors or invalidate another prepared plan.
+			if (update.position == portable(body.GetPosition()) && rotation == body.GetRotation())
+				entry.accepted_com = body.GetCenterOfMassPosition();
+			entry.changed = entry.accepted_com != body.GetCenterOfMassPosition() ||
+			                rotation != body.GetRotation();
+			const auto accepted =
+			    entry.changed ? entry.accepted_com - rotation * body.GetShape()->GetCenterOfMass()
+			                  : body.GetPosition();
+			plan.previews.push_back({update.body, portable(accepted), portable(rotation)});
+			entry.old_bounds = body.GetWorldSpaceBounds();
+			entry.new_bounds = body.GetShape()->GetWorldSpaceBounds(
+			    JPH::RMat44::sRotationTranslation(rotation, entry.accepted_com), JPH::Vec3::sOne());
+			// Include native contact skin for resting neighbors, without enlarging collision.
+			const auto &settings = state.system.GetPhysicsSettings();
+			const auto  skin     = JPH::Vec3::sReplicate(settings.mSpeculativeContactDistance +
+			                                             settings.mPenetrationSlop);
+			entry.old_bounds.ExpandBy(skin);
+			entry.new_bounds.ExpandBy(skin);
+			if (entry.changed) {
+				state.system.SaveBodyState(body, entry.before);
+				if (!entry.before.validate_static_payload())
+					return ice::unexpected(
+					    diagnostic{"Static rollback journal profile/capacity mismatch"});
+				++plan.changed_count;
+			}
+			plan.lock_ids.push_back(slot.native);
+			plan.entries.push_back(std::move(entry));
+		}
+		if (plan.changed_count && state.epoch == std::numeric_limits<std::uint64_t>::max())
+			return ice::unexpected(diagnostic{"Native mutation epoch exhausted"});
+		if (plan.changed_count) {
+			// Preparation may scan the bounded slot table. No allocating AABB collector or
+			// already-active body reaches finalize (activation resets its sleep timer).
+			for (const auto &slot : state.slots) {
+				if (!slot.alive || slot.character_proxy || slot.motion != motion_type::dynamic)
+					continue;
+				JPH::BodyLockRead lock(state.system.GetBodyLockInterface(), slot.native);
+				if (!lock.SucceededAndIsInBroadPhase())
+					return ice::unexpected(diagnostic{"Wake body disappeared during preparation"});
+				const auto &body = lock.GetBody();
+				if (body.IsActive() || body.IsSensor())
+					continue;
+				const auto &bounds = body.GetWorldSpaceBounds();
+				if (std::any_of(plan.entries.begin(), plan.entries.end(), [&](const auto &entry) {
+					    return entry.changed && (entry.old_bounds.Overlaps(bounds) ||
+					                             entry.new_bounds.Overlaps(bounds));
+				    })) {
+					plan.wake_ids.push_back(slot.native);
+					plan.lock_ids.push_back(slot.native);
+				}
+			}
+			for (std::size_t index = 0; index < state.characters.size(); ++index) {
+				const auto &character = state.characters[index];
+				if (!character.native || character.ground_dirty)
+					continue;
+				const auto ground = character.native->GetGroundBodyID();
+				if (std::any_of(plan.entries.begin(), plan.entries.end(), [&](const auto &entry) {
+					    return entry.changed && entry.native_id == ground;
+				    }))
+					plan.dirty_characters.push_back(index);
+			}
+		}
+		const auto less = [](JPH::BodyID a, JPH::BodyID b) {
+			return a.GetIndexAndSequenceNumber() < b.GetIndexAndSequenceNumber();
+		};
+		std::sort(plan.lock_ids.begin(), plan.lock_ids.end(), less);
+		for (auto &entry : plan.entries)
+			entry.lock_index =
+			    std::size_t(std::lower_bound(plan.lock_ids.begin(), plan.lock_ids.end(),
+			                                 entry.native_id, less) -
+			                plan.lock_ids.begin());
+		for (auto id : plan.wake_ids)
+			plan.wake_lock_indices.push_back(
+			    std::size_t(std::lower_bound(plan.lock_ids.begin(), plan.lock_ids.end(), id, less) -
+			                plan.lock_ids.begin()));
+		return result;
+	} catch (const std::bad_alloc &) {
+		return ice::unexpected(diagnostic{"Static pose preparation allocation failed"});
+	}
+}
+ice::expected<bool, diagnostic> world3d::apply_poses(prepared_pose_batch &&batch) {
+	auto plan = std::move(batch.state_); // Every attempt consumes the caller's plan.
+	if (!plan)
+		return ice::unexpected(diagnostic{"Pose plan is empty/consumed/moved"});
+	if (!state_ || state_->faulted || state_->stepping || state_->applying_poses)
+		return ice::unexpected(diagnostic{"3D world is unavailable/faulted/busy"});
+	auto &state = *state_;
+	if (plan->owner != state.owner || plan->epoch != state.epoch)
+		return ice::unexpected(diagnostic{"Pose plan belongs to another world or stale epoch"});
+	if (!plan->changed_count)
+		return false;
+	if (state.epoch == std::numeric_limits<std::uint64_t>::max())
+		return ice::unexpected(diagnostic{"Native mutation epoch exhausted"});
+	JPH::BodyLockMultiWrite locks(state.system.GetBodyLockInterface(), plan->lock_ids.data(),
+	                              int(plan->lock_ids.size()));
+	for (const auto &entry : plan->entries) {
+		auto        index = state.resolve(entry.body);
+		const auto *body  = locks.GetBody(int(entry.lock_index));
+		if (!index || state.slots[*index].native != entry.native_id || !body ||
+		    !body->IsInBroadPhase() || !static_pose_profile(*body))
+			return ice::unexpected(diagnostic{"Pose body binding changed before apply"});
+	}
+	for (auto index : plan->wake_lock_indices) {
+		const auto *body = locks.GetBody(int(index));
+		if (!body || !body->IsInBroadPhase() || !body->IsDynamic() || body->IsActive() ||
+		    body->IsSensor())
+			return ice::unexpected(diagnostic{"Sleeping wake set changed before apply"});
+	}
+	state.applying_poses = true;
+	struct apply_scope {
+		bool &flag;
+		~apply_scope() { flag = false; }
+	} scope{state.applying_poses};
+	auto rollback = [&]() noexcept {
+		for (auto &entry : plan->entries) {
+			if (!entry.changed)
+				continue;
+			entry.before.rewind();
+			// Public PhysicsSystem wrapper restores exact native state AND refreshes broadphase.
+			// Its single local BodyID scratch never mutates our journal/lock index mapping.
+			state.system.RestoreBodyState(*locks.GetBody(int(entry.lock_index)), entry.before);
+			JPH_ASSERT(!entry.before.IsFailed() && entry.before.IsEOF());
+		}
+	};
+#ifdef ICE_PHYSICS_POSE_BATCH_TESTING
+	const auto fail_after =
+	    std::exchange(state.fail_after_writes, std::numeric_limits<std::size_t>::max());
+#endif
+	std::size_t written = 0;
+	auto       &bodies  = state.system.GetBodyInterfaceNoLock();
+	for (const auto &entry : plan->entries) {
+		if (!entry.changed)
+			continue;
+#ifdef ICE_PHYSICS_POSE_BATCH_TESTING
+		if (written == fail_after) {
+			rollback();
+			return ice::unexpected(std::move(plan->rollback_error));
+		}
+#endif
+		bodies.SetPositionAndRotation(entry.native_id, entry.requested_origin, entry.rotation,
+		                              JPH::EActivation::DontActivate);
+		++written;
+		const auto &body = *locks.GetBody(int(entry.lock_index));
+		if (body.GetCenterOfMassPosition() != entry.accepted_com ||
+		    body.GetRotation() != entry.rotation) {
+			rollback();
+			return ice::unexpected(std::move(plan->rollback_error));
+		}
+	}
+#ifdef ICE_PHYSICS_POSE_BATCH_TESTING
+	if (written == fail_after) {
+		rollback();
+		return ice::unexpected(std::move(plan->rollback_error));
+	}
+#else
+	(void)written;
+#endif
+	// No fallible operation or callback after this point. Capacity was allocated at world init;
+	// no activation listener is installed. Only sleeping dynamics are activated, once each.
+	if (!plan->wake_ids.empty())
+		bodies.ActivateBodies(plan->wake_ids.data(), int(plan->wake_ids.size()));
+	for (auto index : plan->dirty_characters)
+		state.characters[index].ground_dirty = true;
+	++state.epoch;
+	return true;
+}
+std::uint64_t world3d::mutation_epoch() const noexcept { return state_ ? state_->epoch : 0; }
+#ifdef ICE_PHYSICS_POSE_BATCH_TESTING
+void detail::pose_batch_test_access::fail_after_writes(world3d &world, std::size_t count) {
+	world.state_->fail_after_writes = count;
+}
+void detail::pose_batch_test_access::set_epoch(world3d &world, std::uint64_t epoch) {
+	world.state_->epoch = epoch;
+}
+void detail::pose_batch_test_access::set_faulted(world3d &world, bool faulted) {
+	world.state_->faulted = faulted;
+}
+namespace {
+struct state_hash_record final : JPH::StateRecorder {
+	std::uint64_t hash = 14695981039346656037ull;
+	void          WriteBytes(const void *data, std::size_t count) override {
+        const auto *bytes = static_cast<const unsigned char *>(data);
+        for (std::size_t i = 0; i < count; ++i)
+            hash = (hash ^ bytes[i]) * 1099511628211ull;
+	}
+	void ReadBytes(void *, std::size_t) override {}
+	bool IsEOF() const override { return true; }
+	bool IsFailed() const override { return false; }
+};
+} // namespace
+std::uint64_t detail::pose_batch_test_access::body_state_hash(const world3d &world, body_id id) {
+	auto index = world.state_->resolve(id);
+	if (!index)
+		return 0;
+	JPH::BodyLockRead lock(world.state_->system.GetBodyLockInterface(),
+	                       world.state_->slots[*index].native);
+	if (!lock.Succeeded())
+		return 0;
+	state_hash_record record;
+	world.state_->system.SaveBodyState(lock.GetBody(), record);
+	return record.hash;
+}
+std::uint64_t detail::pose_batch_test_access::character_state_hash(const world3d &world,
+                                                                   character_id   id) {
+	auto index = world.state_->resolve(id);
+	if (!index)
+		return 0;
+	const auto       &entry = world.state_->characters[*index];
+	state_hash_record record;
+	entry.native->SaveState(record);
+	record.Write(entry.intent.horizontal_velocity.x);
+	record.Write(entry.intent.horizontal_velocity.y);
+	record.Write(entry.intent.horizontal_velocity.z);
+	record.Write(entry.intent.jump);
+	record.Write(entry.jump_pending);
+	record.Write(entry.ground_dirty);
+	return record.hash;
+}
+#endif
 ice::expected<void, diagnostic> world3d::apply_impulse(body_id body, const math::vec3 &impulse) {
-	if (!state_ || state_->faulted)
+	if (!state_ || state_->faulted || state_->stepping || state_->applying_poses)
 		return ice::unexpected(diagnostic{"3D world is unavailable/faulted"});
 	auto resolved = state_->resolve(body);
 	if (!resolved)
@@ -779,14 +1162,21 @@ ice::expected<void, diagnostic> world3d::apply_impulse(body_id body, const math:
 	if (state_->slots[*resolved].motion != motion_type::dynamic || !finite(impulse, 1.0e6f))
 		return ice::unexpected(
 		    diagnostic{"Impulse requires a dynamic body and finite bounded vector"});
+	if (impulse == math::vec3(0))
+		return {};
+	if (state_->epoch == std::numeric_limits<std::uint64_t>::max())
+		return ice::unexpected(diagnostic{"Native mutation epoch exhausted"});
 	state_->system.GetBodyInterface().AddImpulse(state_->slots[*resolved].native, native(impulse));
+	++state_->epoch;
 	return {};
 }
 ice::expected<character_id, diagnostic>
 world3d::create_character(const character3d_description &description) {
-	if (!state_ || state_->faulted)
+	if (!state_ || state_->faulted || state_->stepping || state_->applying_poses)
 		return ice::unexpected(diagnostic{"3D world is unavailable/faulted"});
 	auto &state = *state_;
+	if (state_->epoch == std::numeric_limits<std::uint64_t>::max())
+		return ice::unexpected(diagnostic{"Native mutation epoch exhausted"});
 	if (!valid(description))
 		return ice::unexpected(
 		    diagnostic{"Invalid character pose, capsule, motor settings or budget"});
@@ -844,15 +1234,18 @@ world3d::create_character(const character3d_description &description) {
 	entry.ground_dirty          = true;
 	++state.count;
 	++state.characters_count;
+	++state.epoch;
 	return character_id{state.owner, character_index + 1, entry.generation};
 }
 ice::expected<void, diagnostic> world3d::erase_character(character_id character) {
-	if (!state_)
+	if (!state_ || state_->stepping || state_->applying_poses)
 		return ice::unexpected(diagnostic{"3D world is unavailable"});
 	auto resolved = state_->resolve(character);
 	if (!resolved)
 		return ice::unexpected(resolved.error());
 	auto &state = *state_;
+	if (state_->epoch == std::numeric_limits<std::uint64_t>::max())
+		return ice::unexpected(diagnostic{"Native mutation epoch exhausted"});
 	auto &entry = state.characters[*resolved];
 	auto &proxy = state.slots[entry.proxy.slot - 1];
 	state.character_collisions.Remove(entry.native.get());
@@ -878,6 +1271,7 @@ ice::expected<void, diagnostic> world3d::erase_character(character_id character)
 		++entry.generation;
 		state.free_characters.push_back(std::uint32_t(*resolved));
 	}
+	++state.epoch;
 	return {};
 }
 ice::expected<character3d_snapshot, diagnostic>
@@ -912,7 +1306,7 @@ world3d::inspect_character(character_id character) const {
 }
 ice::expected<void, diagnostic> world3d::set_character_intent(character_id              character,
                                                               const character3d_intent &intent) {
-	if (!state_ || state_->faulted)
+	if (!state_ || state_->faulted || state_->stepping || state_->applying_poses)
 		return ice::unexpected(diagnostic{"3D world is unavailable/faulted"});
 	auto resolved = state_->resolve(character);
 	if (!resolved)
@@ -920,26 +1314,40 @@ ice::expected<void, diagnostic> world3d::set_character_intent(character_id      
 	if (!finite(intent.horizontal_velocity, 10000) || intent.horizontal_velocity.y != 0)
 		return ice::unexpected(
 		    diagnostic{"Character intent requires finite bounded X/Z velocity and zero Y"});
-	auto &entry        = state_->characters[*resolved];
+	auto &entry = state_->characters[*resolved];
+	if (entry.intent.horizontal_velocity == intent.horizontal_velocity &&
+	    entry.intent.jump == intent.jump && (!intent.jump || entry.jump_pending))
+		return {};
+	if (state_->epoch == std::numeric_limits<std::uint64_t>::max())
+		return ice::unexpected(diagnostic{"Native mutation epoch exhausted"});
+
 	entry.intent       = intent;
 	entry.jump_pending = entry.jump_pending || intent.jump;
+	++state_->epoch;
 	return {};
 }
 ice::expected<void, diagnostic> world3d::cancel_character_intent(character_id character) {
-	if (!state_)
+	if (!state_ || state_->stepping || state_->applying_poses)
 		return ice::unexpected(diagnostic{"3D world is unavailable"});
 	auto resolved = state_->resolve(character);
 	if (!resolved)
 		return ice::unexpected(resolved.error());
-	auto &entry        = state_->characters[*resolved];
+	auto &entry = state_->characters[*resolved];
+	if (entry.intent.horizontal_velocity == math::vec3(0) && !entry.intent.jump &&
+	    !entry.jump_pending)
+		return {};
+	if (state_->epoch == std::numeric_limits<std::uint64_t>::max())
+		return ice::unexpected(diagnostic{"Native mutation epoch exhausted"});
+
 	entry.intent       = {};
 	entry.jump_pending = false;
+	++state_->epoch;
 	return {};
 }
 ice::expected<void, diagnostic> world3d::teleport_character(character_id      character,
                                                             const math::vec3 &position,
                                                             const math::vec3 &linear_velocity) {
-	if (!state_ || state_->faulted)
+	if (!state_ || state_->faulted || state_->stepping || state_->applying_poses)
 		return ice::unexpected(diagnostic{"3D world is unavailable/faulted"});
 	auto resolved = state_->resolve(character);
 	if (!resolved)
@@ -947,19 +1355,31 @@ ice::expected<void, diagnostic> world3d::teleport_character(character_id      ch
 	if (!finite(position) || !finite(linear_velocity, 10000))
 		return ice::unexpected(diagnostic{"Invalid character teleport position or velocity"});
 	auto &entry = state_->characters[*resolved];
+	if (portable(entry.native->GetPosition()) == position &&
+	    portable(entry.native->GetLinearVelocity()) == linear_velocity && entry.ground_dirty &&
+	    entry.intent.horizontal_velocity == math::vec3(0) && !entry.intent.jump &&
+	    !entry.jump_pending)
+		return {};
+	if (state_->epoch == std::numeric_limits<std::uint64_t>::max())
+		return ice::unexpected(diagnostic{"Native mutation epoch exhausted"});
+
 	entry.native->SetPosition(native(position));
 	entry.native->SetLinearVelocity(native(linear_velocity));
 	entry.intent       = {};
 	entry.jump_pending = false;
 	entry.ground_dirty = true;
+	++state_->epoch;
 	return {};
 }
 ice::expected<step_report, diagnostic> world3d::step() {
-	if (!state_ || state_->faulted)
+	if (!state_ || state_->faulted || state_->stepping || state_->applying_poses)
 		return ice::unexpected(diagnostic{"3D world is unavailable/faulted"});
 	auto &state = *state_;
 	if (state.ticks == std::numeric_limits<std::uint64_t>::max())
 		return ice::unexpected(diagnostic{"Simulation tick exhausted"});
+	if (state_->epoch == std::numeric_limits<std::uint64_t>::max())
+		return ice::unexpected(diagnostic{"Native mutation epoch exhausted"});
+	++state.epoch; // A step can partially mutate native state even if it later faults.
 	state.events.clear();
 	state.events.swap(state.pending);
 	state.truncated         = state.pending_truncated;
