@@ -10,6 +10,9 @@
 #include "ice/audio/playback.h"
 #include "ice/audio/wav.h"
 #endif
+#ifdef ICE_HAS_ANDROID_SPEECH
+#include "ice/audio/android/speech.h"
+#endif
 #ifdef ICE_HAS_AUDIO_SPEECH
 #include "ice/audio/speech.h"
 #endif

@@ -107,7 +107,13 @@
     "tests/character3d.cpp",
     "engine/include/ice/audio/recording_store.h",
     "engine/src/audio/recording_store.cpp",
-    "tests/recording_store.cpp"
+    "tests/recording_store.cpp",
+    "engine/include/ice/audio/android/speech.h",
+    "engine/src/audio/android/stream.h",
+    "engine/src/audio/android/stream.cpp",
+    "engine/src/audio/android/android_speech.cpp",
+    "tests/audio_android_speech.cpp",
+    "engine/java/org/ice/audio/AndroidSpeechBridge.java"
   ],
   "lint": [
     "tests/mesh.cpp",
@@ -162,7 +168,9 @@
     "tests/input_actions.cpp",
     "tests/character3d.cpp",
     "engine/src/audio/recording_store.cpp",
-    "tests/recording_store.cpp"
+    "tests/recording_store.cpp",
+    "engine/src/audio/android/stream.cpp",
+    "tests/audio_android_speech.cpp"
   ],
   "lint_platform": {
     "Darwin": [
