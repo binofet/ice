@@ -250,6 +250,14 @@ if(ICE_BUILD_TOOLS AND ICE_BUILD_COMPANION)
 endif()
 find_package(Python3 QUIET COMPONENTS Interpreter)
 if(Python3_Interpreter_FOUND)
+    if(BUILD_TESTING AND CMAKE_HOST_UNIX)
+        add_test(NAME ice_ci_spacegoo_contract
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/ci/spacegoo/test_contract.py")
+        add_test(NAME ice_ci_spacegoo_bootstrap
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/ci/spacegoo/test_bootstrap.py")
+        set_tests_properties(ice_ci_spacegoo_contract ice_ci_spacegoo_bootstrap
+            PROPERTIES TIMEOUT 60 LABELS "cpu;ci")
+    endif()
     add_custom_target(ice_format_check
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/quality/check.py" format
         WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}" VERBATIM)

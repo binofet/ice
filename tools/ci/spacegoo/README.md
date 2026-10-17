@@ -32,7 +32,90 @@ the private network namespace. No ordinary job installs dependencies or fetches
 Git/package content. Failure or resource contention is nonzero, never a paid or
 GPU fallback.
 
-## Owner installation and real commissioning
+## Disabled bootstrap: phase one only
+
+`bootstrap.py` and `prepare_bootstrap.py` prepare a reviewable **disabled namespace**.
+They have not been installed or exercised with root privileges. The preparer
+accepts only a clean committed checkout and writes a fresh packet using `git show`
+from that exact commit. It reports the installer SHA256, manifest SHA256 and every
+payload hash. It cannot overwrite an existing packet. A failed preparation may
+leave a partial packet, which must not be used as an installation source.
+
+The bootstrap has a fixed scope: six distinct system users and primary groups
+(`ice-ci-control`, `ice-cpu-job`, `metagen-ci-control`, `metagen-cpu-job`,
+`ignition-ci-control`, `ignition-cpu-job`), with locked passwords, nologin shells
+and `/nonexistent` homes that it never creates. It creates only the three family
+namespaces `/etc/ice-family-ci`, `/usr/local/libexec/ice-family-ci` and
+`/var/lib/ice-family-ci`. Code and the exact disabled example policy are root-owned
+read-only; the separate family lock is root:root0600. Empty per-repository job
+directories are job-owned0700; intake and receipt directories have their separate
+read groups. Control directories remain root-only in this phase. No executable
+permission is granted to installed Python code.
+
+There is **no sudo delegation**, systemd unit, registration, dispatch, source job,
+tool/dependency installation, home symlink, credential, collector or provider
+configuration. No enable option exists; any policy variation, including
+`enabled=true`, is refused. Existing Cosmotomata state is outside the target set.
+
+### Owner trust handoff
+
+The installer cannot authenticate its own first execution. A manifest shipped
+beside it is not an independent trust source. Before any privileged execution,
+Joel must review the frozen Git source and obtain the installer and manifest
+digests through the separately reviewed handoff. A normal unprivileged preparer
+invocation from that clean source is:
+
+```sh
+python3 tools/ci/spacegoo/prepare_bootstrap.py --output /ABSOLUTE/NEW/REVIEW-PACKET
+```
+
+This is preparation, not an instruction to install. After source review, the owner
+must copy **only** the listed packet files into a new root-owned staging directory
+under root-owned ancestors, independently check the installer and manifest digests
+there using trusted system hashing tools, and verify every payload hash in that
+manifest. Do not run a checkout-side sealing helper as root. Do not execute the
+installer from a developer-owned checkout or through a symlink. Seal packet files
+root-owned and read-only (0400 or0444); directories must be root-owned and not
+group/other-writable. The root-owned staging directory is separate from the three
+installation targets and is retained as installation evidence.
+
+Only after that handoff may the reviewed installed-packet script be interpreted
+with the trusted system `/usr/bin/python3 -I -B`. First use explicit `--plan
+--manifest-sha256 EXTERNAL_DIGEST`. That path reads state and prints a canonical
+plan plus its SHA256; it changes no account or file. An unprivileged initial plan
+works when all six users are absent. Existing users require a root read-only plan
+to confirm password lock status; an unknown lock state refuses. Review the full
+plan and its digest before a separate `--apply --manifest-sha256 EXTERNAL_DIGEST
+--approved-plan-sha256 REVIEWED_PLAN_DIGEST` invocation. This document does not
+supply machine-specific privileged commands or claim commissioning is ready.
+
+Apply verifies the sealed packet, serializes on its installer inode, and repeats
+preflight before creating anything. Existing target type, owner, mode and bytes
+must match exactly. Ancestors must be root-owned directories without group/other
+write permission; missing non-family ancestors (for example
+`/usr/local/libexec`) are prerequisites, not silently created. Existing users must
+have the exact primary group, home and shell, a verifiably locked password, no
+UID/GID aliases, foreign group members, supplementary groups or shared primary
+group. Account tools and nologin must already be root-owned safe system files;
+their hashes appear in the plan. New users create no home, mail spool or login-log
+initialization. No preexisting mismatch is repaired or overwritten.
+
+Successful reapplication to this still-empty namespace performs no mutations.
+An unexpected entry, including one produced by a future commissioning phase,
+refuses the phase-one bootstrap rather than reinterpreting the namespace. On a
+failure or catchable interruption, the result lists completed actions and the
+current action that may have partially changed state. Accounts/directories are
+not deleted and no rollback is attempted. SIGKILL or power loss cannot produce a
+report; inspect a fresh read-only plan and actual account/filesystem state before
+any reviewed retry. A failure during ownership/mode adjustment can intentionally
+require manual owner investigation rather than a destructive automatic repair.
+
+Local tests use disposable real filesystem operations plus simulated ownership
+and account operations. They cover read-only plans, refusal, exclusive file
+publication, partial state, modes and reruns; they do not qualify real root
+account creation, shadow access, systemd isolation or provider integration.
+
+## Remaining owner stages and real commissioning
 
 These are explicit owner actions, not actions performed by importing these files.
 Do not execute an uninstalled checkout copy as root.
@@ -42,10 +125,11 @@ Do not execute an uninstalled checkout copy as root.
    Review required provider check names; the example `cpu20/cpu23/conformance`
    names are placeholders until bound to actual authenticated provider checks.
    Keep `enabled=false` until offline inputs and isolation are qualified.
-2. Create the six nologin users. Create root-owned
-   non-writable ancestors, `/etc/ice-family-ci/policy.json`, and installed code at
+2. Review and qualify the disabled bootstrap above to create the six nologin
+   users, root-owned non-writable ancestors, `/etc/ice-family-ci/policy.json`, and installed code at
    `/usr/local/libexec/ice-family-ci/{contract,broker,job,unittest_xml,admit}.py` root-owned
-   read-only. The broker is executable and installed with `/usr/bin/python3 -I`.
+   read-only. Later invocation uses the trusted `/usr/bin/python3 -I` interpreter;
+   the phase-one bootstrap grants no delegation to invoke it.
    Each repo's job root is owned by only its job user, mode0700. The family lock is
    precreated root:root0600 in a root-owned0755 `locks` directory; only the broker
    holds it, through source-unit closure and sealing the report. Create
@@ -155,6 +239,13 @@ retain their separate authorization boundaries. Hosted GPU/native/hardware resul
 are distinct qualifications; this CPU lane certifies none of them.
 
 ## Source-only checks
+
+On UNIX hosts with Python and `BUILD_TESTING=ON`, ordinary CTest registers
+`ice_ci_spacegoo_contract` and `ice_ci_spacegoo_bootstrap`, each with a 60-second
+timeout and CPU/CI labels. These are portable helper-contract suites using only
+disposable local files/processes and fake account/ownership operations. They
+perform no root, account, service, dispatch or installation actions; a green
+result is not evidence of privileged isolation or commissioning.
 
 `python3 tools/ci/spacegoo/test_contract.py` exercises exact-source/base/review
 admission, fixed isolation argv, stale/duplicate/missing checks, bounded real
