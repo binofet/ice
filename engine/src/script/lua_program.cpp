@@ -125,6 +125,39 @@ void instruction_hook(lua_State *vm, lua_Debug *debug) {
 	}
 	--budget->remaining;
 }
+int bounded_table_remove(lua_State *vm) {
+	luaL_checktype(vm, 1, LUA_TTABLE);
+	const auto raw_size = lua_rawlen(vm, 1);
+	if (raw_size > static_cast<std::size_t>(std::numeric_limits<lua_Integer>::max()))
+		return luaL_error(vm, "Table border exceeds the supported integer range");
+	const auto size     = static_cast<lua_Integer>(raw_size);
+	auto       position = luaL_optinteger(vm, 2, size);
+	// Match Lua 5.5: the usual range is [1,size+1], while position==size
+	// also permits the default 0 on an empty sequence. Unsigned subtraction
+	// keeps both negative arguments and size==maxinteger free of overflow.
+	if (position != size &&
+	    static_cast<lua_Unsigned>(position) - lua_Unsigned{1} > static_cast<lua_Unsigned>(size))
+		return luaL_argerror(vm, 2, "position out of bounds");
+	const auto shifts = position < size ? static_cast<std::uint64_t>(size - position) : 0;
+	auto      *budget = &(*static_cast<vm_context **>(lua_getextraspace(vm)))->instructions;
+	// Native raw operations do not run the VM hook. Reserve one unit for
+	// length/result/clear and two per relocation before any indexed mutation.
+	// Compare by division before multiplication: sparse borders can reach the largest signed64-bit
+	// integer.
+	if (budget->remaining < 3 || shifts > (budget->remaining - 3) / 2) {
+		budget->exhausted = true;
+		return luaL_error(vm, "Lua instruction budget exhausted by table.remove");
+	}
+	budget->remaining -= 3 + shifts * 2;
+	lua_rawgeti(vm, 1, position);
+	for (; position < size; ++position) {
+		lua_rawgeti(vm, 1, position + 1);
+		lua_rawseti(vm, 1, position);
+	}
+	lua_pushnil(vm);
+	lua_rawseti(vm, 1, position);
+	return 1;
+}
 int scalar_tostring(lua_State *vm) {
 	switch (lua_type(vm, 1)) {
 	case LUA_TNIL:
@@ -235,10 +268,12 @@ int open_libraries(lua_State *vm) {
 	remove_fields(vm, removed_string);
 	lua_pop(vm, 1);
 	luaL_requiref(vm, LUA_TABLIBNAME, luaopen_table, 1);
-	// Sparse table borders can be enormous without consuming a proportional heap.
-	// These native C loops do not run the VM hook; authors use budgeted Lua loops.
-	static const char *const removed_table[]{"move", "insert", "remove", "sort", nullptr};
+	// Keep only the native loop whose indexed work is charged to our shared budget.
+	// Other potentially large native table loops remain unavailable.
+	static const char *const removed_table[]{"move", "insert", "sort", nullptr};
 	remove_fields(vm, removed_table);
+	lua_pushcfunction(vm, bounded_table_remove);
+	lua_setfield(vm, -2, "remove");
 	lua_pop(vm, 1);
 	luaL_requiref(vm, LUA_UTF8LIBNAME, luaopen_utf8, 1);
 	lua_pop(vm, 1);

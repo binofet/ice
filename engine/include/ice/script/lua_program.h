@@ -54,12 +54,15 @@ struct host_function {
 	/// movement/destruction or unbounded blocking work is allowed inside a handler.
 	std::function<ice::expected<scalar_record, diagnostic>(const scalar_record &)> invoke;
 };
-/// Per-program Lua heap and per-prepare/call bytecode limits. They do not cap host
+/// Per-program Lua heap and per-prepare/call instruction-work limits. They do not cap host
 /// resolver allocations, compiler/native-library wall time or the process C stack.
+/// table.remove precharges its raw indexed work to the same instruction counter;
+/// other native library work remains outside the bytecode hook.
 struct lua_limits {
 	/// Lua allocation bytes; allowed 64 KiB..1 GiB. Includes libraries and allocator headers.
 	std::size_t memory_bytes = 64 * 1024 * 1024;
-	/// Lua VM instructions per top-level execution/call, allowed 1..1000000000.
+	/// Lua VM instructions plus charged table.remove work per top-level execution/call,
+	/// allowed 1..1000000000. remove charges 3 units plus 2 per shifted element.
 	std::uint64_t instructions = 10000000;
 	/// Source bytes accepted after the provider read, allowed 1..1 MiB.
 	std::size_t source_bytes = 256 * 1024;
