@@ -1,0 +1,45 @@
+{
+  "format": "ice-family-cpu-policy-v1",
+  "enabled": false,
+  "root": "/var/lib/ice-family-ci",
+  "limits": {
+    "cpu_percent": 200,
+    "memory_mib": 8192,
+    "tasks": 256,
+    "runtime_seconds": 3600,
+    "stage_seconds": 1800
+  },
+  "tools": {
+    "python": "/var/lib/ice-family-ci/tools/python/bin/python3",
+    "git": "/usr/bin/git",
+    "cmake": "/usr/bin/cmake",
+    "ctest": "/usr/bin/ctest",
+    "cc": "/usr/bin/cc",
+    "cxx": "/usr/bin/c++",
+    "dotnet": "/var/lib/ice-family-ci/tools/dotnet/dotnet",
+    "rustc": "/var/lib/ice-family-ci/tools/rust/bin/rustc"
+  },
+  "repos": {
+    "ice": {
+      "repository": "binofet/ice",
+      "control_user": "ice-ci-control",
+      "job_user": "ice-cpu-job",
+      "runner_label": "ice.cpu.spacegoo",
+      "required_checks": ["cpu20", "cpu23"]
+    },
+    "metagen": {
+      "repository": "binofet/metagen",
+      "control_user": "metagen-ci-control",
+      "job_user": "metagen-cpu-job",
+      "runner_label": "metagen.cpu.spacegoo",
+      "required_checks": ["conformance"]
+    },
+    "ignition": {
+      "repository": "binofet/ignition",
+      "control_user": "ignition-ci-control",
+      "job_user": "ignition-cpu-job",
+      "runner_label": "ignition.cpu.spacegoo",
+      "required_checks": ["cpu20", "cpu23"]
+    }
+  }
+}
