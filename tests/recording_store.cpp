@@ -85,6 +85,8 @@ int main() {
 		first        = *id;
 		auto receipt = store->commit(first, *capture, timing);
 		CHECK(receipt);
+		CHECK(!fs::exists(path / first / "commit.pending"));
+		CHECK(fs::hard_link_count(path / first / "committed") == 1);
 		CHECK(receipt->recording_id == first && receipt->sample_rate == 48000 &&
 		      receipt->frames == 8);
 		CHECK(receipt->started_monotonic_ns == timing.started_monotonic_ns &&

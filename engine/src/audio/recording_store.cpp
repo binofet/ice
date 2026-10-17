@@ -28,6 +28,10 @@
 #include <sys/file.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#ifdef __linux__
+#include <linux/fs.h>
+#include <sys/syscall.h>
+#endif
 #endif
 
 namespace ice::audio {
@@ -389,6 +393,17 @@ struct directory {
 #ifdef _WIN32
 		if (!MoveFileExW((path / pending).c_str(), (path / final).c_str(), MOVEFILE_WRITE_THROUGH))
 			fail("Recording marker publication failed");
+#elif defined(__linux__)
+		// Android app SELinux policy may forbid hard links even to our own private files.
+		// Use the kernel's atomic exclusive rename directly: libc exposes renameat2 only
+		// from Android30, but the supported Android29 kernels provide this syscall.
+		// No check-then-rename fallback may weaken the no-replace publication contract.
+		if (syscall(SYS_renameat2, owner.handle, pending.c_str(), owner.handle, final.c_str(),
+		            RENAME_NOREPLACE) != 0) {
+			const int code = errno;
+			throw std::runtime_error("Recording atomic marker rename failed; errno=" +
+			                         std::to_string(code));
+		}
 #else
 		if (linkat(owner.handle, pending.c_str(), owner.handle, final.c_str(), 0))
 			fail("Recording marker publication failed");
