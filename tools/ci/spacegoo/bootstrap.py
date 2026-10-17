@@ -177,9 +177,11 @@ class Accounts:
     def snapshot(self, name):
         try:
             group = grp.getgrnam(name)
-            group = {"gid": group.gr_gid, "members": sorted(group.gr_mem),
+            group = {"name": group.gr_name, "gid": group.gr_gid, "members": sorted(group.gr_mem),
                      "aliases": sorted(g.gr_name for g in grp.getgrall()
-                                       if g.gr_gid == group.gr_gid and g.gr_name != name)}
+                                       if g.gr_gid == group.gr_gid and g.gr_name != name),
+                     "primary_users": sorted(p.pw_name for p in pwd.getpwall()
+                                             if p.pw_gid == group.gr_gid)}
         except KeyError:
             group = None
         try:
@@ -194,7 +196,7 @@ class Accounts:
                 if fields[0] == name:
                     locked = fields[1].startswith(("!", "*"))
                     break
-        return {"group": group, "user": {"uid": user.pw_uid, "gid": user.pw_gid,
+        return {"group": group, "user": {"name": user.pw_name, "uid": user.pw_uid, "gid": user.pw_gid,
                 "home": user.pw_dir, "shell": user.pw_shell, "locked": locked,
                 "supplementary": sorted(g.gr_name for g in grp.getgrall()
                                         if name in g.gr_mem and g.gr_gid != user.pw_gid),
@@ -218,11 +220,13 @@ class Accounts:
 def validate_account(name, row, accounts):
     group, user = row["group"], row["user"]
     if group:
-        need(0 < group["gid"] <= accounts.gid_max and not set(group["members"]) - {name}
-             and not group["aliases"],
+        need(group["name"] == name and 0 < group["gid"] <= accounts.gid_max
+             and not set(group["members"]) - {name} and not group["aliases"]
+             and not set(group["primary_users"]) - {name},
              "Existing group differs: " + name)
     if user:
-        need(group and 0 < user["uid"] <= accounts.uid_max and user["gid"] == group["gid"]
+        need(group and user["name"] == name and 0 < user["uid"] <= accounts.uid_max
+             and user["gid"] == group["gid"]
              and user["home"] == "/nonexistent" and user["shell"] == "/usr/sbin/nologin"
              and user["locked"] is True and not user["supplementary"] and not user["shared_primary"]
              and not user["aliases"],

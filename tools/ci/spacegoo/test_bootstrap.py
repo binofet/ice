@@ -33,10 +33,13 @@ class Accounts:
     def create(self, kind, name):
         identity = 700 + b.USERS.index(name)
         self.calls.append((kind, name))
-        self.rows[name][kind] = ({"gid": identity, "members": [], "aliases": []} if kind == "group"
-                                 else {"uid": identity, "gid": identity, "home": "/nonexistent",
+        self.rows[name][kind] = ({"name": name, "gid": identity, "members": [], "aliases": [],
+                                 "primary_users": []} if kind == "group"
+                                 else {"name": name, "uid": identity, "gid": identity, "home": "/nonexistent",
                                        "shell": "/usr/sbin/nologin", "locked": True, "aliases": [],
                                        "supplementary": [], "shared_primary": []})
+        if kind == "user":
+            self.rows[name]["group"]["primary_users"] = [name]
         if self.fail_after == (kind, name):
             raise OSError("Injected failure after account creation")
 
@@ -141,7 +144,8 @@ class BootstrapTests(unittest.TestCase):
                    ("user", "home", "/home/developer"), ("user", "shell", "/bin/sh"),
                    ("user", "supplementary", ["sudo"]), ("user", "aliases", ["peer"]),
                    ("user", "shared_primary", ["peer"]), ("group", "aliases", ["peer"]),
-                   ("group", "members", ["peer"])]
+                   ("group", "members", ["peer"]), ("group", "primary_users", ["peer"]),
+                   ("user", "name", "canonical-peer"), ("group", "name", "canonical-peer")]
         for kind, key, value in changes:
             with self.subTest(key=key, value=value):
                 self.accounts.rows[name] = deepcopy(good)
@@ -149,6 +153,47 @@ class BootstrapTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "Existing"):
                     self.plan()
         self.assertEqual(self.fs.calls, [])
+
+    def test_nss_group_only_foreign_primary_user_refuses_before_any_action(self):
+        name = b.USERS[0]
+        group = b.grp.struct_group((name, "x", 700, []))
+        foreign = b.pwd.struct_passwd(("foreign", "x", 701, 700, "", "/nonexistent", "/usr/sbin/nologin"))
+        accounts = b.Accounts.__new__(b.Accounts)
+        with patch.object(b.grp, "getgrnam", return_value=group), \
+                patch.object(b.grp, "getgrall", return_value=[group]), \
+                patch.object(b.pwd, "getpwnam", side_effect=KeyError(name)), \
+                patch.object(b.pwd, "getpwall", return_value=[foreign]):
+            row = accounts.snapshot(name)
+        self.assertIsNone(row["user"])
+        self.assertEqual(row["group"]["primary_users"], ["foreign"])
+        self.accounts.rows[name] = row
+        with self.assertRaisesRegex(ValueError, "Existing group differs"):
+            self.plan()
+        self.assertEqual(self.accounts.calls, [])
+        self.assertEqual(self.fs.calls, [])
+
+    def test_nss_canonical_names_refuse_even_when_enumeration_omits_aliases(self):
+        name = b.USERS[0]
+        accounts = b.Accounts.__new__(b.Accounts)
+        for kind in ("group", "user"):
+            with self.subTest(kind=kind):
+                group = b.grp.struct_group(("other" if kind == "group" else name, "x", 700, []))
+                user = b.pwd.struct_passwd(("other" if kind == "user" else name, "x", 700, 700,
+                                          "", "/nonexistent", "/usr/sbin/nologin"))
+                with patch.object(b.grp, "getgrnam", return_value=group), \
+                        patch.object(b.grp, "getgrall", return_value=[]), \
+                        patch.object(b.pwd, "getpwnam", return_value=user), \
+                        patch.object(b.pwd, "getpwall", return_value=[]), \
+                        patch.object(b.os, "geteuid", return_value=0), \
+                        patch.object(b.Path, "read_text", return_value=name + ":!:fields\n"):
+                    row = accounts.snapshot(name)
+                self.assertTrue(row["user"]["locked"])
+                self.assertEqual(row["user"]["aliases"], [])
+                self.assertEqual(row["group"]["aliases"], [])
+                self.accounts.rows[name] = row
+                with self.assertRaisesRegex(ValueError, "Existing"):
+                    self.plan()
+        self.assertEqual(self.accounts.calls, [])
 
     def test_symlink_writable_or_missing_unplanned_ancestor_refuses_before_accounts(self):
         ancestor = self.fs.path(Path("/usr/local"))
