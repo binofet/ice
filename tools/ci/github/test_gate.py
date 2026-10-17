@@ -35,7 +35,11 @@ def zipped(files):
     stream = io.BytesIO()
     with zipfile.ZipFile(stream, "w", zipfile.ZIP_DEFLATED) as archive:
         for name, value in files.items():
-            archive.writestr(name, value)
+            # The fake provider digest and download must describe identical bytes,
+            # even when the real clock crosses ZIP's two-second timestamp boundary.
+            entry = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+            entry.compress_type = zipfile.ZIP_DEFLATED
+            archive.writestr(entry, value)
     return stream.getvalue()
 
 
@@ -144,7 +148,7 @@ class GateTests(unittest.TestCase):
             with self.subTest(repo=repo):
                 result = gate.gate(FakeAPI(repo), repo, 7)
                 self.assertEqual(result["reviewed-head"]["state"], "success")
-                self.assertEqual(result["source-quality"]["state"], "success")
+                self.assertEqual(result["source-quality"]["state"], "success", result)
                 self.assertFalse(result["merge_performed"])
 
     def test_gate_contract_stage_is_required_for_every_repository_and_profile(self):
@@ -321,6 +325,28 @@ class GateTests(unittest.TestCase):
                     gate.generate_templates(repo, output)
             with self.assertRaises(ValueError):
                 gate.generate_templates("untrusted/repo", Path(directory) / "other")
+
+    def test_provider_fixture_digest_survives_a_wall_clock_change(self):
+        with patch("zipfile.time.localtime", return_value=(2020, 1, 1, 0, 0, 0, 2, 1, -1)):
+            api = FakeAPI("metagen")
+        with patch("zipfile.time.localtime", return_value=(2030, 1, 1, 0, 0, 0, 1, 1, -1)):
+            result = gate.gate(api, "metagen", 7)
+        self.assertEqual(result["source-quality"]["state"], "success", result)
+
+    def test_review_body_cli_preserves_the_authenticated_body_exactly(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "review.txt"
+            path.write_text("Reviewed the exact CLI emission fix.\n")
+            output = io.StringIO()
+            with patch("sys.stdout", output):
+                result = gate.main(["review-body", "--repo", "ice", "--pr", "7",
+                                    "--head", HEAD, "--base", BASE, "--text-file", str(path)])
+            self.assertEqual(result, 0)
+            self.assertEqual(output.getvalue(), gate.review_body("ice", 7, HEAD, BASE,
+                                                                 path.read_text()))
+            parsed = gate.native_review([review(body=output.getvalue())],
+                                        gate.live_pr(pull(), "ice", 7))
+            self.assertEqual(parsed["id"], 99)
 
     def test_empty_workflow_pr_list_uses_association_api_but_filters_current_head(self):
         class Associated(FakeAPI):
