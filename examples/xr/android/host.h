@@ -26,6 +26,10 @@ struct controller_sample {
 	ice::math::mat4 aim_transform{1};
 	/// Whether aim_transform is a valid tracked sample; never synthesize aim from the grip.
 	bool aim_valid = false;
+	/// Native trigger availability. Inactive is action loss, not a physical neutral release.
+	bool trigger_active = false;
+	/// Native squeeze availability. Pending grip gestures must cancel on action loss.
+	bool squeeze_active = false;
 };
 /// Compose a physical room anchor with application-owned translation/yaw navigation.
 /// Reject nonfinite, nonrigid or tilted navigation; the physical anchor is never modified.

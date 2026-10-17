@@ -96,6 +96,7 @@ struct controller_state {
 	float           trigger = 0, squeeze = 0;
 	ice::math::vec2 thumbstick{0};
 	bool            valid = false, primary = false, aim_valid = false, thumbstick_active = false;
+	bool            trigger_active = false, squeeze_active = false;
 };
 struct eye_target {
 	XrSwapchain                                                     swapchain = XR_NULL_HANDLE;
@@ -568,7 +569,9 @@ private:
 				const auto &pose   = source.pose;
 				auto       &output = observations.controllers[hand];
 				output.valid       = source.valid && observations.focused && observations.tracked;
-				output.trigger     = output.valid ? source.trigger : 0;
+				output.trigger_active = output.valid && source.trigger_active;
+				output.squeeze_active = output.valid && source.squeeze_active;
+				output.trigger        = output.trigger_active ? source.trigger : 0;
 				output.aim_valid = source.aim_valid && observations.focused && observations.tracked;
 				const bool usable        = output.valid || output.aim_valid;
 				output.primary           = usable && source.primary;
@@ -854,8 +857,9 @@ private:
 		for (auto &controller : controllers_) {
 			controller.valid = controller.aim_valid = controller.primary = false;
 			controller.trigger = controller.squeeze = 0;
-			controller.thumbstick                   = {};
-			controller.thumbstick_active            = false;
+			controller.trigger_active = controller.squeeze_active = false;
+			controller.thumbstick                                 = {};
+			controller.thumbstick_active                          = false;
 		}
 		if (!application_active_) {
 			cancel_voice("controller focus lost");
@@ -897,18 +901,19 @@ private:
 			if (!pose(grip_action_, controller.space, controller.pose, controller.valid) ||
 			    !pose(aim_action_, controller.aim_space, controller.aim_pose, controller.aim_valid))
 				return false;
-			auto scalar = [&](XrAction action, float &output) {
+			auto scalar = [&](XrAction action, float &output, bool &available) {
 				get.action = action;
 				auto state = xr_structure<XrActionStateFloat>(XR_TYPE_ACTION_STATE_FLOAT);
 				if (!check(xrGetActionStateFloat(session_, &get, &state),
 				           "read controller pressure"))
 					return false;
-				if (state.isActive && std::isfinite(state.currentState))
+				available = state.isActive && std::isfinite(state.currentState);
+				if (available)
 					output = std::clamp(state.currentState, 0.f, 1.f);
 				return true;
 			};
-			if (!scalar(trigger_action_, controller.trigger) ||
-			    !scalar(squeeze_action_, controller.squeeze))
+			if (!scalar(trigger_action_, controller.trigger, controller.trigger_active) ||
+			    !scalar(squeeze_action_, controller.squeeze, controller.squeeze_active))
 				return false;
 			get.action = thumbstick_action_;
 			auto stick = xr_structure<XrActionStateVector2f>(XR_TYPE_ACTION_STATE_VECTOR2F);
