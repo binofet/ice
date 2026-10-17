@@ -322,6 +322,21 @@ class GateTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 gate.generate_templates("untrusted/repo", Path(directory) / "other")
 
+    def test_review_body_cli_preserves_the_authenticated_body_exactly(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "review.txt"
+            path.write_text("Reviewed the exact CLI emission fix.\n")
+            output = io.StringIO()
+            with patch("sys.stdout", output):
+                result = gate.main(["review-body", "--repo", "ice", "--pr", "7",
+                                    "--head", HEAD, "--base", BASE, "--text-file", str(path)])
+            self.assertEqual(result, 0)
+            self.assertEqual(output.getvalue(), gate.review_body("ice", 7, HEAD, BASE,
+                                                                 path.read_text()))
+            parsed = gate.native_review([review(body=output.getvalue())],
+                                        gate.live_pr(pull(), "ice", 7))
+            self.assertEqual(parsed["id"], 99)
+
     def test_empty_workflow_pr_list_uses_association_api_but_filters_current_head(self):
         class Associated(FakeAPI):
             def pages(self, path, field=None, maximum=500):
