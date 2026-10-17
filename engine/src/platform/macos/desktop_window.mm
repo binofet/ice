@@ -468,6 +468,43 @@ public:
 		native_.delegate = nil;
 		[native_ close];
 	}
+	ice::expected<std::string, window_diagnostic>
+	read_native_clipboard_text(std::size_t maximum_bytes) override {
+		@autoreleasepool {
+			NSPasteboard *board = NSPasteboard.generalPasteboard;
+			NSString     *value = [board stringForType:NSPasteboardTypeString];
+			if (!value)
+				return std::string{};
+			const NSUInteger count = [value lengthOfBytesUsingEncoding:NSUTF8StringEncoding];
+			if (count > maximum_bytes)
+				return ice::unexpected(window_diagnostic{"Clipboard text exceeds its byte limit"});
+			NSData *bytes = [value dataUsingEncoding:NSUTF8StringEncoding allowLossyConversion:NO];
+			if (!bytes)
+				return ice::unexpected(
+				    window_diagnostic{"Clipboard text cannot be converted to UTF-8"});
+			return bytes.length ? std::string(static_cast<const char *>(bytes.bytes), bytes.length)
+			                    : std::string{};
+		}
+	}
+	ice::expected<void, window_diagnostic>
+	write_native_clipboard_text(std::string_view text) override {
+		@autoreleasepool {
+			NSString *value = [[NSString alloc] initWithBytes:text.data()
+			                                           length:text.size()
+			                                         encoding:NSUTF8StringEncoding];
+			if (!value)
+				return ice::unexpected(
+				    window_diagnostic{"Clipboard text cannot be converted from UTF-8"});
+			NSPasteboardItem *item = [NSPasteboardItem new];
+			if (![item setString:value forType:NSPasteboardTypeString])
+				return ice::unexpected(window_diagnostic{"Cannot prepare clipboard text"});
+			NSPasteboard *board = NSPasteboard.generalPasteboard;
+			[board clearContents];
+			if (![board writeObjects:@[ item ]])
+				return ice::unexpected(window_diagnostic{"Cannot publish clipboard text"});
+			return {};
+		}
+	}
 	void show(bool visible) override {
 		if (visible)
 			[native_ makeKeyAndOrderFront:nil];

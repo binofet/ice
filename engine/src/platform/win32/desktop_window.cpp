@@ -194,6 +194,94 @@ public:
 	}
 
 private:
+	ice::expected<std::string, window_diagnostic>
+	read_native_clipboard_text(std::size_t maximum_bytes) override {
+		if (!OpenClipboard(native_))
+			return ice::unexpected(window_diagnostic{"Win32 clipboard is currently unavailable"});
+		struct close_clipboard {
+			~close_clipboard() { CloseClipboard(); }
+		} close;
+		if (!IsClipboardFormatAvailable(CF_UNICODETEXT))
+			return std::string{};
+		const auto data = GetClipboardData(CF_UNICODETEXT);
+		if (!data)
+			return ice::unexpected(window_diagnostic{"Win32 clipboard has no Unicode text"});
+		const auto bytes = GlobalSize(data);
+		if (bytes < sizeof(wchar_t) || bytes % sizeof(wchar_t))
+			return ice::unexpected(window_diagnostic{"Win32 clipboard has invalid UTF-16 storage"});
+		const auto *text = static_cast<const wchar_t *>(GlobalLock(data));
+		if (!text)
+			return ice::unexpected(window_diagnostic{"Win32 clipboard text could not be locked"});
+		struct unlock_clipboard {
+			HANDLE data;
+			~unlock_clipboard() { GlobalUnlock(data); }
+		} unlock{data};
+		// One UTF-16 code unit contributes at least one UTF-8 byte. Do not scan
+		// unbounded native storage, even when its terminator is absent or forged.
+		const auto  available = bytes / sizeof(wchar_t);
+		const auto  limit     = std::min(available, maximum_bytes + 1);
+		std::size_t length    = 0;
+		while (length < limit && text[length])
+			++length;
+		if (length == limit)
+			return ice::unexpected(window_diagnostic{
+			    "Win32 clipboard text exceeds the byte limit or has no terminator"});
+		if (!length)
+			return std::string{};
+		const int count = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, text, int(length),
+		                                      nullptr, 0, nullptr, nullptr);
+		if (count <= 0 || std::size_t(count) > maximum_bytes)
+			return ice::unexpected(window_diagnostic{
+			    "Win32 clipboard text is invalid UTF-16 or exceeds the UTF-8 byte limit"});
+		std::string result(std::size_t(count), '\0');
+		if (WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, text, int(length), result.data(),
+		                        count, nullptr, nullptr) != count)
+			return ice::unexpected(window_diagnostic{"Win32 clipboard Unicode conversion failed"});
+		return result;
+	}
+	ice::expected<void, window_diagnostic>
+	write_native_clipboard_text(std::string_view text) override {
+		const int length = text.empty()
+		                       ? 0
+		                       : MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text.data(),
+		                                             int(text.size()), nullptr, 0);
+		if (!text.empty() && length <= 0)
+			return ice::unexpected(window_diagnostic{"Win32 clipboard text is invalid UTF-8"});
+		// Prepare all storage before replacing the clipboard. SetClipboardData owns
+		// a movable allocation only after success; every earlier failure frees it.
+		const auto allocation =
+		    GlobalAlloc(GMEM_MOVEABLE, (std::size_t(length) + 1) * sizeof(wchar_t));
+		if (!allocation)
+			return ice::unexpected(window_diagnostic{"Win32 clipboard allocation failed"});
+		struct free_clipboard {
+			HGLOBAL allocation;
+			~free_clipboard() {
+				if (allocation)
+					GlobalFree(allocation);
+			}
+		} storage{allocation};
+		auto *destination = static_cast<wchar_t *>(GlobalLock(allocation));
+		if (!destination)
+			return ice::unexpected(
+			    window_diagnostic{"Win32 clipboard allocation could not be locked"});
+		const bool converted =
+		    !length || MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text.data(),
+		                                   int(text.size()), destination, length) == length;
+		destination[length] = L'\0';
+		GlobalUnlock(allocation);
+		if (!converted)
+			return ice::unexpected(window_diagnostic{"Win32 clipboard Unicode conversion failed"});
+		if (!OpenClipboard(native_))
+			return ice::unexpected(window_diagnostic{"Win32 clipboard is currently unavailable"});
+		struct close_clipboard {
+			~close_clipboard() { CloseClipboard(); }
+		} close;
+		if (!EmptyClipboard() || !SetClipboardData(CF_UNICODETEXT, allocation))
+			return ice::unexpected(
+			    window_diagnostic{"Win32 clipboard text could not be published"});
+		storage.allocation = nullptr;
+		return {};
+	}
 	void cancel_native_physical_input() override {
 		pointer_valid_ = false;
 		buttons_       = 0;

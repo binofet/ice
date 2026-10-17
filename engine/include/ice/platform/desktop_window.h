@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <string_view>
 
 namespace ice::platform {
 /// Native windowing family; graphics APIs are selected independently.
@@ -81,8 +82,18 @@ public:
 	/// Enable native committed-text/IME and interpreted editing actions for this window.
 	/// Disabled by default. Disabling cancels preedit; focus loss never commits marked text.
 	/// This insertion/preedit client does not expose surrounding-document reconversion.
-	/// Clipboard commands are application actions; clipboard transport is not provided.
+	/// Clipboard commands are application actions; explicit text transport is available below.
 	void enable_text_input(bool enabled = true);
+	/// Read native clipboard text on the UI thread, without modifying it or synthesizing input.
+	/// The byte limit must be in [1,16MiB]; invalid UTF-8/NUL, oversized data and unsupported
+	/// transfers return a diagnostic without truncation. Empty/non-text clipboards return empty.
+	/// X11 external selection transfers have a bounded wait and may reject incremental transfers.
+	ice::expected<std::string, window_diagnostic>
+	read_clipboard_text(std::size_t maximum_bytes = 4096);
+	/// Replace native clipboard text explicitly on the UI thread. Accept valid UTF-8 without NUL,
+	/// at most 16MiB. On X11 ownership lasts while this window lives and ordinary events are
+	/// pumped. This capability is independent of text focus and never submits a command.
+	ice::expected<void, window_diagnostic> write_clipboard_text(std::string_view text);
 	/// Return whether this window accepts native text/IME input.
 	bool text_input_enabled() const { return text_input_enabled_; }
 	/// Discard current native preedit and emit text-only input_cancelled without committing text.
@@ -112,6 +123,12 @@ protected:
 	virtual void text_input_changed() {}
 	/// Discard native preedit after focus/hide/disable or an explicit client cancellation.
 	virtual void cancel_native_text_input() {}
+	/// Backend-only bounded text retrieval, after public argument validation.
+	virtual ice::expected<std::string, window_diagnostic>
+	read_native_clipboard_text(std::size_t maximum_bytes);
+	/// Backend-only text publication, after public UTF-8/size validation.
+	virtual ice::expected<void, window_diagnostic>
+	write_native_clipboard_text(std::string_view text);
 	/// Reset native held-key/repeat/pointer tracking after all-input cancellation, independently of
 	/// IME.
 	virtual void cancel_native_physical_input() {}
