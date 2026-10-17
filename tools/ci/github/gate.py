@@ -533,7 +533,7 @@ def main(argv=None):
             need(args.text_file and args.pr and not args.publish, "review_body_arguments_required")
             raw = args.text_file.read_bytes()
             need(len(raw) <= 30000, "review_text_too_large")
-            print(review_body(repo, args.pr, args.head or "", args.base or "", raw.decode(), args.decision))
+            sys.stdout.write(review_body(repo, args.pr, args.head or "", args.base or "", raw.decode(), args.decision))
             return 0
         api = API()
         authorize = lambda: execution(api, repo, args.install_manifest, args.install_sha256)
