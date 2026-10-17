@@ -13,6 +13,7 @@
 #include "../debug_trace.h"
 #include "../space_anchor.h"
 #include "ice/audio/android_capture.h"
+#include "ice/core/utf8.h"
 #include "ice/math/types.h"
 #include "ice/platform/host.h"
 #include <algorithm>
@@ -52,6 +53,13 @@ __attribute__((format(printf, 2, 3))) void log_message(int priority, const char 
 }
 #define XR_LOG(...) log_message(ANDROID_LOG_INFO, __VA_ARGS__)
 #define XR_ERROR(...) log_message(ANDROID_LOG_ERROR, __VA_ARGS__)
+
+std::uint64_t monotonic_ns() {
+	const auto count = std::chrono::duration_cast<std::chrono::nanoseconds>(
+	                       std::chrono::steady_clock::now().time_since_epoch())
+	                       .count();
+	return count > 0 ? std::uint64_t(count) : 0;
+}
 
 const char *command_name(std::int32_t command) {
 	switch (command) {
@@ -454,12 +462,20 @@ public:
 		const auto now                 = std::chrono::steady_clock::now();
 		observations.elapsed_seconds =
 		    previous_frame_ ? std::chrono::duration<double>(now - *previous_frame_).count() : 0;
-		previous_frame_                = now;
-		observations.focused           = application_active_;
-		observations.tracked           = tracked && anchor_.ready();
-		observations.recording         = voice_active_;
-		observations.permission_needed = voice_permission_needed_;
-		observations.clip_saved        = voice_saved_;
+		previous_frame_                   = now;
+		observations.focused              = application_active_;
+		observations.tracked              = tracked && anchor_.ready();
+		observations.recording            = voice_active_;
+		observations.permission_needed    = voice_permission_needed_;
+		observations.clip_saved           = voice_saved_;
+		observations.monotonic_ns         = monotonic_ns();
+		observations.recording_id         = voice_id_;
+		observations.recording_started_ns = voice_started_ns_;
+		observations.recording_ended_ns   = voice_ended_ns_;
+		observations.voice_state          = voice_state_;
+		observations.voice_event_sequence = voice_event_sequence_;
+		observations.voice_diagnostic     = voice_diagnostic_;
+		observations.voice_receipt        = voice_receipt_;
 		if (render_ok && !refresh_observations(views, observations))
 			render_ok = false;
 		// The authority is updated once here, never in either eye callback. A rejected
@@ -471,6 +487,8 @@ public:
 				render_ok = false;
 			}
 		}
+		if (voice_state_ == voice_status::began)
+			voice_state_ = voice_status::recording;
 		// Navigation may change during update; refresh the same native samples once for both eyes.
 		if (render_ok && !refresh_observations(views, observations))
 			render_ok = false;
@@ -979,47 +997,119 @@ private:
 		environment->DeleteLocalRef(activity);
 		return granted;
 	}
-	void cancel_voice(const char *reason) {
-		if (voice_active_ || microphone_.recording())
-			XR_LOG("Voice cancelled reason=%s; unfinished PCM discarded", reason);
-		auto stopped = microphone_.stop();
-		if (!stopped)
-			XR_ERROR("Voice cancellation stop failed: %s", stopped.error().message.c_str());
-		microphone_.discard();
-		voice_active_ = false;
-		voice_armed_  = false; // A release is required after focus/permission changes.
+	void voice_event(voice_status state, std::string_view reason = {},
+	                 std::uint64_t terminal_ns = 0) {
+		voice_state_ = state;
+		if (state == voice_status::completed || state == voice_status::cancelled ||
+		    state == voice_status::failed)
+			voice_ended_ns_ = terminal_ns ? terminal_ns : monotonic_ns();
+		if (voice_event_sequence_ != std::numeric_limits<std::uint64_t>::max())
+			++voice_event_sequence_;
+		auto text = reason.substr(0, 512);
+		while (!text.empty() && !ice::core::valid_utf8_text(text, 512))
+			text.remove_suffix(1);
+		voice_diagnostic_.assign(text);
+	}
+	void cancel_reservation() {
+		if (voice_reserved_ && voice_store_) {
+			auto cancelled = voice_store_->cancel_reservation(voice_id_);
+			if (!cancelled)
+				XR_ERROR("Voice reservation retained for recovery: %s",
+				         cancelled.error().message.c_str());
+		}
+		voice_reserved_ = false;
+	}
+	void cancel_voice(const char *reason) noexcept {
+		const bool was_active = voice_active_ || microphone_.recording();
+		voice_active_         = false;
+		voice_armed_          = false; // A release is required after focus/permission changes.
+		try {
+			auto       stopped = microphone_.stop();
+			const auto ended   = monotonic_ns();
+			if (!stopped)
+				XR_ERROR("Voice cancellation stop failed: %s", stopped.error().message.c_str());
+			microphone_.discard();
+			if (was_active) {
+				cancel_reservation();
+				voice_event(voice_status::cancelled, reason, ended);
+				XR_LOG("Voice cancelled id=%s reason=%s; unfinished PCM discarded",
+				       voice_id_.c_str(), reason);
+			}
+		} catch (...) {
+			voice_state_    = voice_status::failed;
+			voice_ended_ns_ = monotonic_ns();
+			XR_ERROR("Voice cancellation failed; no clip receipt delivered");
+		}
+	}
+	bool prepare_voice_store() {
+		if (voice_store_)
+			return true;
+		if (!app_.activity->internalDataPath) {
+			voice_event(voice_status::failed, "App-private recording directory unavailable");
+			return false;
+		}
+		auto opened = ice::audio::recording_store::open(
+		    std::filesystem::path(app_.activity->internalDataPath) / "recordings");
+		if (!opened) {
+			voice_event(voice_status::failed, opened.error().message);
+			XR_ERROR("Voice store unavailable: %s", opened.error().message.c_str());
+			return false;
+		}
+		voice_store_.emplace(std::move(*opened));
+		return true;
 	}
 	void update_voice(bool down) {
 		if (!down) {
-			if (voice_active_)
-				finish_voice("release");
+			if (voice_active_) {
+				if (!microphone_permission(false)) {
+					cancel_voice("permission lost on release");
+					voice_permission_needed_ = true;
+				} else
+					finish_voice("release");
+			}
 			voice_armed_ = true;
 			return;
 		}
 		if (voice_armed_) {
 			voice_armed_ = false;
 			voice_saved_ = false;
+			voice_receipt_.reset();
+			voice_id_.clear();
+			voice_started_ns_ = voice_ended_ns_ = 0;
 			if (!microphone_permission(true)) {
 				voice_permission_needed_ = true;
+				voice_event(voice_status::failed,
+				            "Microphone permission required; release and press X after granting");
 				return;
 			}
 			voice_permission_needed_ = false;
-			auto started             = microphone_.start();
+			if (!prepare_voice_store())
+				return;
+			auto id = voice_store_->reserve_id();
+			if (!id) {
+				voice_event(voice_status::failed, id.error().message);
+				return;
+			}
+			voice_id_       = std::move(*id);
+			voice_reserved_ = true;
+			// Bracket host start/stop, including driver startup latency. No claim that the
+			// first PCM frame or OpenXR predicted time has this exact acoustic timestamp.
+			voice_started_ns_ = monotonic_ns();
+			auto started      = microphone_.start();
 			if (!started) {
-				XR_ERROR("Voice start rejected: %s native=%d", started.error().message.c_str(),
-				         started.error().native_code);
+				cancel_reservation();
+				voice_event(voice_status::failed, started.error().message);
+				XR_ERROR("Voice start rejected id=%s: %s native=%d", voice_id_.c_str(),
+				         started.error().message.c_str(), started.error().native_code);
 				return;
 			}
 			voice_active_    = true;
 			voice_first_pcm_ = false;
-			++voice_sequence_;
-			voice_started_ms_ =
-			    static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
-			                                   std::chrono::system_clock::now().time_since_epoch())
-			                                   .count());
-			XR_LOG("Voice started id=%d-%llu rate=%u cap_frames=%zu input=X held", getpid(),
-			       static_cast<unsigned long long>(voice_sequence_),
-			       microphone_.buffer()->sample_rate(), microphone_.buffer()->capacity_frames());
+			voice_event(voice_status::began);
+			XR_LOG("Voice started id=%s rate=%u cap_frames=%zu monotonic_ns=%llu input=X held",
+			       voice_id_.c_str(), microphone_.buffer()->sample_rate(),
+			       microphone_.buffer()->capacity_frames(),
+			       static_cast<unsigned long long>(voice_started_ns_));
 		}
 		if (!voice_active_)
 			return;
@@ -1030,107 +1120,60 @@ private:
 		}
 		auto captured = microphone_.poll();
 		if (!captured) {
-			XR_ERROR("Voice capture failed: %s native=%d", captured.error().message.c_str(),
-			         captured.error().native_code);
+			const auto message = captured.error().message;
 			cancel_voice("capture error");
+			voice_event(voice_status::failed, message, voice_ended_ns_);
 			return;
 		}
 		if (!voice_first_pcm_ && microphone_.buffer() && !microphone_.buffer()->samples().empty()) {
 			voice_first_pcm_ = true;
-			XR_LOG("Voice first PCM id=%d-%llu frames=%zu rate=%u", getpid(),
-			       static_cast<unsigned long long>(voice_sequence_),
+			XR_LOG("Voice first PCM id=%s frames=%zu rate=%u", voice_id_.c_str(),
 			       microphone_.buffer()->samples().size(), microphone_.buffer()->sample_rate());
 		}
 		if (!microphone_.recording())
 			finish_voice("duration_limit");
 	}
-	static bool write_private_file(const std::string &path, std::span<const std::byte> bytes) {
-		FILE *file = std::fopen(path.c_str(), "wb");
-		if (!file)
-			return false;
-		const bool wrote   = std::fwrite(bytes.data(), 1, bytes.size(), file) == bytes.size();
-		const bool flushed = std::fflush(file) == 0;
-		const bool closed  = std::fclose(file) == 0;
-		return wrote && flushed && closed;
-	}
 	void finish_voice(const char *reason) {
-		voice_active_ = false;
-		auto stopped  = microphone_.stop();
+		voice_active_      = false;
+		auto       stopped = microphone_.stop();
+		const auto ended   = monotonic_ns();
 		if (!stopped) {
-			XR_ERROR("Voice stop failed: %s", stopped.error().message.c_str());
+			cancel_reservation();
+			voice_event(voice_status::failed, stopped.error().message, ended);
 			microphone_.discard();
 			return;
 		}
 		const auto *buffer = microphone_.buffer();
-		if (!buffer || buffer->samples().empty() || !app_.activity->internalDataPath) {
-			XR_LOG("Voice finished with no PCM frames reason=%s; no file published", reason);
+		if (!buffer || buffer->samples().empty() || !voice_store_) {
+			cancel_reservation();
+			voice_event(voice_status::cancelled, "No PCM frames; no clip published", ended);
 			microphone_.discard();
 			return;
 		}
-		auto wav = ice::audio::encode_wav(*buffer);
-		if (!wav) {
-			XR_ERROR("Voice WAV failed: %s", wav.error().message.c_str());
-			microphone_.discard();
-			return;
-		}
-		const std::string directory = std::string(app_.activity->internalDataPath) + "/";
-		const std::string manifest  = directory + "voice-latest.json";
-		// Two fixed WAV slots bound disk usage across launches. Publish the metadata
-		// pointer only after the inactive slot is complete; readers start at that file.
-		if (voice_slot_ < 0) {
-			std::array<char, 2048> prior{};
-			FILE                  *file = std::fopen(manifest.c_str(), "rb");
-			if (file) {
-				std::fread(prior.data(), 1, prior.size() - 1, file);
-				std::fclose(file);
-			}
-			voice_slot_ = std::strstr(prior.data(), "\"slot\":0") ? 0 : 1;
-		}
-		const int         slot    = 1 - voice_slot_;
-		const std::string name    = slot ? "voice-1.wav" : "voice-0.wav";
-		const std::string path    = directory + name;
-		std::int32_t      peak    = 0;
-		double            squared = 0;
-		for (auto sample : buffer->samples()) {
-			const auto value = std::int32_t(sample);
-			peak             = std::max(peak, value < 0 ? -value : value);
-			squared += double(value) * value;
-		}
-		const double           rms = std::sqrt(squared / double(buffer->samples().size()));
-		std::array<char, 2048> metadata{};
-		const int              size = std::snprintf(
-            metadata.data(), metadata.size(),
-            "{\"version\":1,\"slot\":%d,\"file\":\"%s\",\"source\":\"aaudio_microphone\","
-		                 "\"consent\":\"user_push_to_talk_X\",\"build\":\"space-anchor-v2+voice-v2\","
-		                 "\"session\":\"xr-%d-%llu\",\"recording_id\":\"%d-%llu\",\"started_unix_ms\":%llu,"
-		                 "\"format\":\"pcm_s16le\",\"channels\":1,\"sample_rate\":%u,\"frames\":%zu,"
-		                 "\"dropped_frames\":%llu,\"xruns\":%d,\"peak_pcm16\":%d,\"rms_pcm16\":%u,"
-		                 "\"stop_reason\":\"%s\",\"automatic_sharing\":false}\n",
-            slot, name.c_str(), getpid(), static_cast<unsigned long long>(voice_session_ms_),
-            getpid(), static_cast<unsigned long long>(voice_sequence_),
-            static_cast<unsigned long long>(voice_started_ms_), buffer->sample_rate(),
-            buffer->samples().size(), static_cast<unsigned long long>(buffer->dropped_frames()),
-            microphone_.xruns(), peak, static_cast<unsigned>(std::lround(rms)), reason);
-		const bool valid_size = size > 0 && std::size_t(size) < metadata.size();
-		const auto manifest_bytes =
-		    std::as_bytes(std::span(metadata.data(), valid_size ? std::size_t(size) : 0));
-		bool saved = valid_size && write_private_file(path + ".tmp", *wav) &&
-		             write_private_file(manifest + ".tmp", manifest_bytes) &&
-		             std::rename((path + ".tmp").c_str(), path.c_str()) == 0 &&
-		             std::rename((manifest + ".tmp").c_str(), manifest.c_str()) == 0;
+		auto saved = voice_store_->commit(voice_id_, *buffer,
+		                                  {voice_started_ns_, ended, microphone_.xruns(), reason});
+		// A failed write may have recoverable partial/committed files. Do not erase them or
+		// enqueue an uncertain outcome; explicit inventory/retrieval resolves it later.
+		voice_reserved_ = false;
 		if (saved) {
-			voice_slot_  = slot;
-			voice_saved_ = true;
-			XR_LOG("Voice saved id=%d-%llu file=%s rate=%u frames=%zu dropped=%llu xruns=%d "
-			       "peak=%d rms=%.1f reason=%s",
-			       getpid(), static_cast<unsigned long long>(voice_sequence_), name.c_str(),
-			       buffer->sample_rate(), buffer->samples().size(),
-			       static_cast<unsigned long long>(buffer->dropped_frames()), microphone_.xruns(),
-			       peak, rms, reason);
-		} else
-			XR_ERROR("Voice private WAV/metadata publication failed");
-		std::remove((path + ".tmp").c_str());
-		std::remove((manifest + ".tmp").c_str());
+			saved->wav_path      = "recordings/" + saved->wav_path;
+			saved->metadata_path = "recordings/" + saved->metadata_path;
+			voice_receipt_       = std::move(*saved);
+			voice_saved_         = true;
+			voice_event(voice_status::completed, {}, ended);
+			XR_LOG("Voice saved id=%s file=%s rate=%u frames=%llu dropped=%llu xruns=%d "
+			       "start_ns=%llu end_ns=%llu reason=%s",
+			       voice_id_.c_str(), voice_receipt_->wav_path.c_str(), voice_receipt_->sample_rate,
+			       static_cast<unsigned long long>(voice_receipt_->frames),
+			       static_cast<unsigned long long>(voice_receipt_->dropped_frames),
+			       voice_receipt_->xruns,
+			       static_cast<unsigned long long>(voice_receipt_->started_monotonic_ns),
+			       static_cast<unsigned long long>(voice_receipt_->ended_monotonic_ns), reason);
+		} else {
+			voice_event(voice_status::failed, saved.error().message, ended);
+			XR_ERROR("Voice durable publication failed id=%s: %s", voice_id_.c_str(),
+			         saved.error().message.c_str());
+		}
 		microphone_.discard();
 	}
 
@@ -1308,12 +1351,12 @@ private:
 	ice::audio::android_capture     microphone_;
 	bool voice_active_ = false, voice_armed_ = false, voice_saved_ = false,
 	     voice_first_pcm_ = false, voice_permission_needed_ = false;
-	int                 voice_slot_     = -1;
-	std::uint64_t       voice_sequence_ = 0, voice_started_ms_ = 0;
-	const std::uint64_t voice_session_ms_ =
-	    static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
-	                                   std::chrono::system_clock::now().time_since_epoch())
-	                                   .count());
+	std::optional<ice::audio::recording_store>   voice_store_;
+	std::optional<ice::audio::recording_receipt> voice_receipt_;
+	std::string                                  voice_id_, voice_diagnostic_;
+	voice_status                                 voice_state_    = voice_status::idle;
+	bool                                         voice_reserved_ = false;
+	std::uint64_t voice_started_ns_ = 0, voice_ended_ns_ = 0, voice_event_sequence_ = 0;
 
 	XrReferenceSpaceType            space_type_ = XR_REFERENCE_SPACE_TYPE_LOCAL;
 	ice::examples::xr::space_anchor anchor_;
@@ -1336,8 +1379,9 @@ void ice::examples::xr::run_android(android_app &owner, ice::render::device &dev
 		    app->activity->internalDataPath && trace.initialize(app->activity->internalDataPath);
 		XR_LOG("Build marker=shared-rhi-v1+space-anchor-v2 cplusplus=%ld pid=%d private_trace=%d",
 		       __cplusplus, static_cast<int>(getpid()), trace_ready);
-		XR_LOG("Voice marker=voice-v2-state-pump explicit_PTT=left_X max_seconds=10; no automatic "
-		       "ASR/sharing");
+		XR_LOG(
+		    "Voice marker=voice-v3-durable-store explicit_PTT=left_X max_seconds=10; no automatic "
+		    "ASR/sharing");
 		android_session probe(*app, device, client, application_name);
 		app->userData = &probe;
 		app->onAppCmd = [](android_app *owner, std::int32_t command) {

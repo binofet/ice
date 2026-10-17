@@ -63,22 +63,59 @@ OpenXR focus loss, inactive PTT action, revoked permission and shutdown stop and
 discard unfinished PCM. Resume cannot restart it. Existing head/controller tracking,
 grip/trigger actions and room-origin correction remain independent of capture.
 
-The example writes only app-private `files/voice-0.wav`, `voice-1.wav` and
-`voice-latest.json`. Two fixed slots bound retained disk usage across launches;
-one inactive-slot temporary file is possible while saving. A completed inactive
-WAV is renamed first, then the small latest metadata pointer is atomically renamed.
-Readers begin with that metadata and fetch its named WAV; concurrent readers must
-copy promptly before two later recordings reuse the same slot. This is an example
-retention policy, not a shared cross-process recording database.
+The shared Android host now writes immutable takes through `ice::audio_store` to
+`files/recordings/<random-session>-<counter>/capture.wav` and `receipt.json`.
+Only an atomic `committed` marker makes a take discoverable as complete. File
+contents are flushed before publication; POSIX also flushes the containing
+directory. Windows uses flushed files and a write-through marker rename; portable
+Win32 does not provide a directory-fsync equivalent, so power-loss guarantees
+depend on the filesystem. All clips remain private and retained until an explicit
+`remove(id)`. `acknowledge(id)` writes a durable marker without deleting audio or
+implying permission to share it. Legacy `voice-0.wav`, `voice-1.wav` and
+`voice-latest.json` are neither rewritten nor deleted by the new store.
 
-Metadata records ephemeral session/recording IDs, user-PTT consent, source/build,
-start wall time, sample rate, mono PCM format, frames, rejected frames, observed
-xruns, rounded PCM peak/RMS and stop reason. It contains no microphone serial or
-tracking positions. Logs contain these diagnostics, not raw sound or transcripts.
-The recording identity is the pair `(session, recording_id)`; an Activity restart
-can reuse its per-instance sequence while the Android process remains alive.
-There is no automatic sharing. An authorized developer can explicitly retrieve the
-latest manifest and selected WAV with this debug app's `run-as` identity.
+`recording_store::open(directory, limits)` retains a single native writer lock.
+Its parent directory is supplied by a trusted app host. Exclusive private file
+creation and directory-relative POSIX access reject symlinks and overwrites; Windows
+uses an owner-only DACL and rejects reparse points. The default quota is256MiB and
+10000 recording directories. Limits are configurable (bytes1..1TiB, count1..1000000).
+Count/byte exhaustion rejects new work, never evicts an older take. Discovery and
+explicit removal remain usable after reducing a quota below retained usage.
+Cancellation removes only this owner's still-empty reservation. Interrupted writes
+remain in `incomplete_ids` and consume quota; explicit removal can recover them.
+A removal marker hides a clip before deletion, so a crash during removal cannot
+resurrect it as a playable receipt. Cleanup is never implicit on restart.
+
+`list()` is a recovery/discovery operation, not a per-frame query. It validates
+committed metadata, exact mono PCM16 WAV layout, duration bounds and WAV content
+SHA256; corrupt or foreign data produce a diagnostic rather than silently omitting
+a clip. Commit hashes identify content and do not authenticate a speaker or source.
+The store is owner-thread only; no background capture, sender, polling process or
+filesystem watcher is created. An interrupted final directory flush can leave a
+committed recording although commit returned a diagnostic; recovery resolves this
+uncertainty. The host never queues a failed/uncertain receipt automatically.
+
+Version2 JSON keeps `recording_id`, `source=aaudio_microphone`,
+`consent=user_push_to_talk_X`, `automatic_sharing=false`, `format=pcm_s16le`,
+`channels=1`, `sample_rate`, `frames`, `dropped_frames` and `xruns` for transcription
+consumers. These provenance strings describe the trusted host's PTT profile; the
+portable encoder cannot independently prove consent or acoustic speech. It adds
+store-relative paths, WAV byte count/hash, stop reason, and start/end nanoseconds
+from `std::chrono::steady_clock`. The interval brackets host stream start/stop,
+including driver startup/stop latency; it does not timestamp individual samples or
+silently equate host time with OpenXR predicted display time. No raw tracking data
+are stored in the audio receipt.
+
+The once-per-frame XR observation appends a sample `monotonic_ns`, take ID/start/end,
+voice state/event sequence, bounded diagnostic and optional completed receipt.
+The first application update and both eyes observe `began`, then `recording` while
+held. The exact terminal host stamp remains available even when focus loss delays the
+next observation until resume. A completed receipt or terminal cancellation/failure remains until the next
+explicit PTT attempt; clients deduplicate by recording ID. Completion paths are
+relative to `internalDataPath` and prefixed `recordings/`. This lets an app explicitly
+retain frame input/pointing samples on the same host clock without advancing a
+second simulation or claiming a hardware audio/XR time conversion. Permission
+failure can have no take ID; event sequence still distinguishes the attempt.
 
 The next voice path should be: explicit completed clip → authorized transport to a
 speech recognizer → editable transcript → the same command/session service used by
@@ -87,6 +124,9 @@ Recognition results should carry recording/model provenance and require the same
 schema, handle, revision and permission checks as typed requests. Speech/sound
 creation needs an explicit playback/output adapter and is not implemented here.
 
+`tests/recording_store.cpp` exercises restart/incomplete recovery, quota rejection,
+exclusive/no-overwrite publication, WAV/metadata tampering, durable acknowledgment
+and interrupted explicit removal with synthetic PCM only.
 `tests/audio_capture.cpp` checks limits, bounded retention/overflow, clearing,
 ownership moves and exact WAV byte layout without opening a microphone. Physical
 permission/action/acoustic/lifecycle checks are separately recorded in the XR

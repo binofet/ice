@@ -4,6 +4,7 @@
 #include "ice/animation/scene_animation.h"
 #ifdef ICE_HAS_AUDIO
 #include "ice/audio/capture.h"
+#include "ice/audio/recording_store.h"
 #endif
 #include "ice/assets/primitive_mesh.h"
 #include "ice/assets/scene_asset.h"

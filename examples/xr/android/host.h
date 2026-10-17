@@ -1,9 +1,12 @@
 #pragma once
 #include "../view_camera.h"
+#include "ice/audio/recording_store.h"
 #include "ice/render/device.h"
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <optional>
+#include <string>
 #include <string_view>
 
 struct android_app;
@@ -61,6 +64,9 @@ make_world_reference(const ice::math::mat4 &reference_from_room,
 		    ice::render::diagnostic{"Navigation reference cannot be represented"});
 	return result;
 }
+/// Capture lifecycle observed on the native owner thread. Failure/cancellation never implies a
+/// clip.
+enum class voice_status { idle, began, recording, completed, cancelled, failed };
 /// One native frame's immutable observations, shared by both eyes; no application clock is owned.
 struct frame_observation {
 	std::uint64_t                    index             = 0;
@@ -70,6 +76,26 @@ struct frame_observation {
 	ice::render::camera_pose head;
 	bool                     focused = false, tracked = false;
 	bool                     recording = false, permission_needed = false, clip_saved = false;
+	/// Native steady-clock sample time in nanoseconds, distinct from OpenXR predicted_seconds.
+	/// Pair these frame samples with receipt start/end on this same host process clock only.
+	std::uint64_t monotonic_ns = 0;
+	/// Current/last take identity, allocated before microphone start; empty if permission or
+	/// reservation failed first. It remains until the next explicit PTT attempt.
+	std::string recording_id;
+	/// Host stream-start bracket in steady nanoseconds; not a hardware acoustic timestamp.
+	std::uint64_t recording_started_ns = 0;
+	/// Exact host terminal stamp even if focus loss prevents frame delivery until resume.
+	/// Zero while active; a failed pre-start attempt may have no recording ID/start stamp.
+	std::uint64_t recording_ended_ns = 0;
+	/// Lifecycle state plus a monotonic sequence incremented for each begin/terminal transition.
+	voice_status  voice_state          = voice_status::idle;
+	std::uint64_t voice_event_sequence = 0;
+	/// Bounded terminal failure/cancellation reason; never interpreted as executable content.
+	std::string voice_diagnostic;
+	/// Last successfully committed clip, retained until the next PTT attempt. Paths are relative
+	/// to Android internalDataPath (recordings/<id>/...). Deduplicate by recording_id. No queue,
+	/// network, automatic acknowledgment, deletion or transcription is implied.
+	std::optional<ice::audio::recording_receipt> voice_receipt;
 };
 /// Synchronous borrowed application boundary. NativeActivity's render thread owns every call.
 /// It supplies real local application behavior; the adapter owns no game, physics or provider.

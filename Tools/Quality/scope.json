@@ -104,7 +104,10 @@
     "engine/src/input/actions.cpp",
     "tests/input_actions.cpp",
     "engine/include/ice/physics/character3d.h",
-    "tests/character3d.cpp"
+    "tests/character3d.cpp",
+    "engine/include/ice/audio/recording_store.h",
+    "engine/src/audio/recording_store.cpp",
+    "tests/recording_store.cpp"
   ],
   "lint": [
     "tests/mesh.cpp",
@@ -157,7 +160,9 @@
     "tests/host_runtime.cpp",
     "engine/src/input/actions.cpp",
     "tests/input_actions.cpp",
-    "tests/character3d.cpp"
+    "tests/character3d.cpp",
+    "engine/src/audio/recording_store.cpp",
+    "tests/recording_store.cpp"
   ],
   "lint_platform": {
     "Darwin": [
