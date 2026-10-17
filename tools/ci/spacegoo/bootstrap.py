@@ -162,6 +162,15 @@ class Accounts:
             if len(fields) >= 2 and fields[0] in ("SYS_UID_MAX", "SYS_GID_MAX"):
                 setattr(self, "uid_max" if fields[0] == "SYS_UID_MAX" else "gid_max", int(fields[1]))
 
+    @staticmethod
+    def arguments(kind, name, group=None):
+        """Fixed no-home system identities; system users do not receive mail spools."""
+        if kind == "group":
+            return ["/usr/sbin/groupadd", "--system", name]
+        return ["/usr/sbin/useradd", "--system", "--no-create-home", "--gid", group or name,
+                "--home-dir", "/nonexistent", "--shell", "/usr/sbin/nologin",
+                "--no-log-init", "--password", "!", name]
+
     def prerequisites(self, fs):
         result = []
         for path in ("/usr/sbin/groupadd", "/usr/sbin/useradd", "/usr/sbin/nologin"):
@@ -170,8 +179,20 @@ class Accounts:
             need(row and row["kind"] == "file" and row["uid"] == fs.root_uid
                  and not row["mode"] & 0o022 and row["mode"] & 0o111,
                  "Missing or unsafe system account prerequisite: " + path)
-            result.append({"path": path, "sha256": digest(fs.read(path, 4 * 1024 * 1024)),
-                           "mode": row["mode"]})
+            prerequisite = {"path": path, "sha256": digest(fs.read(path, 4 * 1024 * 1024)),
+                            "mode": row["mode"]}
+            if path != "/usr/sbin/nologin":
+                kind = "group" if path.endswith("/groupadd") else "user"
+                # Help is last so the parser checks every preceding option without creating
+                # anything. GID0 exists even before our groups do; it is never used by create().
+                probe = [*self.arguments(kind, USERS[0], group="0"), "--help"]
+                checked = subprocess.run(probe, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                         stderr=subprocess.DEVNULL, timeout=30, cwd="/",
+                                         env={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL": "C"})
+                need(checked.returncode == 0,
+                     "System account tool rejected read-only argument check: " + path)
+                prerequisite["help_argv"] = probe
+            result.append(prerequisite)
         return result
 
     def snapshot(self, name):
@@ -206,12 +227,7 @@ class Accounts:
                                          if p.pw_gid == user.pw_gid and p.pw_name != name)}}
 
     def create(self, kind, name):
-        if kind == "group":
-            args = ["/usr/sbin/groupadd", "--system", name]
-        else:
-            args = ["/usr/sbin/useradd", "--system", "--no-create-home", "--gid", name,
-                    "--home-dir", "/nonexistent", "--shell", "/usr/sbin/nologin",
-                    "--no-log-init", "--key", "CREATE_MAIL_SPOOL=no", "--password", "!", name]
+        args = self.arguments(kind, name)
         result = subprocess.run(args, stdin=subprocess.DEVNULL, capture_output=True, timeout=30,
                                 cwd="/", env={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL": "C"})
         need(result.returncode == 0, "Account creation failed (exit " + str(result.returncode) + "): " + name)

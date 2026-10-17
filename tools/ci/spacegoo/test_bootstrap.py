@@ -6,6 +6,7 @@ import io
 import json
 import os
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -105,6 +106,65 @@ class BootstrapTests(unittest.TestCase):
         self.assertFalse(plan["enabled"])
         self.assertEqual(len([x for x in plan["actions"] if x["kind"] == "user"]), 6)
         self.assertNotIn("sudoers", json.dumps(plan))
+
+    def system_accounts(self):
+        """Real command selection against disposable executable bytes; never run OS tools."""
+        directory = self.fs.path(Path("/usr/sbin"))
+        directory.mkdir(mode=0o755)
+        for name in ("groupadd", "useradd", "nologin"):
+            tool = directory / name
+            tool.write_bytes(b"synthetic trusted account tool")
+            tool.chmod(0o755)
+        return object.__new__(b.Accounts)
+
+    def test_account_arguments_use_locked_system_users_without_invalid_login_def(self):
+        system = self.system_accounts()
+        with patch.object(b.subprocess, "run", return_value=subprocess.CompletedProcess([], 0)) as run:
+            system.create("user", b.USERS[0])
+        self.assertEqual(run.call_args.args[0], ["/usr/sbin/useradd", "--system", "--no-create-home",
+                         "--gid", b.USERS[0], "--home-dir", "/nonexistent", "--shell",
+                         "/usr/sbin/nologin", "--no-log-init", "--password", "!", b.USERS[0]])
+        self.assertEqual(self.accounts.calls, [])
+
+    def test_help_probes_validate_arguments_without_requiring_future_groups(self):
+        system = self.system_accounts()
+        with patch.object(b.subprocess, "run", return_value=subprocess.CompletedProcess([], 0)) as run:
+            prerequisites = system.prerequisites(self.fs)
+        self.assertEqual(run.call_count, 2)
+        for call, row in zip(run.call_args_list, prerequisites):
+            arguments = call.args[0]
+            self.assertEqual(arguments[-1], "--help")
+            self.assertEqual(row["help_argv"], arguments)
+            self.assertEqual(call.kwargs["stdin"], subprocess.DEVNULL)
+            self.assertEqual(call.kwargs["stdout"], subprocess.DEVNULL)
+        user_probe = run.call_args_list[1].args[0]
+        self.assertEqual(user_probe[user_probe.index("--gid") + 1], "0")
+        self.assertNotIn("--key", user_probe)
+        self.assertEqual(self.accounts.calls, [])
+        self.assertEqual(self.fs.calls, [])
+
+    def test_unsupported_account_arguments_refuse_before_any_group_or_directory(self):
+        system = self.system_accounts()
+        self.accounts.prerequisites = system.prerequisites
+        def reject_user(arguments, **_options):
+            return subprocess.CompletedProcess(arguments, 3 if arguments[0].endswith("/useradd") else 0)
+        with patch.object(b.subprocess, "run", side_effect=reject_user), \
+             self.assertRaisesRegex(ValueError, "rejected read-only argument check"):
+            self.plan()
+        self.assertEqual(self.accounts.calls, [])
+        self.assertEqual(self.fs.calls, [])
+
+    def test_existing_six_empty_groups_continue_with_only_remaining_36_actions(self):
+        for name in b.USERS:
+            self.accounts.create("group", name)
+        self.accounts.calls.clear()
+        plan = self.plan()
+        self.assertEqual(len(plan["actions"]), 36)
+        self.assertFalse(any(row["kind"] == "group" for row in plan["actions"]))
+        result = b.apply(self.bundle, plan, b.digest(b.canonical(plan)), self.fs, self.accounts)
+        self.assertEqual(result["status"], "disabled_bootstrap_complete")
+        self.assertEqual(len(result["completed"]), 36)
+        self.assertEqual(self.accounts.calls, [("user", name) for name in b.USERS])
 
     def test_apply_exact_modes_bytes_empty_namespaces_and_idempotency(self):
         result = self.apply()
