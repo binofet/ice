@@ -13,6 +13,7 @@
 #include "../debug_trace.h"
 #include "../space_anchor.h"
 #include "ice/audio/android_capture.h"
+#include "ice/audio/capture_intent.h"
 #include "ice/core/utf8.h"
 #include "ice/math/types.h"
 #include "ice/platform/host.h"
@@ -123,7 +124,17 @@ class android_session {
 public:
 	android_session(android_app &app, ice::render::device &device, android_client &client,
 	                std::string_view name)
-	    : app_(app), render_device_(device), application_(client), name_(name), host_(client_) {}
+	    : app_(app), render_device_(device), application_(client), name_(name), host_(client_),
+	      voice_intent_({[this] { return microphone_.prepare(); },
+	                     [this] { return application_.before_microphone_start(); },
+	                     [this] {
+		                     voice_started_ns_ = monotonic_ns();
+		                     return microphone_.start_prepared();
+	                     },
+	                     [this] { return microphone_.stop(); },
+	                     [this](bool native_stop_confirmed) {
+		                     application_.after_microphone_stop(native_stop_confirmed);
+	                     }}) {}
 	~android_session() {
 		// Retire client dispatch before the last suspend; STOPPING events still drain below.
 		shutting_down_      = true;
@@ -1041,7 +1052,7 @@ private:
 		voice_active_         = false;
 		voice_armed_          = false; // A release is required after focus/permission changes.
 		try {
-			auto       stopped = microphone_.stop();
+			auto       stopped = voice_intent_.end();
 			const auto ended   = monotonic_ns();
 			if (!stopped)
 				XR_ERROR("Voice cancellation stop failed: %s", stopped.error().message.c_str());
@@ -1111,10 +1122,10 @@ private:
 			voice_reserved_ = true;
 			// Bracket host start/stop, including driver startup latency. No claim that the
 			// first PCM frame or OpenXR predicted time has this exact acoustic timestamp.
-			voice_started_ns_ = monotonic_ns();
-			auto started      = microphone_.start();
+			auto started = voice_intent_.begin();
 			if (!started) {
 				cancel_reservation();
+				microphone_.discard();
 				voice_event(voice_status::failed, started.error().message);
 				XR_ERROR("Voice start rejected id=%s: %s native=%d", voice_id_.c_str(),
 				         started.error().message.c_str(), started.error().native_code);
@@ -1152,7 +1163,7 @@ private:
 	}
 	void finish_voice(const char *reason) {
 		voice_active_      = false;
-		auto       stopped = microphone_.stop();
+		auto       stopped = voice_intent_.end();
 		const auto ended   = monotonic_ns();
 		if (!stopped) {
 			cancel_reservation();
@@ -1367,6 +1378,7 @@ private:
 	         thumbstick_action_ = XR_NULL_HANDLE;
 	std::array<controller_state, 2> controllers_;
 	ice::audio::android_capture     microphone_;
+	ice::audio::capture_intent      voice_intent_;
 	bool voice_active_ = false, voice_armed_ = false, voice_saved_ = false,
 	     voice_first_pcm_ = false, voice_permission_needed_ = false;
 	std::optional<ice::audio::recording_store>   voice_store_;

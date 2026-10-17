@@ -1,7 +1,8 @@
 include_guard(GLOBAL)
 include("${CMAKE_CURRENT_LIST_DIR}/ICEExpected.cmake")
 get_filename_component(ICE_AUDIO_ROOT "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
-add_library(ICEAudio STATIC "${ICE_AUDIO_ROOT}/engine/src/audio/capture.cpp")
+add_library(ICEAudio STATIC "${ICE_AUDIO_ROOT}/engine/src/audio/capture.cpp"
+    "${ICE_AUDIO_ROOT}/engine/src/audio/capture_intent.cpp")
 add_library(ice::audio ALIAS ICEAudio)
 target_link_libraries(ICEAudio PUBLIC ice::expected)
 target_include_directories(ICEAudio PUBLIC "${ICE_AUDIO_ROOT}/engine/include")

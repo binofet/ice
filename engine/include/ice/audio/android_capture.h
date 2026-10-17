@@ -19,14 +19,24 @@ public:
 	/// A stream has a single owner; copy assignment is unavailable.
 	android_capture &operator=(const android_capture &) = delete;
 	/// Open input only now, verify negotiated mono PCM16/rate, preallocate at most
-	/// ten seconds and start. Android enforces permission; failed start closes its stream.
+	/// ten seconds and start. Composes prepare/start_prepared for existing callers.
+	/// Android enforces permission; failed start closes its stream.
 	ice::expected<void, diagnostic> start(std::uint32_t duration_ms = 10000);
+	/// Prepare negotiated native input and PCM storage without starting capture. Requires
+	/// host permission and explicit intent. Stop/discard retires a prepared input too.
+	ice::expected<void, diagnostic> prepare(std::uint32_t duration_ms = 10000);
+	/// Start only a successfully prepared input. Lets a host cancel presentation/synthesis
+	/// synchronously after allocation and immediately before native microphone start.
+	/// Failure closes the prepared input; there is no automatic retry.
+	ice::expected<void, diagnostic> start_prepared();
 	/// Nonblocking read of at most 16384 mono frames; capture stops/closes at the frame
 	/// cap or the first poll after its elapsed duration. The host must keep polling.
 	/// A device/read error also closes it and returns a native diagnostic. No retry.
 	ice::expected<void, diagnostic> poll();
 	/// Stop/close now without reading more queued audio. Idempotent; retains PCM until
 	/// discard/next start. A driver close may block; this is not a real-time deadline API.
+	/// Unconfirmed stop/close remains an error across repeated stop/discard and prevents new
+	/// preparation on this owner. Retire/recreate the owner only after resolving native input.
 	ice::expected<void, diagnostic> stop();
 	/// Stop capture, zero/discard retained PCM and clear counters. Close errors are
 	/// ignored here; call stop first if its native diagnostic must be observed.
@@ -43,6 +53,7 @@ public:
 private:
 	struct implementation;
 	std::unique_ptr<implementation> state_;
+	std::int32_t                    stop_failure_ = 0;
 };
 } // namespace ice::audio
 #endif

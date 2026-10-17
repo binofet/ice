@@ -4,6 +4,7 @@
 #include "ice/animation/scene_animation.h"
 #ifdef ICE_HAS_AUDIO
 #include "ice/audio/capture.h"
+#include "ice/audio/capture_intent.h"
 #include "ice/audio/recording_store.h"
 #endif
 #ifdef ICE_HAS_AUDIO_PLAYBACK
