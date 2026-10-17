@@ -67,7 +67,7 @@ jobs:
           python3 tools/ci/run_stage.py dependencies -- bash -euo pipefail -c '
             sudo apt-get update
             sudo apt-get install -y g++-13 clang-18 libx11-dev libgl-dev libopengl-dev libegl-dev \
-              libgles-dev libgl1-mesa-dri xvfb xauth mesa-utils
+              libgles-dev libgl1-mesa-dri xvfb xauth mesa-utils libasound2-dev libpulse-dev
             echo CC=gcc-13 >> "$GITHUB_ENV"
             echo CXX=g++-13 >> "$GITHUB_ENV"
             g++-13 --version
@@ -135,7 +135,8 @@ jobs:
           python3 tools/ci/run_stage.py configure -- cmake -S . -B build/ci \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
             -DICE_WARNINGS_AS_ERRORS=ON -DICE_CXX_STANDARD="$CI_CPP" \
-            -DICE_BUILD_GLES=OFF -DPython3_EXECUTABLE="$(command -v python3)"
+            -DICE_BUILD_GLES=OFF -DICE_BUILD_AUDIO_PLAYBACK=ON \
+            -DPython3_EXECUTABLE="$(command -v python3)"
 
       - name: Build engine modules, public headers and tests
         id: build
@@ -164,7 +165,13 @@ jobs:
 
       - name: Pinned static analysis
         if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.quality_tools.outcome == 'success' }}
-        run: python3 tools/ci/run_stage.py lint -- python3 tools/quality/check.py lint --build-dir build/ci
+        run: |
+          python3 tools/ci/run_stage.py lint -- bash -euo pipefail -c '
+            python3 tools/quality/check.py lint --build-dir build/ci
+            python3 tools/quality/check.py lint --build-dir build/ci --files \
+              engine/src/audio/playback.cpp engine/src/audio/wav.cpp \
+              tests/audio_playback.cpp tests/audio_wav.cpp
+          '
 
       # Each executable gets its own result, deadline and JUnit case. One failure
       # must not hide independent native, HDR, textured or skinning regressions.
@@ -245,7 +252,7 @@ jobs:
       ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
       UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
       # Match discovery, target build and execution. This is deliberately not GPU CI.
-      CI_SANITIZER_TESTS: '^ice_(host_runtime|input_actions|commands|data_graph|data_json|character3d|physics3d|static_collision3d|script_lua|audio_capture|recording_store)$'
+      CI_SANITIZER_TESTS: '^ice_(host_runtime|input_actions|commands|data_graph|data_json|character3d|physics3d|static_collision3d|script_lua|audio_capture|recording_store|audio_wav|audio_playback)$'
     steps:
       - name: Check out exact event commit, without private submodules
         id: checkout
@@ -268,7 +275,7 @@ jobs:
         run: |
           python3 tools/ci/run_stage.py dependencies -- bash -euo pipefail -c '
             sudo apt-get update
-            sudo apt-get install -y g++-13
+            sudo apt-get install -y g++-13 libasound2-dev libpulse-dev
             g++-13 --version
             cmake --version
           '
@@ -282,7 +289,7 @@ jobs:
             -DICE_CXX_STANDARD=23 -DICE_ENABLE_SANITIZERS=ON -DICE_WARNINGS_AS_ERRORS=ON \
             -DICE_BUILD_DESKTOP=OFF -DICE_BUILD_METAL=OFF -DICE_BUILD_OPENGL=OFF \
             -DICE_BUILD_GLES=OFF -DICE_BUILD_COMPANION=OFF -DICE_BUILD_TOOLS=OFF \
-            -DICE_BUILD_PHYSICS_2D=OFF
+            -DICE_BUILD_PHYSICS_2D=OFF -DICE_BUILD_AUDIO_PLAYBACK=ON
 
       - name: Build only selected sanitizer regressions and their dependencies
         id: build
@@ -291,7 +298,8 @@ jobs:
           python3 tools/ci/run_stage.py build -- cmake --build build/sanitizers --parallel 4 \
             --target ice_host_tests ice_input_action_tests ice_command_tests \
             ice_data_graph_tests ice_data_json_tests ice_character3d_tests ice_physics3d_tests \
-            ice_static_collision3d_tests ice_script_lua_tests ice_audio_capture_tests ice_recording_store_tests
+            ice_static_collision3d_tests ice_script_lua_tests ice_audio_capture_tests ice_recording_store_tests \
+            ice_audio_wav_tests ice_audio_playback_tests
 
       - name: Discover exact sanitizer test inventory
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
