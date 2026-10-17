@@ -295,34 +295,34 @@
     <ClCompile Include="bullet\LinearMath\btQuickprof.cpp">
       <Filter>Bullet\LinearMath</Filter>
     </ClCompile>
-    <ClCompile Include="Source\ball.cpp">
+    <ClCompile Include="source\ball.cpp">
       <Filter>Core</Filter>
     </ClCompile>
-    <ClCompile Include="Source\gamestate.cpp">
+    <ClCompile Include="source\gamestate.cpp">
       <Filter>Core</Filter>
     </ClCompile>
-    <ClCompile Include="Source\last_game.cpp">
+    <ClCompile Include="source\last_game.cpp">
       <Filter>Core</Filter>
     </ClCompile>
-    <ClCompile Include="Source\main.cpp">
+    <ClCompile Include="source\main.cpp">
       <Filter>Core</Filter>
     </ClCompile>
-    <ClCompile Include="Source\main_menu.cpp">
+    <ClCompile Include="source\main_menu.cpp">
       <Filter>UI</Filter>
     </ClCompile>
-    <ClCompile Include="Source\pause_menu.cpp">
+    <ClCompile Include="source\pause_menu.cpp">
       <Filter>UI</Filter>
     </ClCompile>
-    <ClCompile Include="Source\settings_menu.cpp">
+    <ClCompile Include="source\settings_menu.cpp">
       <Filter>UI</Filter>
     </ClCompile>
-    <ClCompile Include="Source\skeeball.cpp">
+    <ClCompile Include="source\skeeball.cpp">
       <Filter>Core</Filter>
     </ClCompile>
-    <ClCompile Include="Source\skeeball_ramp.cpp">
+    <ClCompile Include="source\skeeball_ramp.cpp">
       <Filter>Core</Filter>
     </ClCompile>
-    <ClCompile Include="Source\wiimote.cpp">
+    <ClCompile Include="source\wiimote.cpp">
       <Filter>wiimote</Filter>
     </ClCompile>
   </ItemGroup>
@@ -741,37 +741,37 @@
     <ClInclude Include="resource.h">
       <Filter>Resource</Filter>
     </ClInclude>
-    <ClInclude Include="Source\ball.h">
+    <ClInclude Include="source\ball.h">
       <Filter>Core</Filter>
     </ClInclude>
-    <ClInclude Include="Source\gamestate.h">
+    <ClInclude Include="source\gamestate.h">
       <Filter>Core</Filter>
     </ClInclude>
-    <ClInclude Include="Source\last_game.h">
+    <ClInclude Include="source\last_game.h">
       <Filter>Core</Filter>
     </ClInclude>
-    <ClInclude Include="Source\main_menu.h">
+    <ClInclude Include="source\main_menu.h">
       <Filter>UI</Filter>
     </ClInclude>
-    <ClInclude Include="Source\pause_menu.h">
+    <ClInclude Include="source\pause_menu.h">
       <Filter>UI</Filter>
     </ClInclude>
-    <ClInclude Include="Source\settings.h">
+    <ClInclude Include="source\settings.h">
       <Filter>Core</Filter>
     </ClInclude>
-    <ClInclude Include="Source\settings_menu.h">
+    <ClInclude Include="source\settings_menu.h">
       <Filter>UI</Filter>
     </ClInclude>
-    <ClInclude Include="Source\skeeball.h">
+    <ClInclude Include="source\skeeball.h">
       <Filter>Core</Filter>
     </ClInclude>
-    <ClInclude Include="Source\skeeball_ramp.h">
+    <ClInclude Include="source\skeeball_ramp.h">
       <Filter>Core</Filter>
     </ClInclude>
-    <ClInclude Include="Source\wiimote.h">
+    <ClInclude Include="source\wiimote.h">
       <Filter>wiimote</Filter>
     </ClInclude>
-    <ClInclude Include="Source\wiimote_state.h">
+    <ClInclude Include="source\wiimote_state.h">
       <Filter>wiimote</Filter>
     </ClInclude>
   </ItemGroup>

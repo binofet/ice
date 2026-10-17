@@ -1,4 +1,4 @@
-# Pinned to clang-format 18.1.8; see Tools/Quality/requirements.txt.
+# Pinned to clang-format 18.1.8; see tools/quality/requirements.txt.
 BasedOnStyle: LLVM
 UseTab: ForIndentation
 IndentWidth: 4

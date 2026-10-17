@@ -11,7 +11,7 @@ static double networkNow() {
 	return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch())
 	    .count();
 }
-#include "../Common/Demo.h"
+#include "../common/Demo.h"
 #include <cmath>
 #include <deque>
 #include <fstream>

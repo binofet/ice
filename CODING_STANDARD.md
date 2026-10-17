@@ -62,7 +62,7 @@ through `ice::expected` / `ice::meta`; do not add compatibility names to `std`.
 ## Validation
 
 Use the desktop CMake presets for either supported language mode. Quality tools are pinned in
-`Tools/Quality/requirements.txt`; run `Tools/Quality/check.py` for the configured
+`tools/quality/requirements.txt`; run `tools/quality/check.py` for the configured
 formatting and analysis scope. Build and test on a case-sensitive filesystem
 when moving directories or changing include paths. Review the complete migration
 diff before committing or pushing.
@@ -74,5 +74,5 @@ Obsolete engine APIs, fixed-function rendering and historical engine build proje
 have been removed. Retained game sources under `examples` need ports and do not
 establish supported engine API compatibility. Native platform entry points keep OS
 spellings. The argument-name and public-documentation audit is automated; review
-comments for semantic quality as well as coverage. See `Tools/Quality/README.md` for
+comments for semantic quality as well as coverage. See `tools/quality/README.md` for
 commands and platform coverage limits. CMake defines the maintained source lists.

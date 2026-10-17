@@ -36,46 +36,46 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="Source\airhockey.cpp">
+    <ClCompile Include="source\airhockey.cpp">
       <Filter>GameCore</Filter>
     </ClCompile>
-    <ClCompile Include="Source\main.cpp">
+    <ClCompile Include="source\main.cpp">
       <Filter>GameCore</Filter>
     </ClCompile>
-    <ClCompile Include="Source\main_menu.cpp">
+    <ClCompile Include="source\main_menu.cpp">
       <Filter>UI</Filter>
     </ClCompile>
-    <ClCompile Include="Source\pause_menu.cpp">
+    <ClCompile Include="source\pause_menu.cpp">
       <Filter>UI</Filter>
     </ClCompile>
-    <ClCompile Include="Source\settings_menu.cpp">
+    <ClCompile Include="source\settings_menu.cpp">
       <Filter>UI</Filter>
     </ClCompile>
-    <ClCompile Include="Source\AiInput.cpp">
+    <ClCompile Include="source\AiInput.cpp">
       <Filter>Input</Filter>
     </ClCompile>
-    <ClCompile Include="Source\NetworkInput.cpp">
+    <ClCompile Include="source\NetworkInput.cpp">
       <Filter>Input</Filter>
     </ClCompile>
-    <ClCompile Include="Source\PlayerInput.cpp">
+    <ClCompile Include="source\PlayerInput.cpp">
       <Filter>Input</Filter>
     </ClCompile>
-    <ClCompile Include="Source\net_menu.cpp">
+    <ClCompile Include="source\net_menu.cpp">
       <Filter>UI</Filter>
     </ClCompile>
-    <ClCompile Include="Source\gamestate.cpp">
+    <ClCompile Include="source\gamestate.cpp">
       <Filter>GameCore</Filter>
     </ClCompile>
-    <ClCompile Include="Source\paddle.cpp">
+    <ClCompile Include="source\paddle.cpp">
       <Filter>GameCore</Filter>
     </ClCompile>
-    <ClCompile Include="Source\puck.cpp">
+    <ClCompile Include="source\puck.cpp">
       <Filter>GameCore</Filter>
     </ClCompile>
-    <ClCompile Include="Source\spinstate.cpp">
+    <ClCompile Include="source\spinstate.cpp">
       <Filter>GameCore</Filter>
     </ClCompile>
-    <ClCompile Include="Source\table.cpp">
+    <ClCompile Include="source\table.cpp">
       <Filter>GameCore</Filter>
     </ClCompile>
     <ClCompile Include="Box2D\Collision\b2BroadPhase.cpp">
@@ -173,49 +173,49 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Source\airhockey.h">
+    <ClInclude Include="source\airhockey.h">
       <Filter>GameCore</Filter>
     </ClInclude>
-    <ClInclude Include="Source\main_menu.h">
+    <ClInclude Include="source\main_menu.h">
       <Filter>UI</Filter>
     </ClInclude>
-    <ClInclude Include="Source\pause_menu.h">
+    <ClInclude Include="source\pause_menu.h">
       <Filter>UI</Filter>
     </ClInclude>
-    <ClInclude Include="Source\settings_menu.h">
+    <ClInclude Include="source\settings_menu.h">
       <Filter>UI</Filter>
     </ClInclude>
-    <ClInclude Include="Source\AiInput.h">
+    <ClInclude Include="source\AiInput.h">
       <Filter>Input</Filter>
     </ClInclude>
-    <ClInclude Include="Source\InputHandler.h">
+    <ClInclude Include="source\InputHandler.h">
       <Filter>Input</Filter>
     </ClInclude>
-    <ClInclude Include="Source\NetworkInput.h">
+    <ClInclude Include="source\NetworkInput.h">
       <Filter>Input</Filter>
     </ClInclude>
-    <ClInclude Include="Source\PlayerInput.h">
+    <ClInclude Include="source\PlayerInput.h">
       <Filter>Input</Filter>
     </ClInclude>
-    <ClInclude Include="Source\net_menu.h">
+    <ClInclude Include="source\net_menu.h">
       <Filter>UI</Filter>
     </ClInclude>
-    <ClInclude Include="Source\airhockey_settings.h">
+    <ClInclude Include="source\airhockey_settings.h">
       <Filter>GameCore</Filter>
     </ClInclude>
-    <ClInclude Include="Source\gamestate.h">
+    <ClInclude Include="source\gamestate.h">
       <Filter>GameCore</Filter>
     </ClInclude>
-    <ClInclude Include="Source\paddle.h">
+    <ClInclude Include="source\paddle.h">
       <Filter>GameCore</Filter>
     </ClInclude>
-    <ClInclude Include="Source\puck.h">
+    <ClInclude Include="source\puck.h">
       <Filter>GameCore</Filter>
     </ClInclude>
-    <ClInclude Include="Source\spinstate.h">
+    <ClInclude Include="source\spinstate.h">
       <Filter>GameCore</Filter>
     </ClInclude>
-    <ClInclude Include="Source\table.h">
+    <ClInclude Include="source\table.h">
       <Filter>GameCore</Filter>
     </ClInclude>
     <ClInclude Include="Box2D\Box2D.h">

@@ -90,9 +90,10 @@ int main() {
 	CHECK(!decode_json(array + "]"));
 	CHECK(!encode_json(value{std::numeric_limits<double>::infinity()}));
 	CHECK(!encode_json(value{ice::data::object_reference{"file:///x", "x", "type"}}));
-	value::sequence large;
-	for (int i = 0; i < 200; ++i)
-		large.emplace_back(std::string(4096, '\n'));
+	// Fill the size-limit fixture in place; vector relocation is exercised below.
+	value::sequence large(200);
+	for (auto &item : large)
+		item.data.emplace<std::string>(4096, '\n');
 	CHECK(!encode_json(value{std::move(large)}));
 	// Exercise owned map movement while nested JSON arrays grow on older libc++.
 	for (unsigned count : {1u, 2u, 3u, 16u, 129u}) {

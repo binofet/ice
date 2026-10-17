@@ -1,0 +1,16 @@
+{
+  "repository": "https://github.com/binofet/metagen",
+  "commit": "ebc053f1e3c057588e2e3c9a41592b7a57a4cea6",
+  "files": {
+    "containers.generated.h": "7137c13d33bf59ba40688caf754d56392a8517a8823f6b7e39ad4ad6a911d230",
+    "data.generated.rs": "d311962ebf7cf5b5a6a6306a67a5c6ac7c3ca79fc5fe59a1ed3d1a1d2566d398",
+    "graph.catalog.mdb": "e6b419383eff6a73a93d79d9c42d2f51d01c0cdedb3f16f760c587d28d2df92b",
+    "graph.corpus.mdb": "a4ed3de1a36973cfca5db2358fdcf3e10c1f91da10588a8f6683c810e8e6068f",
+    "graph.generated.h": "27994d21db520f8562ce1d6328873c1c8ebd9bcbabd19841288ac4183f576792",
+    "graph.guests.mdb": "ce01d99c0fc8c0981cf2d29c9f9d4e85dbe2d8a35ed2c00f51067bc13fd5d779",
+    "graph.party.mdb": "f050663b0c7bdb60e28f27e34c376d15476d4c019d03609b48c427ecba0ff446",
+    "rttr.generated.cpp": "71f0780f40421833d64070108574dc51b5633d6a612ff823bd3ef6f3666fe27d",
+    "schema.generated.h": "891e725d75ed5936d522a2e4ce3c47c20b4beb8c3f40d566387fef8510d913b0",
+    "schema.generated.rs": "4492c63e9fd8f0c3a5e7ffd6fbf24fa3628b4f603eed1419c3c0075701104f6f"
+  }
+}

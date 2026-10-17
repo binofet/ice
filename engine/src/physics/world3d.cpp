@@ -135,7 +135,10 @@ bool valid(motion_type motion) {
 	return motion == motion_type::static_body || motion == motion_type::kinematic ||
 	       motion == motion_type::dynamic;
 }
-ice::expected<JPH::RefConst<JPH::Shape>, diagnostic> prepare(const shape3d_description &shape) {
+// Keep Jolt's original Ref owner in its movable Result until native settings retain it.
+// Avoid an extra RefConst copy whose atomic reference count Clang 18's analyzer cannot track.
+ice::expected<JPH::ShapeSettings::ShapeResult, diagnostic>
+prepare(const shape3d_description &shape) {
 	JPH::ShapeSettings::ShapeResult result;
 	switch (shape.kind) {
 	case shape3d_kind::sphere:
@@ -173,7 +176,7 @@ ice::expected<JPH::RefConst<JPH::Shape>, diagnostic> prepare(const shape3d_descr
 		return ice::unexpected(diagnostic{result.GetError().c_str()});
 	if (!result.IsValid())
 		return ice::unexpected(diagnostic{"Jolt did not prepare a collision shape"});
-	return JPH::RefConst<JPH::Shape>(result.Get());
+	return result;
 }
 bool valid(const character3d_description &description) {
 	auto range = [](float value, float minimum, float maximum) {
@@ -189,7 +192,7 @@ bool valid(const character3d_description &description) {
 	       range(description.max_push_force, 0, 1.0e9f) && description.max_contacts &&
 	       description.max_contacts <= 65536;
 }
-ice::expected<JPH::RefConst<JPH::Shape>, diagnostic>
+ice::expected<JPH::ShapeSettings::ShapeResult, diagnostic>
 prepare_character_shape(const character3d_description &description, float scale) {
 	shape3d_description geometry;
 	geometry.kind        = shape3d_kind::capsule;
@@ -199,13 +202,13 @@ prepare_character_shape(const character3d_description &description, float scale)
 	if (!shape)
 		return ice::unexpected(shape.error());
 	auto result = JPH::RotatedTranslatedShapeSettings(JPH::Vec3(0, description.height * .5f, 0),
-	                                                  JPH::Quat::sIdentity(), shape->GetPtr())
+	                                                  JPH::Quat::sIdentity(), shape->Get().GetPtr())
 	                  .Create();
 	if (result.HasError())
 		return ice::unexpected(diagnostic{result.GetError().c_str()});
 	if (!result.IsValid())
 		return ice::unexpected(diagnostic{"Jolt did not prepare a character shape"});
-	return JPH::RefConst<JPH::Shape>(result.Get());
+	return result;
 }
 character_ground_state portable(JPH::CharacterBase::EGroundState state) {
 	switch (state) {
@@ -647,15 +650,18 @@ ice::expected<body_id, diagnostic> world3d::create_body(const body3d_description
 		    diagnostic{"Cooked surface collision requires a static nonsensor body"});
 	if (state.free.empty())
 		return ice::unexpected(diagnostic{"3D body budget exhausted"});
-	auto shape = description.static_shape ? ice::expected<JPH::RefConst<JPH::Shape>, diagnostic>(
-	                                            description.static_shape.state_->shape)
-	                                      : prepare(description.shape);
-	if (!shape)
-		return ice::unexpected(shape.error());
+	ice::expected<JPH::ShapeSettings::ShapeResult, diagnostic> prepared;
+	if (!description.static_shape) {
+		prepared = prepare(description.shape);
+		if (!prepared)
+			return ice::unexpected(prepared.error());
+	}
+	const auto *shape = description.static_shape ? description.static_shape.state_->shape.GetPtr()
+	                                             : prepared->Get().GetPtr();
 	if (description.static_shape &&
-	    !valid_static_pose(**shape, description.position, description.rotation))
+	    !valid_static_pose(*shape, description.position, description.rotation))
 		return ice::unexpected(diagnostic{"Cooked surface body bounds exceed +/-1e6 world meters"});
-	JPH::BodyCreationSettings settings(shape->GetPtr(), native(description.position),
+	JPH::BodyCreationSettings settings(shape, native(description.position),
 	                                   native(description.rotation), native(description.motion),
 	                                   description.motion == motion_type::static_body ? 0 : 1);
 	settings.mLinearVelocity               = native(description.linear_velocity);
@@ -796,8 +802,8 @@ world3d::create_character(const character3d_description &description) {
 	if (!proxy_shape)
 		return ice::unexpected(proxy_shape.error());
 	JPH::CharacterVirtualSettings settings;
-	settings.mShape                       = *shape;
-	settings.mInnerBodyShape              = *proxy_shape;
+	settings.mShape                       = shape->Get();
+	settings.mInnerBodyShape              = proxy_shape->Get();
 	settings.mInnerBodyLayer              = 1;
 	settings.mMass                        = description.mass;
 	settings.mMaxStrength                 = description.max_push_force;

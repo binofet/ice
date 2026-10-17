@@ -2,7 +2,7 @@
 
 Design checkpoint: 2026-10-16. This defines the networking direction after
 the Lua authoring bridge. The first scalar networking metadata/codegen proof now
-lives in [Tools/NetworkMetadata](../Tools/NetworkMetadata/README.md): raw Metagen
+lives in [tools/networkmetadata](../tools/networkmetadata/README.md): raw Metagen
 C# attributes and passive Python tags generate equivalent typed records, descriptors,
 full/delta codecs, discovery and explicit host event-validator hooks. This is an
 isolated conformance example; shared-room replication and durable prototype catalogs
@@ -118,12 +118,12 @@ The existing extension points are sufficient for the first scalar proof:
 | `IMetaSource` / `IMetaType` / `IMetaMember` / `IMetaAttribute` | Read stable schema/field IDs, recursive type expressions and arbitrary custom attribute values. |
 | `ReflectionMetaSource.Load` | Read C# `CustomAttributeData`, including custom/assembly attributes, without invoking their constructors. Assembly loading itself is not a sandbox. |
 | `IMetaGenerator.Generate` / `Generation.Run` | Produce owned source/JSON artifacts and structured diagnostics. Errors suppress artifact publication; callers stage filesystem writes. |
-| `Python/metagen_source.py` | Read constrained passive scalar declarations with literal type/field `tags`; do not import/evaluate Python. |
+| `python/metagen_source.py` | Read constrained passive scalar declarations with literal type/field `tags`; do not import/evaluate Python. |
 | `ProjectionMetaSource.Load` | Turn that scalar projection's tags into generic `MetaTag` attributes so the same network consumer can read both providers. |
 
 Do not infer that arbitrary Python decorators already work: they are rejected.
 `portable_schema.py` validates the scalar profile and preserves its bounded string
-tags, but it is not a network generator. The rich `Python/data_source.py` currently
+tags, but it is not a network generator. The rich `python/data_source.py` currently
 rejects extra network/tag metadata; `DataSchema.Read` does not carry arbitrary
 attributes into its rich output, and `PortableSchema.Read` carries known tags
 rather than arbitrary custom attribute types. Read networking policy from the raw

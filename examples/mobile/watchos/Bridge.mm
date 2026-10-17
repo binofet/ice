@@ -1,5 +1,5 @@
 #import "Bridge.h"
-#include "../Common/Demo.h"
+#include "../common/Demo.h"
 #include "ice/input/companion.h"
 #import <CoreMotion/CoreMotion.h>
 #include <chrono>

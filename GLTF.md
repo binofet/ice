@@ -56,12 +56,12 @@ captures alone does not establish glTF material, winding or skinning correctness
 
 Headless `ice_gltf_assets`, `ice_resource_uri` and `ice_scene_animation` tests cover
 resource decoding, transactional failure, hierarchy/skin/blend behavior and camera math.
-Generate owned fixtures with `Tools/GltfFixtures/generate.py`.
+Generate owned fixtures with `tools/gltffixtures/generate.py`.
 
 ## Provenance
 
 Pinned cgltf and stb_image retain upstream licenses/records in `engine/3rdparty`.
-Generated probes/materials are CC0. Fox under `tests/data/gltf/Fox` retains PixelMannen's
+Generated probes/materials are CC0. Fox under `tests/data/gltf/fox` retains PixelMannen's
 model (CC0), tomkranis's rig/animation (CC-BY-4.0) and AsoboStudio/scurest's conversion
 (CC-BY-4.0), pinned with upstream records. It supplies Survey/Walk/Run clips.
 

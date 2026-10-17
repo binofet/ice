@@ -1,0 +1,36 @@
+# Install only after reviewing the controller on each repository's default branch.
+# This job never checks out/imports PR-head source. Root enables required contexts.
+name: Family trusted gate
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review]
+  workflow_run:
+    workflows: [Engine quality, Family review signal]
+    types: [completed]
+  push:
+    branches: [master]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+  statuses: write
+concurrency:
+  group: family-gate-${{ github.repository }}
+  cancel-in-progress: false
+jobs:
+  refresh:
+    if: github.repository == 'binofet/ice'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out only current trusted default-branch controller
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+          submodules: false
+      - name: Authenticate current PR, review, tested merge and actual artifact uploads
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/ci/github/gate.py refresh --repo "$GITHUB_REPOSITORY" --publish

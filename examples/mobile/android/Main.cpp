@@ -1,4 +1,4 @@
-#include "../Common/Demo.h"
+#include "../common/Demo.h"
 #include "Overlay.h"
 #include "ice/input/companion.h"
 #include "ice/net/companion_link.h"

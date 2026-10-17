@@ -19,7 +19,13 @@ enum class vertex_layout {
 inline constexpr std::size_t max_uniform_bytes = 16 * 1024;
 /// Linear color attachment format. Presentation/capture remain RGBA8; HDR targets retain >1
 /// radiance.
-enum class color_format { rgba8_unorm, rgba16_float };
+enum class color_format {
+	rgba8_unorm,
+	rgba16_float,
+	/// Native imported sRGB attachment; shaders output linear RGB, hardware encodes once.
+	/// This first profile supports imported EGL destinations only; other operations reject.
+	rgba8_srgb
+};
 /// Immutable-size GPU target description. Prepare a replacement before swapping a resized graph.
 struct render_target_description {
 	/// Pixel dimensions in [1,16384], also bounded by native capabilities/allocation.

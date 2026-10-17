@@ -86,7 +86,7 @@ observed behavior from the remaining device/lifecycle tests.
 
 [PLATFORM.md](PLATFORM.md) documents ownership and native window limitations;
 [GLTF.md](GLTF.md), [MATH.md](MATH.md) and
-[Metagen integration](Tools/MetagenIntegration/README.md) describe the retained core.
+[Metagen integration](tools/metagenintegration/README.md) describe the retained core.
 See [PLAYGROUND.md](PLAYGROUND.md) for implementation order,
 [CODING_STANDARD.md](CODING_STANDARD.md) for API/style rules and
 [DEVELOPMENT.md](DEVELOPMENT.md) for repository/submodule/version policy.
