@@ -6,6 +6,10 @@
 #include "ice/audio/capture.h"
 #include "ice/audio/recording_store.h"
 #endif
+#ifdef ICE_HAS_AUDIO_PLAYBACK
+#include "ice/audio/playback.h"
+#include "ice/audio/wav.h"
+#endif
 #include "ice/assets/primitive_mesh.h"
 #include "ice/assets/scene_asset.h"
 #include "ice/commands/service.h"

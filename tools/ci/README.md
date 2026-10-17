@@ -14,6 +14,20 @@ test targets. Its CTest regex is used for both discovery and execution; it does
 not represent all CPU tests or graphics coverage. At most three native jobs plus
 one sanitizer job run concurrently in one workflow attempt.
 
+The same four native jobs explicitly enable optional audio playback, adding the
+real OpenAL Soft loopback, WAV decoder and isolated native-null rejection CTests
+to discovered CPU inventory. The latter process requires exact `ALSOFT_DRIVERS=null`
+before calling native creation; invoking it without that setting opens nothing.
+Ubuntu installs ALSA/PulseAudio development libraries so native output backends
+also compile; execution uses loopback or the explicitly forced null backend,
+never physical output. Tests measure
+spatial panning/distance, low-pass/reverb output and actual HRTF activation, plus
+stream ownership, queue/lifetime/lifecycle and malformed WAV behavior. The same
+three audio targets are included in the existing scoped sanitizer job.
+Instrumentation covers adopted ICE wrapper/decoder/tests, not every upstream DSP translation
+unit. No speaker output, microphone or TTS provider is exercised. Matrix names
+and the trusted controller's exact five-job inventory remain unchanged.
+
 Each job records the checked-out commit/tree, source head, tested base and declared
 submodule pins. A PR must be the exact event merge commit with matching base/head
 parents; a push's previous head is recorded as such, not presented as a tested
