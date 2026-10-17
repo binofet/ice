@@ -16,10 +16,10 @@ import xml.etree.ElementTree as ET
 from render_checks import cases as render_cases
 from run_stage import write_json
 
-NATIVE_STAGES = ("evidence", "path-policy", "dependencies", "quality-tools", "consumer-cache",
+NATIVE_STAGES = ("evidence", "gate-contract", "path-policy", "dependencies", "quality-tools", "consumer-cache",
                  "metagen-configure", "metagen-build", "metagen-discovery", "metagen",
                  "rust", "configure", "build", "cpu-discovery", "cpu", "format", "api", "lint")
-SANITIZER_STAGES = ("evidence", "dependencies", "configure", "build", "cpu-discovery", "cpu")
+SANITIZER_STAGES = ("evidence", "gate-contract", "dependencies", "configure", "build", "cpu-discovery", "cpu")
 GLES_STAGES = ("gles-configure", "gles-build", "gles-discovery", "gles")
 
 

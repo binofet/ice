@@ -161,10 +161,10 @@ def cases(raw, measured=True):
 
 
 def stage_plan(repo, source):
-    common = {"evidence", "dependencies", "configure", "build", "cpu-discovery", "cpu"}
+    common = {"evidence", "gate-contract", "dependencies", "configure", "build", "cpu-discovery", "cpu"}
     suites = {"cpu"}
     if repo == "metagen":
-        return {"helper-tests", "dependencies", "core", "formats", "rust-toolchain", "rust",
+        return {"helper-tests", "gate-contract", "dependencies", "core", "formats", "rust-toolchain", "rust",
                 "csharp-smoke", "csharp-core", "rust-consumer"}, set()
     native = source.get("profile", "native") != "sanitizers"
     linux = source["runner_os"] == "Linux"

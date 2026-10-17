@@ -147,6 +147,19 @@ class GateTests(unittest.TestCase):
                 self.assertEqual(result["source-quality"]["state"], "success")
                 self.assertFalse(result["merge_performed"])
 
+    def test_gate_contract_stage_is_required_for_every_repository_and_profile(self):
+        for repo, profile in (("ice", "native"), ("ice", "sanitizers"),
+                              ("metagen", "native"), ("ignition", "native")):
+            with self.subTest(repo=repo, profile=profile):
+                files = evidence(repo, profile=profile)
+                prefix = "ci-evidence/" if repo == "metagen" else ""
+                summary = json.loads(files[prefix + "summary.json"])
+                del summary["stages"]["gate-contract"]
+                files[prefix + "summary.json"] = json.dumps(summary)
+                with self.assertRaisesRegex(ValueError, "required_stage_evidence_missing"):
+                    gate.artifact_evidence(zipped(files), repo, gate.live_pr(pull(repo), repo, 7),
+                                           {"id": 123, "run_attempt": 1})
+
     def test_fork_wrong_repository_or_target_is_never_admitted(self):
         for modify in [lambda p: p["head"]["repo"].update(fork=True),
                        lambda p: p["head"]["repo"].update(id=1),

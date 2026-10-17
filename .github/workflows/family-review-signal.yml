@@ -1,0 +1,15 @@
+# This read-only signal grants no review/status authority. The privileged gate
+# runs separately from default-branch source and re-fetches native reviews.
+name: Family review signal
+on:
+  pull_request_review:
+    types: [submitted, edited, dismissed]
+permissions: {}
+jobs:
+  signal:
+    if: github.repository == 'binofet/ice'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Signal native review history changed
+        run: echo 'Review history changed; the trusted default-branch gate must authenticate it.'
