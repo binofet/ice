@@ -16,14 +16,16 @@ import sys
 import tempfile
 
 
-SOURCE = "84e93ccdc13efff2769d753ef268255db3871cec"
-HANDOFF = Path("/home/jmax/dev/ice/build/worktrees/spacegoo-disabled-bootstrap-84e93cc/build/owner-handoff-84e93cc")
+# Continuation after the earlier attempt created only the six empty groups.
+# The previous sealed packet and receipts are intentionally preserved.
+SOURCE = "a172a0eaacc38fec44bdd23e7657c9ffe0667a95"
+HANDOFF = Path("/home/jmax/dev/ice/build/worktrees/spacegoo-owner-continuation/build/owner-handoff-a172a0e")
 PACKET = HANDOFF / "review-packet"
-SEALED = Path("/var/lib/ice-family-bootstrap-84e93cc")
-MANIFEST = "fdd1420f2e614da287617c33d8ecdb7969fdbbc1ea558ea281ab2a9dd5ed1a24"
-PLAN = "c8b61abaf8b21a52e60786a02f31b7fa902728d4799c0ab218682109838ba851"
+SEALED = Path("/var/lib/ice-family-bootstrap-a172a0e")
+MANIFEST = "a62d57b67949357f06ef1fc386e228737a4d3ec62c8c38f5198e4378823f231c"
+PLAN = "dd35676fa084714ad36ba12d91a188444aafab38ada97a806b145c21cfb8b56b"
 HASHES = {
-    "bootstrap.py": "4238b47ce5a956a51e3c55fcda723afd29d422912142f013e117a8843ed60f2d",
+    "bootstrap.py": "085823f0b42cfa0759f58673b6a2dce516b921557078ebb3e86666c41e599654",
     "manifest.json": MANIFEST,
     "payload/contract.py": "9182a8afda5510c633184ea4e62634c7e090b52a7e9e6173bf67e310f24f755e",
     "payload/broker.py": "cea01e213c718b26bbbbefea39ce19b02bf85f87b2ede42b2350153b98744da5",
@@ -40,10 +42,10 @@ def need(condition, message):
 
 
 def seal_commands():
-    """Fixed equivalent of section one of the independently reviewed owner handoff."""
+    """Seal the reviewed continuation packet without touching the earlier attempt."""
     return """set -eu
-src=/home/jmax/dev/ice/build/worktrees/spacegoo-disabled-bootstrap-84e93cc/build/owner-handoff-84e93cc/review-packet
-dst=/var/lib/ice-family-bootstrap-84e93cc
+src=/home/jmax/dev/ice/build/worktrees/spacegoo-owner-continuation/build/owner-handoff-a172a0e/review-packet
+dst=/var/lib/ice-family-bootstrap-a172a0e
 for ancestor in / /var /var/lib; do
     test ! -L "$ancestor"
     test "$(/usr/bin/stat -c '%F:%u:%g:%a' "$ancestor")" = 'directory:0:0:755'
@@ -78,7 +80,7 @@ def checked_plan(value):
     need(hashlib.sha256(raw).hexdigest() == PLAN and value.get("plan_sha256") == PLAN,
          "Machine plan changed; retained the plan for review and will not apply")
     need(plan.get("source_commit") == SOURCE and plan.get("enabled") is False
-         and len(plan.get("actions", [])) == 42, "Unexpected disabled setup scope")
+         and len(plan.get("actions", [])) == 36, "Unexpected disabled setup scope")
 
 
 def write_new(path, raw):
@@ -117,13 +119,13 @@ def execute(attempt, runner=subprocess.run):
     fixed = ["/usr/bin/sudo", "/usr/bin/python3", "-I", "-B", str(SEALED / "bootstrap.py")]
     planned = stage("root-plan", [*fixed, "--plan", "--manifest-sha256", MANIFEST])
     checked_plan(json.loads(planned))
-    print("ICE setup: exact reviewed 42-action plan matches; applying disabled foundation.", flush=True)
+    print("ICE setup: exact reviewed 36-action plan matches; applying disabled foundation.", flush=True)
     applied = stage("root-apply", [*fixed, "--apply", "--manifest-sha256", MANIFEST,
                                    "--approved-plan-sha256", PLAN])
     result = json.loads(applied)
     need(result.get("status") == "disabled_bootstrap_complete" and result.get("enabled") is False
          and result.get("services_started") is False and result.get("sudo_delegation") is False
-         and len(result.get("completed", [])) == 42, "Setup did not confirm disabled completion")
+         and len(result.get("completed", [])) == 36, "Setup did not confirm disabled completion")
     write_new(attempt / "receipt.json", json.dumps({"status": result["status"], "enabled": False,
               "source": SOURCE, "manifest_sha256": MANIFEST, "approved_plan_sha256": PLAN,
               "services_started": False, "sudo_delegation": False,

@@ -17,7 +17,7 @@ class OwnerSetupTests(unittest.TestCase):
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
         self.plan = {"source_commit": setup.SOURCE, "enabled": False,
-                     "actions": [{"kind": "synthetic"}] * 42}
+                     "actions": [{"kind": "synthetic"}] * 36}
         self.digest = hashlib.sha256(json.dumps(self.plan, sort_keys=True,
                                     separators=(",", ":"), ensure_ascii=True).encode()).hexdigest()
         self.planned = {"status": "plan_only", "plan_sha256": self.digest, "plan": self.plan}
@@ -32,8 +32,8 @@ class OwnerSetupTests(unittest.TestCase):
         return subprocess.CompletedProcess(arguments, 0, json.dumps(value).encode(), b"")
 
     def test_exact_fixed_source_and_external_hashes(self):
-        self.assertEqual(setup.PLAN, "c8b61abaf8b21a52e60786a02f31b7fa902728d4799c0ab218682109838ba851")
-        self.assertEqual(setup.MANIFEST, "fdd1420f2e614da287617c33d8ecdb7969fdbbc1ea558ea281ab2a9dd5ed1a24")
+        self.assertEqual(setup.PLAN, "dd35676fa084714ad36ba12d91a188444aafab38ada97a806b145c21cfb8b56b")
+        self.assertEqual(setup.MANIFEST, "a62d57b67949357f06ef1fc386e228737a4d3ec62c8c38f5198e4378823f231c")
         self.assertEqual(len(setup.HASHES), 8)
         commands = setup.seal_commands()
         self.assertNotIn("/usr/bin/python", commands)
@@ -133,6 +133,15 @@ class OwnerSetupTests(unittest.TestCase):
              patch.object(setup.tempfile, "mkdtemp") as mkdir:
             self.assertEqual(setup.main(["--check"]), 0)
         checked.assert_called_once_with()
+        execute.assert_not_called()
+        mkdir.assert_not_called()
+
+    def test_existing_continuation_stage_refuses_without_sudo_or_attempt(self):
+        with patch.object(setup.sys, "platform", "linux"), patch.object(setup.os, "geteuid", return_value=1000), \
+             patch.object(setup.os, "getuid", return_value=1000), patch.object(setup, "SEALED", self.root), \
+             patch.object(setup, "check_packet"), patch.object(setup, "execute") as execute, \
+             patch.object(setup.tempfile, "mkdtemp") as mkdir:
+            self.assertEqual(setup.main(["--check"]), 1)
         execute.assert_not_called()
         mkdir.assert_not_called()
 

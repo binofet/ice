@@ -121,9 +121,18 @@ account creation, shadow access, systemd isolation or provider integration.
 
 Joel can run the reviewed `owner_setup.py` wrapper as ordinary `jmax` over
 interactive SSH instead of copying the three handoff blocks. The wrapper is
-specific to packet `84e93cc` and the independently reviewed 42-action plan; it
+specific to packet `a172a0e` and the independently reviewed 36-action continuation; it
 accepts no replacement paths, hashes or approval flags. It refuses root execution.
 Its `--check` mode checks the existing packet without sudo or filesystem changes.
+
+The earlier `84e93cc` attempt created six empty groups, then the installed
+`useradd` rejected `--key CREATE_MAIL_SPOOL=no`. The continuation preserves that
+sealed packet and its receipts, reuses only matching groups, and completes the
+remaining users and disabled directories/files. System users already skip mail
+spool creation. The corrected bootstrap checks both tools with trailing `--help`
+before any mutations; the read-only user probe uses existing GID0, while actual
+creation uses each planned dedicated group. Do not rerun the earlier command or
+the historical manual handoff blocks.
 
 The owner-run wrapper first gives sudo only the literal system shell/install/hash
 commands from the reviewed handoff. After all eight sealed-file hashes match, it
