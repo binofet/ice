@@ -10,6 +10,9 @@
 #include "ice/audio/playback.h"
 #include "ice/audio/wav.h"
 #endif
+#ifdef ICE_HAS_AUDIO_SPEECH
+#include "ice/audio/speech.h"
+#endif
 #include "ice/assets/primitive_mesh.h"
 #include "ice/assets/scene_asset.h"
 #include "ice/commands/service.h"
