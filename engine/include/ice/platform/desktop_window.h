@@ -112,6 +112,7 @@ public:
 		return relative_pointer_kind::unavailable;
 	}
 	/// Update the logical candidate anchor; reject nonfinite/out-of-bounds values unchanged.
+	/// An equal valid rectangle succeeds without notifying the native input client.
 	bool set_text_input_rect(const text_input_rect &rect);
 	/// Return the last accepted text caret/candidate anchor.
 	text_input_rect text_input_area() const { return text_input_rect_; }
@@ -119,8 +120,11 @@ public:
 protected:
 	/// Allocate a routing identity and register this owner with the process event stream.
 	desktop_window();
-	/// Refresh native text-input activation/candidate placement after a public setting changes.
+	/// Refresh native text-input activation/candidate placement after enabled state changes.
 	virtual void text_input_changed() {}
+	/// Refresh candidate placement after a different valid rectangle is accepted. Backends can
+	/// avoid changing activation here; the default preserves existing backend callbacks.
+	virtual void text_input_rect_changed() { text_input_changed(); }
 	/// Discard native preedit after focus/hide/disable or an explicit client cancellation.
 	virtual void cancel_native_text_input() {}
 	/// Backend-only bounded text retrieval, after public argument validation.

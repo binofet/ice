@@ -137,8 +137,11 @@ bool desktop_window::set_text_input_rect(const text_input_rect &rect) {
 	    !std::isfinite(rect.height) || std::fabs(rect.x) > 1000000 || std::fabs(rect.y) > 1000000 ||
 	    rect.width < 0 || rect.height < 0 || rect.width > 16384 || rect.height > 16384)
 		return false;
+	if (text_input_rect_.x == rect.x && text_input_rect_.y == rect.y &&
+	    text_input_rect_.width == rect.width && text_input_rect_.height == rect.height)
+		return true;
 	text_input_rect_ = rect;
-	text_input_changed();
+	text_input_rect_changed();
 	return true;
 }
 } // namespace ice::platform

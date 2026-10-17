@@ -422,8 +422,17 @@ std::size_t utf8_offset(NSString *text, NSUInteger offset) {
 	(void)notification;
 	self.owner->cancel_input();
 }
+- (void)invalidateTextCoordinates {
+	ICEDesktopTextView *view = (__bridge ICEDesktopTextView *)self.owner->native_handle().view;
+	[view.context invalidateCharacterCoordinates];
+}
+- (void)windowDidMove:(NSNotification *)notification {
+	(void)notification;
+	[self invalidateTextCoordinates];
+}
 - (void)windowDidResize:(NSNotification *)notification {
 	(void)notification;
+	[self invalidateTextCoordinates];
 	ice::platform::platform_events::post(ice::platform::platform_event_type::window_resized,
 	                                     self.owner->id());
 }
@@ -568,10 +577,11 @@ private:
 			[view_.inputContext activate];
 		} else
 			[view_.context deactivate];
-		[view_.context invalidateCharacterCoordinates];
+		text_input_rect_changed();
 	}
-	void                         cancel_native_text_input() override { [view_ cancelPreedit]; }
-	void                         cancel_native_physical_input() override { [view_ cancelPhysical]; }
+	void text_input_rect_changed() override { [view_.context invalidateCharacterCoordinates]; }
+	void cancel_native_text_input() override { [view_ cancelPreedit]; }
+	void cancel_native_physical_input() override { [view_ cancelPhysical]; }
 	ICEDesktopTextView *__strong view_;
 	NSWindow *__strong           native_;
 	ICEDesktopDelegate *__strong delegate_;
