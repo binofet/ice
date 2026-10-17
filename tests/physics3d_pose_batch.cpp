@@ -525,10 +525,44 @@ void characters() {
 	CHECK(!after.jump_pending && after.position.x > before.position.x &&
 	      after.linear_velocity.y < 0);
 	CHECK(world.cancel_character_intent(character));
-	// A new support moved under the existing character becomes visible to the next refresh.
-	CHECK(world.teleport_character(character, {8, 0, 0}));
-	take(world.step());
-	CHECK(take(world.inspect_character(character)).ground_body == platform);
+	// A completed in-air tick leaves clean cached support that is not the moving target.
+	// Insert the only nearby support without teleport or equal-normal support ambiguity.
+	auto       landing_world = make_world();
+	const auto new_support =
+	    box(landing_world, {8, -.08f, 0}, motion_type::static_body, {3, .1f, 3});
+	character3d_description landing_settings;
+	landing_settings.position    = {0, 2, 0};
+	const auto landing_character = take(landing_world.create_character(landing_settings));
+	take(landing_world.step());
+	CHECK(landing_world.set_character_intent(landing_character, {{.25f, 0, 0}, false}));
+	const auto landing_before = take(landing_world.inspect_character(landing_character));
+	const auto landing_hash   = access::character_state_hash(landing_world, landing_character);
+	CHECK(!landing_before.ground_body.owner &&
+	      landing_before.ground_state == character_ground_state::in_air);
+	auto insert_support =
+	    plan(landing_world, new_support, landing_before.position + vec3(0, -.1001f, 0));
+	apply_without_allocations(landing_world, std::move(insert_support));
+	const auto landing_immediate = take(landing_world.inspect_character(landing_character));
+	CHECK(landing_immediate.id == landing_before.id &&
+	      landing_immediate.proxy == landing_before.proxy &&
+	      landing_immediate.position == landing_before.position &&
+	      landing_immediate.linear_velocity == landing_before.linear_velocity &&
+	      landing_immediate.ground_body == landing_before.ground_body &&
+	      access::character_state_hash(landing_world, landing_character) == landing_hash);
+	take(landing_world.step());
+	const auto landing_after = take(landing_world.inspect_character(landing_character));
+	std::printf("new support refresh: old/new/actual slots=%u/%u/%u, ground=%u, feet=(%.6f, "
+	            "%.6f, %.6f), previous=(%.6f, %.6f, %.6f)\n",
+	            landing_before.ground_body.slot, new_support.slot, landing_after.ground_body.slot,
+	            unsigned(landing_after.ground_state), landing_after.position.x,
+	            landing_after.position.y, landing_after.position.z, landing_before.position.x,
+	            landing_before.position.y, landing_before.position.z);
+	CHECK(landing_after.id == landing_before.id && landing_after.proxy == landing_before.proxy &&
+	      landing_after.ground_body == new_support &&
+	      landing_after.ground_state == character_ground_state::on_ground &&
+	      landing_after.position.x > landing_before.position.x);
+	std::puts("new support moved beneath unchanged cached character: next-tick refresh and held "
+	          "intent preserved without teleport");
 }
 void prepare_failures() {
 	auto             world  = make_world({0, 0, 0});
