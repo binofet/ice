@@ -53,6 +53,9 @@ jobs:
       - name: Evidence helper regressions
         run: python3 tools/ci/run_stage.py evidence -- python3 tools/ci/test_evidence.py
 
+      - name: Trusted gate contract regressions
+        run: python3 tools/ci/run_stage.py gate-contract -- python3 tools/ci/github/test_gate.py
+
       - name: Lowercase project directory policy
         if: ${{ !cancelled() }}
         run: python3 tools/ci/run_stage.py path-policy -- python3 tools/ci/check_paths.py
@@ -63,7 +66,7 @@ jobs:
         run: |
           python3 tools/ci/run_stage.py dependencies -- bash -euo pipefail -c '
             sudo apt-get update
-            sudo apt-get install -y g++-13 clang-18 libx11-dev libgl-dev libegl-dev \
+            sudo apt-get install -y g++-13 clang-18 libx11-dev libgl-dev libopengl-dev libegl-dev \
               libgles-dev libgl1-mesa-dri xvfb xauth mesa-utils
             echo CC=gcc-13 >> "$GITHUB_ENV"
             echo CXX=g++-13 >> "$GITHUB_ENV"
@@ -257,6 +260,9 @@ jobs:
 
       - name: Evidence helper regressions
         run: python3 tools/ci/run_stage.py evidence -- python3 tools/ci/test_evidence.py
+
+      - name: Trusted gate contract regressions
+        run: python3 tools/ci/run_stage.py gate-contract -- python3 tools/ci/github/test_gate.py
 
       - name: Native sanitizer compiler
         run: |
