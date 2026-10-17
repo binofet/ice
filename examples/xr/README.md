@@ -38,6 +38,18 @@ without changing the retained physical room anchor. The host samples it before t
 one application update and refreshes head/grip/aim afterward; both eyes use that
 post-update reference, so teleport/snap does not advance simulation twice. The lab
 default remains identity; application navigation policy belongs to its client.
+
+The client's default-no-op `poll_services()` runs on that same owner thread after
+native lifecycle events, before any frame wait/update. It also runs while the XR
+session is idle, using the existing 100 ms looper wait; loopback heartbeat and receipt
+work need not depend on rendering. Polling never samples controllers, advances the
+application clock or starts the microphone. A suspended client must continue to
+reject world mutation and GPU work through its lifecycle guard. Callback exceptions
+are contained and logged once per continuous failure. No polling occurs during
+native teardown. This hook is not an Android foreground service: OS process
+freezing or termination can still interrupt transport. There is no additional
+socket/render thread or guarantee of a hard 100 ms deadline while native calls block.
+
 Nonfinite, scaled, tilted or reflected navigation rejects with a diagnostic.
 If position/orientation is invalid the app submits no scene layer. Stage space is
 preferred; local space uses a synthetic floor 1.5 m below its initial origin.

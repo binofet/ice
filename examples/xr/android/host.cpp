@@ -334,6 +334,23 @@ public:
 			cancel_voice(command_name(command));
 		update_lifecycle();
 	}
+	void poll_services() noexcept {
+		if (shutting_down_ || finished_)
+			return;
+		try {
+			application_.poll_services();
+			service_failure_reported_ = false;
+		} catch (const std::exception &error) {
+			if (!service_failure_reported_)
+				XR_ERROR("Client service poll failed; local runtime retained: %.512s",
+				         error.what());
+			service_failure_reported_ = true;
+		} catch (...) {
+			if (!service_failure_reported_)
+				XR_ERROR("Client service poll failed; local runtime retained");
+			service_failure_reported_ = true;
+		}
+	}
 	bool running() const { return running_; }
 	bool finished() const { return finished_; }
 	void idle_heartbeat() {
@@ -1336,6 +1353,7 @@ private:
 	ice::platform::host                                  host_;
 	bool           attached_thread_ = false, resumed_ = false, running_ = false, finished_ = false;
 	bool           shutting_down_ = false, runtime_lost_ = false;
+	bool           service_failure_reported_ = false;
 	bool           android_focused_ = false, window_available_ = false;
 	XrInstance     instance_           = XR_NULL_HANDLE;
 	XrSystemId     system_             = XR_NULL_SYSTEM_ID;
@@ -1403,6 +1421,9 @@ void ice::examples::xr::run_android(android_app &owner, ice::render::device &dev
 				}
 				if (app->destroyRequested || !probe.poll_events())
 					break;
+				// Service transport independently of XR running/frame submission. Lifecycle
+				// events above have already disabled suspended application publication.
+				probe.poll_services();
 				probe.idle_heartbeat();
 				if (probe.running() && !probe.frame())
 					break;

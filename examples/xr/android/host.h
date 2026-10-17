@@ -108,6 +108,14 @@ public:
 	/// Report foreground/focused state; cancel held controls and suspend/resume the one
 	/// application.
 	virtual void lifecycle(bool active) = 0;
+	/// Poll bounded nonblocking native services on the owner thread after lifecycle events,
+	/// before the next XR frame. Called while rendering is idle too (100ms idle looper wait),
+	/// without update(), input sampling or simulation advancement. Honor lifecycle(false):
+	/// process transport/heartbeat/receipt work, but do not start capture or perform suspended
+	/// world mutation/GPU work. Never retain borrowed native frame resources here. Exceptions
+	/// are contained by the host; this is not a background thread or an Android foreground
+	/// service guarantee, and OS process suspension/termination still stops polling.
+	virtual void poll_services() {}
 	/// Application-owned rigid yaw/translation from retained physical room to application world.
 	/// Called before update and again afterward; teleport/snap applies to both eyes that frame.
 	/// It must not advance simulation, mutate anchors or perform native graphics work.
