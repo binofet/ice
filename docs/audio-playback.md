@@ -6,7 +6,9 @@ platform qualification is incomplete. Enabling the module initializes no device.
 Existing AAudio capture and the durable recording store remain independent.
 
 `playback_device::create` explicitly selects a physical default output or genuine
-offline loopback mixer. Native output rejects the null/file backends; loopback
+offline loopback mixer. Native output identifies the opened backend using `ALC_ALL_DEVICES_SPECIFIER`
+(the generic `ALC_DEVICE_SPECIFIER` is insufficient in this release), strips an
+optional library prefix and rejects the null/file backends. Loopback
 opens no audio hardware and writes interleaved stereo float samples into caller
 storage. Capabilities report the actual renderer, output rate, EFX availability,
 HRTF extension and active HRTF state. `prefer` permits an explicit HRTF fallback;
@@ -136,6 +138,11 @@ research/commercial use. Current upstream master documentation may describe a
 different dataset/license and must not replace this release's provenance.
 
 ## Validation
+
+`tests/audio_native_rejection.cpp` is a separate process constrained to
+`ALSOFT_DRIVERS=null` before library initialization. It verifies rejection names
+the actual `No Output` backend, and refuses to open anything if that exact process
+environment is absent. No physical output device is probed.
 
 `tests/audio_wav.cpp` uses independent reference PCM16/24/32/float bytes and malformed
 RIFF cases. `tests/audio_playback.cpp` opens only genuine loopback contexts and

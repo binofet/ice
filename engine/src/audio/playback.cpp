@@ -11,6 +11,7 @@
 #include <deque>
 #include <limits>
 #include <new>
+#include <string_view>
 #include <thread>
 #include <utility>
 
@@ -254,10 +255,23 @@ ice::expected<playback_device, diagnostic> playback_device::create(playback_opti
 		    result->profile.loopback ? alcLoopbackOpenDeviceSOFT(nullptr) : alcOpenDevice(nullptr);
 		if (!result->device)
 			fail("Cannot open requested OpenAL Soft output");
-		result->profile.output = text(alcGetString(result->device, ALC_DEVICE_SPECIFIER));
 		if (!result->profile.loopback &&
-		    (result->profile.output == "No Output" || result->profile.output == "Wave File Writer"))
-			fail("Requested physical output resolved to a nonphysical backend");
+		    !alcIsExtensionPresent(result->device, "ALC_ENUMERATE_ALL_EXT"))
+			fail("Native playback requires actual output identity discovery");
+		// ALC_DEVICE_SPECIFIER is the library's generic name in this pinned release.
+		// The opened device's ALL_DEVICES string identifies its actual native backend.
+		const auto *output = alcGetString(result->device, ALC_ALL_DEVICES_SPECIFIER);
+		if (!output || alcGetError(result->device) != ALC_NO_ERROR)
+			fail("Cannot identify the opened playback output");
+		result->profile.output                   = output;
+		std::string_view           actual_output = result->profile.output;
+		constexpr std::string_view prefix        = "OpenAL Soft on ";
+		if (actual_output.starts_with(prefix))
+			actual_output.remove_prefix(prefix.size());
+		if (!result->profile.loopback &&
+		    (actual_output == "No Output" || actual_output == "Wave File Writer"))
+			fail("Requested physical output resolved to a nonphysical backend: " +
+			     result->profile.output);
 		if (!alcIsExtensionPresent(result->device, "ALC_EXT_thread_local_context"))
 			fail("Playback requires thread-local native contexts");
 		result->profile.hrtf = alcIsExtensionPresent(result->device, "ALC_SOFT_HRTF");

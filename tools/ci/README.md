@@ -15,13 +15,16 @@ not represent all CPU tests or graphics coverage. At most three native jobs plus
 one sanitizer job run concurrently in one workflow attempt.
 
 The same four native jobs explicitly enable optional audio playback, adding the
-real OpenAL Soft loopback and WAV decoder CTests to discovered CPU inventory.
+real OpenAL Soft loopback, WAV decoder and isolated native-null rejection CTests
+to discovered CPU inventory. The latter process requires exact `ALSOFT_DRIVERS=null`
+before calling native creation; invoking it without that setting opens nothing.
 Ubuntu installs ALSA/PulseAudio development libraries so native output backends
-also compile; execution opens only offline loopback contexts. Tests measure
+also compile; execution uses loopback or the explicitly forced null backend,
+never physical output. Tests measure
 spatial panning/distance, low-pass/reverb output and actual HRTF activation, plus
 stream ownership, queue/lifetime/lifecycle and malformed WAV behavior. The same
-two targets are included in the existing scoped sanitizer job. Instrumentation
-covers adopted ICE wrapper/decoder/tests, not every upstream DSP translation
+three audio targets are included in the existing scoped sanitizer job.
+Instrumentation covers adopted ICE wrapper/decoder/tests, not every upstream DSP translation
 unit. No speaker output, microphone or TTS provider is exercised. Matrix names
 and the trusted controller's exact five-job inventory remain unchanged.
 
