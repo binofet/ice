@@ -240,6 +240,13 @@ are distinct qualifications; this CPU lane certifies none of them.
 
 ## Source-only checks
 
+On UNIX hosts with Python and `BUILD_TESTING=ON`, ordinary CTest registers
+`ice_ci_spacegoo_contract` and `ice_ci_spacegoo_bootstrap`, each with a 60-second
+timeout and CPU/CI labels. These are portable helper-contract suites using only
+disposable local files/processes and fake account/ownership operations. They
+perform no root, account, service, dispatch or installation actions; a green
+result is not evidence of privileged isolation or commissioning.
+
 `python3 tools/ci/spacegoo/test_contract.py` exercises exact-source/base/review
 admission, fixed isolation argv, stale/duplicate/missing checks, bounded real
 failure/timeout cleanup and real Python per-case JUnit. It uses only disposable
