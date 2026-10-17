@@ -23,9 +23,15 @@ also compile; execution uses loopback or the explicitly forced null backend,
 never physical output. Tests measure
 spatial panning/distance, low-pass/reverb output and actual HRTF activation, plus
 stream ownership, queue/lifetime/lifecycle and malformed WAV behavior. The same
-three audio targets are included in the existing scoped sanitizer job.
+three audio targets are included in the existing scoped sanitizer job. Native
+and sanitizer configurations also enable speech jobs and run the portable
+`ice_audio_speech` fixture: fake worker callbacks test copied PCM, generation
+cancellation, terminal/drained state and budgets; Linux exercises the explicit
+unavailable Apple factory. macOS compiles and statically analyzes the installed
+Apple provider and its manual qualifier, but never runs native synthesis in CI.
+The manual installed-voice executable is deliberately absent from CTest.
 Instrumentation covers adopted ICE wrapper/decoder/tests, not every upstream DSP translation
-unit. No speaker output, microphone or TTS provider is exercised. Matrix names
+unit. No speaker output, microphone or native TTS provider is exercised. Matrix names
 and the trusted controller's exact five-job inventory remain unchanged.
 
 Each job records the checked-out commit/tree, source head, tested base and declared
