@@ -106,12 +106,15 @@ same selectors. No hosted fallback exists. Source job guards exclude fork heads;
 these guards/labels are not an isolation boundary against modified untrusted
 workflow code. Nova owns provider approval, repository/UID isolation and host trust.
 
-All run steps use `/usr/local/libexec/ice-family-native-ci/owned-shell {0}`. It
-inherits the environment and serializes run children with a 1200-second lock wait;
+Candidate source run steps use `/usr/local/libexec/ice-family-native-ci/owned-shell {0}`.
+It inherits the environment and serializes run children with a 1200-second lock wait;
 it is not a security sandbox or CPU quota and does not coordinate human build/GPU
 use. Initial CMake/CTest worker budgets are Linux2/Mac1, including the Rust proof's
 nested build through `CMAKE_BUILD_PARALLEL_LEVEL`. The Mac CI start still needs a
 released lane from Root; this preparation starts nothing.
+Trusted gate and review-signal control jobs instead use
+`/bin/bash --noprofile --norc -e -o pipefail {0}`. Control accounts intentionally
+have no shared CPU-lock access and must not invoke the candidate wrapper.
 
 Bootstrap uses only the declared Python3.12.15 executable: Linux's versioned
 `/opt/ice-family-ci/toolchains/native-20261018-v1/bin/python3.12`, or Mac's

@@ -174,11 +174,16 @@ class OwnedWorkflowTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / 'rendered'; gate.generate_templates(repo, output)
             for name in ('family-gate.yml', 'family-review-signal.yml'):
-                self.assertEqual((output / name).read_text(), (root / '.github/workflows' / name).read_text())
-                text = (output / name).read_text()
-                self.assertIn('[self-hosted, Linux, X64, "${{ github.event.repository.name }}.control"]', text)
-                self.assertIn('/usr/local/libexec/ice-family-native-ci/owned-shell {0}', text)
-                self.assertNotIn('pull_request.head', text)
+                with self.subTest(generated=name):
+                    self.assertEqual((output / name).read_text(), (root / '.github/workflows' / name).read_text())
+                for path in (root / '.github/workflows' / name, root / 'tools/ci/github/templates' / name):
+                    with self.subTest(control=str(path.relative_to(root))):
+                        text = path.read_text()
+                        self.assertIn('[self-hosted, Linux, X64, "${{ github.event.repository.name }}.control"]', text)
+                        shells = [line.strip() for line in text.splitlines() if line.strip().startswith('shell:')]
+                        self.assertEqual(shells, ['shell: /bin/bash --noprofile --norc -e -o pipefail {0}'])
+                        self.assertNotIn('owned-shell', text)
+                        self.assertNotIn('pull_request.head', text)
 
     def test_source_workflow_has_no_installer_or_hosted_fallback_and_activates_project_tools(self):
         root = Path(__file__).resolve().parents[2]
@@ -194,6 +199,9 @@ class OwnedWorkflowTests(unittest.TestCase):
         self.assertIn('source "$CI_VENV/bin/activate"', text)
         self.assertIn('/opt/homebrew/bin/python3.12', text)
         self.assertIn('cpp: [20, 23]', text)
+        shells = [line.strip() for line in text.splitlines() if line.strip().startswith('shell:')]
+        self.assertEqual(shells, ['shell: /usr/local/libexec/ice-family-native-ci/owned-shell {0}']
+                         * (2 if repo == 'ice' else 1))
         self.assertNotIn('sudo ', text)
         self.assertNotIn('apt-get', text)
         self.assertNotIn('rustup toolchain install', text)
