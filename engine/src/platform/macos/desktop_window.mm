@@ -44,6 +44,8 @@ std::size_t utf8_offset(NSString *text, NSUInteger offset) {
 @property(nonatomic) ice::platform::key_modifiers           modifiers;
 @property(nonatomic) BOOL                                   repeated;
 @property(nonatomic, strong) NSTextInputContext            *context;
+@property(nonatomic, strong) NSMenu                        *editEquivalents;
+@property(nonatomic, strong) NSEvent                       *equivalentEvent;
 - (void)cancelPreedit;
 - (void)resetPointer;
 - (void)cancelPhysical;
@@ -216,9 +218,7 @@ std::size_t utf8_offset(NSString *text, NSUInteger offset) {
 		pressed = !physicalPressed_[native.keyCode];
 	[self physicalKey:native pressed:pressed];
 }
-- (void)keyDown:(NSEvent *)event {
-	if (!self.owner || !self.window.isKeyWindow)
-		return;
+- (void)recordKeyDown:(NSEvent *)event {
 	[self physicalKey:event pressed:YES];
 	self.modifiers = modifiers(event.modifierFlags);
 	self.repeated  = event.isARepeat;
@@ -228,8 +228,51 @@ std::size_t utf8_offset(NSString *text, NSUInteger offset) {
 	activity.repeat    = self.repeated;
 	if (!ice::platform::platform_events::post(std::move(activity)))
 		[self cancelPreedit];
+}
+- (void)keyDown:(NSEvent *)event {
+	if (!self.owner || !self.window.isKeyWindow)
+		return;
+	[self recordKeyDown:event];
 	if (self.owner->text_input_enabled())
 		[self interpretKeyEvents:@[ event ]];
+}
+- (BOOL)performKeyEquivalent:(NSEvent *)event {
+	if (event.type != NSEventTypeKeyDown || !self.owner || !self.window.isKeyWindow ||
+	    self.window.firstResponder != self || !self.owner->text_input_enabled())
+		return [super performKeyEquivalent:event];
+	if (!self.editEquivalents) {
+		NSMenu *menu                     = [[NSMenu alloc] initWithTitle:@"ICE text editing"];
+		menu.autoenablesItems            = NO;
+		NSArray<NSString *> *titles      = @[ @"Cut", @"Copy", @"Paste", @"Select All" ];
+		NSArray<NSString *> *keys        = @[ @"x", @"c", @"v", @"a" ];
+		const SEL            selectors[] = {@selector(cut:), @selector(copy:), @selector(paste:),
+		                                    @selector(selectAll:)};
+		for (NSUInteger index = 0; index < titles.count; ++index) {
+			NSMenuItem *item               = [menu addItemWithTitle:titles[index]
+                                               action:selectors[index]
+                                        keyEquivalent:keys[index]];
+			item.target                    = self;
+			item.keyEquivalentModifierMask = NSEventModifierFlagCommand;
+		}
+		self.editEquivalents = menu;
+	}
+	// AppKit performs character/layout/modifier matching; physical key codes do not
+	// choose text actions. A handled equivalent bypasses keyDown:, so its action
+	// records the same physical/activity stream before posting exactly one edit.
+	NSEvent *previous    = self.equivalentEvent;
+	self.equivalentEvent = event;
+	BOOL handled         = NO;
+	@try {
+		handled = [self.editEquivalents performKeyEquivalent:event];
+	} @finally {
+		self.equivalentEvent = previous;
+	}
+	return handled ? YES : [super performKeyEquivalent:event];
+}
+- (void)editAction:(SEL)selector {
+	if (self.equivalentEvent)
+		[self recordKeyDown:self.equivalentEvent];
+	[self doCommandBySelector:selector];
 }
 - (void)insertText:(id)value replacementRange:(NSRange)replacement {
 	(void)replacement;
@@ -377,19 +420,19 @@ std::size_t utf8_offset(NSString *text, NSUInteger offset) {
 }
 - (void)copy:(id)sender {
 	(void)sender;
-	[self doCommandBySelector:@selector(copy:)];
+	[self editAction:@selector(copy:)];
 }
 - (void)cut:(id)sender {
 	(void)sender;
-	[self doCommandBySelector:@selector(cut:)];
+	[self editAction:@selector(cut:)];
 }
 - (void)paste:(id)sender {
 	(void)sender;
-	[self doCommandBySelector:@selector(paste:)];
+	[self editAction:@selector(paste:)];
 }
 - (void)selectAll:(id)sender {
 	(void)sender;
-	[self doCommandBySelector:@selector(selectAll:)];
+	[self editAction:@selector(selectAll:)];
 }
 @end
 @interface ICEDesktopDelegate : NSObject <NSWindowDelegate>

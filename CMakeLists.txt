@@ -206,6 +206,12 @@ if(BUILD_TESTING)
                 MACOSX_BUNDLE_GUI_IDENTIFIER "org.ice.tests.platform-input")
             target_compile_options(ice_platform_input_macos_tests PRIVATE -fobjc-arc)
             target_link_libraries(ice_platform_input_macos_tests PRIVATE "-framework AppKit")
+            ice_test(ice_platform_shortcuts_macos_tests tests/platform_shortcuts_macos.mm ice::window)
+            set_target_properties(ice_platform_shortcuts_macos_tests PROPERTIES MACOSX_BUNDLE TRUE
+                MACOSX_BUNDLE_GUI_IDENTIFIER "org.ice.tests.platform-shortcuts")
+            target_compile_options(ice_platform_shortcuts_macos_tests PRIVATE -fobjc-arc)
+            target_link_libraries(ice_platform_shortcuts_macos_tests PRIVATE "-framework AppKit")
+            # Explicit native focus slot only; never run in ordinary headless CTest.
         endif()
         if(UNIX AND NOT APPLE)
             find_package(X11 REQUIRED)
