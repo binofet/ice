@@ -2,6 +2,7 @@
 #include "../physical_key_internal.h"
 #import <AppKit/AppKit.h>
 #import <CoreGraphics/CoreGraphics.h>
+#import <IOKit/hidsystem/IOLLEvent.h>
 #include <algorithm>
 #include <cstring>
 #include <vector>
@@ -196,20 +197,11 @@ std::size_t utf8_offset(NSString *text, NSUInteger offset) {
 		[self keyUp:native];
 }
 - (void)flagsChanged:(NSEvent *)native {
+	if (!self.owner || !self.window.isKeyWindow)
+		return;
 	using enum ice::platform::physical_key;
-	auto                 key  = ice::platform::detail::mac_physical_key(native.keyCode);
-	NSEventModifierFlags mask = 0;
-	if (key == left_shift || key == right_shift)
-		mask = NSEventModifierFlagShift;
-	if (key == left_control || key == right_control)
-		mask = NSEventModifierFlagControl;
-	if (key == left_alt || key == right_alt)
-		mask = NSEventModifierFlagOption;
-	if (key == left_super || key == right_super)
-		mask = NSEventModifierFlagCommand;
-	if (key == caps_lock)
-		mask = NSEventModifierFlagCapsLock;
-	if (!mask || native.keyCode >= physicalPressed_.size())
+	auto key = ice::platform::detail::mac_physical_key(native.keyCode);
+	if (native.keyCode >= physicalPressed_.size())
 		return;
 	// AppKit reports Caps Lock's toggle, not a held-key release. Publish a complete
 	// physical action; the actual latched state remains in event.modifiers.
@@ -218,10 +210,38 @@ std::size_t utf8_offset(NSString *text, NSUInteger offset) {
 		[self physicalKey:native pressed:NO];
 		return;
 	}
-	BOOL pressed = (native.modifierFlags & mask) != 0;
-	if (key != caps_lock && pressed)
-		pressed = !physicalPressed_[native.keyCode];
-	[self physicalKey:native pressed:pressed];
+	NSEventModifierFlags combined = 0, left_mask = 0, right_mask = 0, selected = 0;
+	if (key == left_shift || key == right_shift) {
+		combined   = NSEventModifierFlagShift;
+		left_mask  = NX_DEVICELSHIFTKEYMASK;
+		right_mask = NX_DEVICERSHIFTKEYMASK;
+		selected   = key == left_shift ? left_mask : right_mask;
+	} else if (key == left_control || key == right_control) {
+		combined   = NSEventModifierFlagControl;
+		left_mask  = NX_DEVICELCTLKEYMASK;
+		right_mask = NX_DEVICERCTLKEYMASK;
+		selected   = key == left_control ? left_mask : right_mask;
+	} else if (key == left_alt || key == right_alt) {
+		combined   = NSEventModifierFlagOption;
+		left_mask  = NX_DEVICELALTKEYMASK;
+		right_mask = NX_DEVICERALTKEYMASK;
+		selected   = key == left_alt ? left_mask : right_mask;
+	} else if (key == left_super || key == right_super) {
+		combined   = NSEventModifierFlagCommand;
+		left_mask  = NX_DEVICELCMDKEYMASK;
+		right_mask = NX_DEVICERCMDKEYMASK;
+		selected   = key == left_super ? left_mask : right_mask;
+	} else
+		return;
+	const auto flags = native.modifierFlags;
+	// The aggregate flag cannot identify which side changed after cancellation erased
+	// held history. Derive this transition from this event's sided flags. An incomplete
+	// or contradictory modifier sample cancels input; it cannot establish a fresh press.
+	if (bool(flags & combined) != bool(flags & (left_mask | right_mask))) {
+		self.owner->cancel_input();
+		return;
+	}
+	[self physicalKey:native pressed:(flags & selected) != 0];
 }
 - (void)recordKeyDown:(NSEvent *)event {
 	[self physicalKey:event pressed:YES];
