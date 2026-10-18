@@ -1,0 +1,27 @@
+{
+  "name": "Tracy",
+  "upstream": "https://github.com/wolfpld/tracy.git",
+  "version": "0.14.1",
+  "tag": "v0.14.1",
+  "commit": "30997d5ca6bb632cc10807a1da8a6d3de0aeeb3c",
+  "tree": "3b409c7240b60b618468282d8e81ad364b087faf",
+  "license": "BSD-3-Clause",
+  "license_sha256": "27ab6b51e57f7e263a6e953d9c8984cd26e69d2f7606bde81e4b3048acf30732",
+  "acquisition": "Explicit pristine local Git checkout only; no automatic download",
+  "default": "Disabled",
+  "enabled_profile": {
+    "lifetime": "manual, host-owned, quiescent startup/shutdown",
+    "activation": "explicit runtime request",
+    "connection": "localhost only, no broadcast, on demand",
+    "callstacks": false,
+    "code_transfer": false,
+    "system_tracing": false,
+    "sampling": false,
+    "vsync_capture": false,
+    "frame_images": false,
+    "crash_handler": false,
+    "gpu_timestamps": false,
+    "automatic_rocprofiler_detection": false,
+    "optional_fortran_fibers_and_gpu_calibration": false
+  }
+}

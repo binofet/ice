@@ -1,5 +1,6 @@
 #include "ice/render/device.h"
 #include "batch_validation.h"
+#include "ice/profiling/profile.h"
 #include <atomic>
 #include <limits>
 #include <set>
@@ -264,6 +265,8 @@ std::string device::take_error() {
 ice::expected<std::unique_ptr<pipeline>, diagnostic>
 device::prepare_pipeline(const ice::io::resource_resolver &resolver, const shader_source &source,
                          pipeline_options options) {
+	ICE_PROFILE_ZONE(prepare_zone, "RHI.ShaderReadPrepare");
+	ICE_PROFILE_TEXT(prepare_zone, source.uri);
 	auto snapshot = shader_snapshot::read(resolver, source.uri);
 	if (!snapshot)
 		return ice::unexpected(snapshot.error());
@@ -272,6 +275,7 @@ device::prepare_pipeline(const ice::io::resource_resolver &resolver, const shade
 ice::expected<std::unique_ptr<pipeline>, diagnostic>
 device::prepare_pipeline(const shader_snapshot &source, const std::string &vertex_entry,
                          const std::string &fragment_entry, pipeline_options options) {
+	ICE_PROFILE_ZONE(prepare_zone, "RHI.PipelinePrepare");
 	if (!detail::valid_options(options))
 		return failure("Invalid vertex layout or depth-write without depth-test");
 	auto result     = std::make_unique<pipeline::implementation>();
@@ -453,9 +457,14 @@ device::create_mesh(const skinned_mesh_data &description) {
 template <typename mesh_description>
 ice::expected<std::unique_ptr<mesh>, diagnostic>
 device::upload_mesh(const mesh_description &description, vertex_layout layout) {
+	ICE_PROFILE_ZONE(upload_zone, "RHI.MeshUpload");
 	auto valid = detail::validate_mesh_data(description);
 	if (!valid)
 		return ice::unexpected(valid.error());
+	ICE_PROFILE_PLOT("RHI validated mesh vertex bytes requested",
+	                 description.vertices.size() * sizeof(description.vertices[0]));
+	ICE_PROFILE_PLOT("RHI validated mesh index bytes requested",
+	                 description.indices.size() * sizeof(std::uint32_t));
 	auto result      = std::make_unique<mesh::implementation>();
 	result->token    = implementation_->token;
 	result->vertices = layout;
@@ -480,6 +489,8 @@ device::upload_mesh(const mesh_description &description, vertex_layout layout) {
 	return std::unique_ptr<mesh>(new mesh(std::move(result)));
 }
 ice::expected<std::unique_ptr<texture>, diagnostic> device::create_texture(const image &pixels) {
+	ICE_PROFILE_ZONE(upload_zone, "RHI.TextureUpload");
+	ICE_PROFILE_PLOT("RHI texture pixel bytes requested", pixels.rgba.size());
 	auto result   = std::make_unique<texture::implementation>();
 	result->token = implementation_->token;
 #ifdef ICE_RENDER_METAL
@@ -594,9 +605,11 @@ presentation_surface::draw(const pipeline &pipeline, std::span<const std::byte> 
 	return draw_batch(frame_batch{std::span(&item, 1)});
 }
 ice::expected<frame_status, diagnostic> presentation_surface::draw_batch(const frame_batch &batch) {
+	ICE_PROFILE_ZONE(submit_zone, "RHI.SurfaceSubmit");
 	auto valid = detail::batch_access::validate(implementation_->token, batch);
 	if (!valid)
 		return ice::unexpected(valid.error());
+	ICE_PROFILE_PLOT("RHI surface validated draw items", batch.draws.size());
 #ifdef ICE_RENDER_METAL
 	if (implementation_->metal) {
 		auto items = detail::batch_access::metal_items(batch);
