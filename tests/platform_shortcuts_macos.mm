@@ -146,8 +146,33 @@ int main() {
 				                NSEventModifierFlagCommand, NO, 13)];
 				CHECK(shortcut(take(), (*first)->id(), binding.command, physical_key::w, repeated,
 				               true));
+				[NSApp postEvent:key(native, NSEventTypeKeyDown, binding.characters,
+				                     NSEventModifierFlagCommand, repeated, 13)
+				         atStart:NO];
+				[NSApp postEvent:key(native, NSEventTypeKeyUp, binding.characters,
+				                     NSEventModifierFlagCommand, NO, 13)
+				         atStart:NO];
+				desktop_window::pump_events();
+				CHECK(shortcut(take(), (*first)->id(), binding.command, physical_key::w, repeated,
+				               true));
 			}
 		}
+		// Normal key-up delivery must not be duplicated by the release fallback.
+		[NSApp postEvent:key(native, NSEventTypeKeyDown, @"z", 0, NO, 13) atStart:NO];
+		[NSApp postEvent:key(native, NSEventTypeKeyUp, @"z", 0, NO, 13) atStart:NO];
+		desktop_window::pump_events();
+		auto     normal = take();
+		unsigned downs = 0, ups = 0, commits_normal = 0;
+		for (const auto &event : normal) {
+			if (event.type == platform_event_type::physical_key) {
+				CHECK(event.key == physical_key::w);
+				event.pressed ? ++downs : ++ups;
+			}
+			if (event.type == platform_event_type::text_committed && event.text == "z")
+				++commits_normal;
+			CHECK(event.type != platform_event_type::edit_command);
+		}
+		CHECK(downs == 1 && ups == 1 && commits_normal == 1);
 		CHECK(![view performKeyEquivalent:key(native, NSEventTypeKeyDown, @"j")]);
 		CHECK(![view performKeyEquivalent:key(native, NSEventTypeKeyDown, @"v", 0)]);
 		CHECK(![view performKeyEquivalent:key(native, NSEventTypeKeyDown, @"v",

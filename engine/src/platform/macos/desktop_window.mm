@@ -49,6 +49,7 @@ std::size_t utf8_offset(NSString *text, NSUInteger offset) {
 - (void)cancelPreedit;
 - (void)resetPointer;
 - (void)cancelPhysical;
+- (void)releasePhysicalKeyIfHeld:(NSEvent *)event;
 @end
 @implementation ICEDesktopTextView
 - (BOOL)acceptsFirstResponder {
@@ -189,6 +190,10 @@ std::size_t utf8_offset(NSString *text, NSUInteger offset) {
 }
 - (void)keyUp:(NSEvent *)native {
 	[self physicalKey:native pressed:NO];
+}
+- (void)releasePhysicalKeyIfHeld:(NSEvent *)native {
+	if (native.keyCode < physicalPressed_.size() && physicalPressed_[native.keyCode])
+		[self keyUp:native];
 }
 - (void)flagsChanged:(NSEvent *)native {
 	using enum ice::platform::physical_key;
@@ -696,8 +701,15 @@ void pump_desktop_events() {
 		while (NSEvent *event = [NSApp nextEventMatchingMask:NSEventMaskAny
 		                                           untilDate:NSDate.distantPast
 		                                              inMode:NSDefaultRunLoopMode
-		                                             dequeue:YES])
+		                                             dequeue:YES]) {
 			[NSApp sendEvent:event];
+			// AppKit can consume Command-key releases before the view's keyUp:.
+			// Release only a still-held key after normal dispatch, so a delivered
+			// keyUp: is never duplicated. Focus loss/cancellation already clears it.
+			if (event.type == NSEventTypeKeyUp &&
+			    [event.window.contentView isKindOfClass:ICEDesktopTextView.class])
+				[(ICEDesktopTextView *)event.window.contentView releasePhysicalKeyIfHeld:event];
+		}
 		[NSApp updateWindows];
 	}
 }

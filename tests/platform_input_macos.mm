@@ -40,8 +40,14 @@ int main() {
 		id<NSTextInputClient> client = (id<NSTextInputClient>)view;
 		CHECK([view conformsToProtocol:@protocol(NSTextInputClient)]);
 		[native makeKeyWindow];
-		desktop_window::pump_events();
-		if (!native.isKeyWindow) {
+		// Native creation requests activation asynchronously. Give this test's own
+		// application the same bounded opportunity as the other AppKit regressions.
+		NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:.5];
+		do {
+			CFRunLoopRunInMode(kCFRunLoopDefaultMode, .01, false);
+			desktop_window::pump_events();
+		} while ((!NSApp.isActive || !native.isKeyWindow) && deadline.timeIntervalSinceNow > 0);
+		if (!NSApp.isActive || !native.isKeyWindow) {
 			std::fputs("AppKit input unavailable: no native key window (desktop may be locked or "
 			           "inactive); skipped, not passed\n",
 			           stderr);
