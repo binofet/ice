@@ -8,7 +8,10 @@ permissions: {}
 jobs:
   signal:
     if: github.repository == 'binofet/ice'
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, Linux, X64, "${{ github.event.repository.name }}.control"]
+    defaults:
+      run:
+        shell: /usr/local/libexec/ice-family-native-ci/owned-shell {0}
     timeout-minutes: 2
     steps:
       - name: Signal native review history changed

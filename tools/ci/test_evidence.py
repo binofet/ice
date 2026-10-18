@@ -14,6 +14,7 @@ from unittest.mock import patch
 import xml.etree.ElementTree as ET
 
 import report
+from test_owned_runner import OwnedRunnerTests, OwnedWorkflowTests
 import check_paths
 
 
@@ -48,17 +49,42 @@ class EvidenceTests(unittest.TestCase):
                        ("ls-tree", "-r", "HEAD"): "160000 commit " + "d" * 40 + "\ttools/metagen",
                        ("status", "--porcelain=v1", "--untracked-files=no"): "",
                        ("rev-parse", "HEAD^{tree}"): "e" * 40}
-            with patch.dict(os.environ, environment), patch.object(
+            with patch.dict(os.environ, environment, clear=True), patch.object(
                     report, "git", side_effect=lambda *args: answers[args]):
                 report.identify(output, "native")
                 source = json.loads((output / "source.json").read_text())
                 self.assertEqual(source["tested_base"], "c" * 40)
                 self.assertEqual(source["submodule_pins"], {"tools/metagen": "d" * 40})
                 self.assertNotIn("never-export-this", (output / "source.json").read_text())
+                os.environ["CI_OWNED_RUNNER"] = "1"
+                observed = OwnedRunnerTests().observed()
+                with patch.object(report.owned_runner, "runtime", return_value=observed):
+                    report.identify(output, "native")
+                self.assertEqual(json.loads((output / "source.json").read_text())["owned_runtime"], observed)
+                with patch.object(report.owned_runner, "runtime", side_effect=ValueError("fixture runtime mismatch")):
+                    with self.assertRaisesRegex(ValueError, "Owned runtime"):
+                        report.identify(output, "native")
+                self.assertFalse(json.loads((output / "source.json").read_text())["source_validated"])
+                del os.environ["CI_OWNED_RUNNER"]
                 answers[("show", "-s", "--format=%P", "HEAD")] = "e" * 40 + " " + "b" * 40
                 with self.assertRaisesRegex(ValueError, "merge parents differ"):
                     report.identify(output, "native")
                 self.assertFalse(json.loads((output / "source.json").read_text())["source_validated"])
+
+    def test_owned_runtime_summary_keeps_provenance_before_an_unbroken_stage_table(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            source = self.fixture(output)
+            source["owned_runtime"] = OwnedRunnerTests().observed('Darwin')
+            (output / "source.json").write_text(json.dumps(source))
+            with patch.object(report.owned_runner, "evidence_issues", return_value=[]):
+                self.assertEqual(self.summary(output), 0)
+            text = (output / "summary.md").read_text()
+            self.assertLess(text.index("Actual owned executor:"), text.index("| Stage |"))
+            self.assertIn("26.5.2", text)
+            self.assertIn("ARM64", text)
+            self.assertIn("3.12.15", text)
+            self.assertIn("| --- | --- | ---: | ---: |\n| evidence |", text)
 
     def stage(self, directory, code, stage="probe", timeout="10"):
         return subprocess.run(

@@ -35,7 +35,7 @@ directory, writes an external manifest with format `ice-family-gate-install-v1`,
 and supplies `--install-manifest PATH --install-sha256 INDEPENDENT_DIGEST`.
 Root independently selects that digest after reviewing the source; a file and hash
 provided by a PR author do not authorize execution. No credential is copied into
-the installation. Existing `gh` authentication is used without reading auth files.
+the installation. Owned workflow jobs supply only their short-lived `GH_TOKEN`; no personal login or credential file is installed.
 
 ## CI evidence
 
@@ -65,15 +65,14 @@ name, default branch and quality-workflow triggers; existing output is refused.
 Copy the reviewed controller and generated files into that repository through its
 reviewed source change. Templates alone do not install or enable automation.
 
-`templates/family-gate.yml` is a hosted, trusted-default-branch controller template;
+`templates/family-gate.yml` is an owned Linux control-role, trusted-default-branch controller template;
 it never checks out PR head code. It refreshes on PR target changes, quality run
 completion, default pushes and manual dispatch. Empty workflow-run PR associations
 use the bounded authenticated associated-PR API and exact-head/repository checks.
 The read-only `family-review-signal.yml` relays native review changes into a separate
 default-branch gate run; no privileged source executes from the review-event PR.
 An event number only routes reads; it grants no authority. These templates are not
-installed merely by being present here. Public fork code stays on unprivileged
-hosted quality jobs and cannot enter automatic owner integration.
+installed merely by being present here. Fork heads are excluded from owned source jobs and cannot enter automatic owner integration; no hosted fallback is configured. Provider approval and runner/UID isolation remain Nova-owned.
 
 Keep physical hardware, live providers, GPU qualification not explicitly run,
 deployment, paid services and release/visibility changes as separate gates.

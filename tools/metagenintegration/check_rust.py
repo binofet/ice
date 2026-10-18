@@ -20,7 +20,7 @@ def main():
     if not rustc:
         parser.error('Install Rust 1.90+ or pass --rustc; this script never installs toolchains')
     build = args.native_build.resolve()
-    subprocess.run(['cmake', '--build', str(build), '--target', 'meta_wire_fixture', '--parallel', '4'], check=True)
+    subprocess.run(['cmake', '--build', str(build), '--target', 'meta_wire_fixture'], check=True)
     output = build / 'rust-proof'
     output.mkdir(exist_ok=True)
     executable = output / 'metagen-rust-proof'

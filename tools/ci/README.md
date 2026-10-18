@@ -1,13 +1,14 @@
 # ICE CI evidence
 
-`engine-quality.yml` runs on pushes, pull requests and explicit workflow dispatch.
-It uses hosted Ubuntu/macOS labels; this configuration does not install or assume
-a Spacegoo/self-hosted runner. Provider execution, artifact publication and branch
-protection must be commissioned separately. A local helper pass does not prove
-that provider loop.
+`engine-quality.yml` prepares owned Linux/X64 and macOS/ARM64 source jobs on
+same-repository events. Runner registration, toolchain readiness and actual provider
+qualification are separate Nova/Root work; this source change commissions no host.
+Legacy `ubuntu-24.04`/`macos-15` job/artifact names preserve the current trusted gate
+inventory and do not identify actual images. `source.json.owned_runtime` and the
+job summary report the observed OS release, architecture and Python instead.
 
 The native matrix builds C++20 and C++23 with `RelWithDebInfo`, strict warnings and
-the configured platform compiler. Ubuntu explicitly selects GCC 13. macOS uses
+the configured platform compiler. Linux requires preprovisioned GCC 13. macOS uses
 the runner's Xcode compiler and records its version. The separate C++23 Debug
 ASan/UBSan job builds only its declared headless ownership/data/physics/Lua/audio
 test targets. Its CTest regex is used for both discovery and execution; it does
@@ -18,7 +19,7 @@ The same four native jobs explicitly enable optional audio playback, adding the
 real OpenAL Soft loopback, WAV decoder and isolated native-null rejection CTests
 to discovered CPU inventory. The latter process requires exact `ALSOFT_DRIVERS=null`
 before calling native creation; invoking it without that setting opens nothing.
-Ubuntu installs ALSA/PulseAudio development libraries so native output backends
+Nova provisions ALSA/PulseAudio development libraries so native output backends
 also compile; execution uses loopback or the explicitly forced null backend,
 never physical output. Tests measure
 spatial panning/distance, low-pass/reverb output and actual HRTF activation, plus
@@ -94,3 +95,45 @@ CI_EVIDENCE_DIR=build/ci-evidence/local-probe \
 The generic helpers do not merge branches or change provider settings.
 `spacegoo/`, when configured, is a separate deployment lane with its own intake
 authorization and job ownership; it must not reuse another project's runner.
+
+
+## Owned executor source contract
+
+Source selectors are `[self-hosted,Linux,X64,<repo>.cpu]` and
+`[self-hosted,macOS,ARM64,<repo>.cpu]`. Trusted default-branch gate/review signals
+use `[self-hosted,Linux,X64,<repo>.control]`; maintained templates generate the
+same selectors. No hosted fallback exists. Source job guards exclude fork heads;
+these guards/labels are not an isolation boundary against modified untrusted
+workflow code. Nova owns provider approval, repository/UID isolation and host trust.
+
+All run steps use `/usr/local/libexec/ice-family-native-ci/owned-shell {0}`. It
+inherits the environment and serializes run children with a 1200-second lock wait;
+it is not a security sandbox or CPU quota and does not coordinate human build/GPU
+use. Initial CMake/CTest worker budgets are Linux2/Mac1, including the Rust proof's
+nested build through `CMAKE_BUILD_PARALLEL_LEVEL`. The Mac CI start still needs a
+released lane from Root; this preparation starts nothing.
+
+Bootstrap uses only the declared Python3.12.15 executable: Linux's versioned
+`/opt/ice-family-ci/toolchains/native-20261018-v1/bin/python3.12`, or Mac's
+`/opt/homebrew/bin/python3.12`. The dependencies stage checks actual native tools,
+creates fresh `build/ci-tools/venv`, then installs exactly reviewed package pins
+with its explicit Python and `pip --require-virtualenv`. Personal pip configuration
+and indexes are disabled. No job sudo/apt, setup-python action, global pip install
+or Rust auto-install exists. Every later source run explicitly activates the venv;
+summary/publication use the declared bootstrap Python so early failures can report.
+
+`toolchain.json` binds actual tool paths/versions, package/requirements pins and
+runtime facts to the exact source fingerprint. Missing, mismatched or incomplete
+owned evidence rejects reporting. Linux native profiles retain software Mesa/Xvfb
+GL and surfaceless EGL/GLES; Ignition Quest stages are native EGL/GLES adapter
+execution, not Android NDK cross-compilation. Mac retains Metal/OpenGL compilation
+and CPU tests; no native Metal/window rendering claim is added. Dependencies must
+be provisioned separately; a missing tool fails rather than installing or weakening
+coverage. Python tests simulate tools/packages, never install them or compile.
+
+The privileged workflow still checks out current default source and runs the
+unchanged trusted gate with only the workflow's short-lived GH_TOKEN. A reviewed
+migration-branch workflow is separately privileged YAML; checkout of default
+`gate.py` alone does not authorize its steps. `refresh --publish` retains its bulk
+open-PR scope. Bootstrap/dispatch trust, current native review/head/base/artifacts,
+protected statuses and default selector activation remain independent review gates.

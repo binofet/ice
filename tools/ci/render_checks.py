@@ -29,7 +29,7 @@ def main():
     parser.add_argument("--build", default="build/ci")
     args = parser.parse_args()
     environment = dict(os.environ, LANG="C.UTF-8", XMODIFIERS="@im=none",
-                       LIBGL_ALWAYS_SOFTWARE="1", LP_NUM_THREADS="4")
+                       LIBGL_ALWAYS_SOFTWARE="1", LP_NUM_THREADS=os.environ.get("CI_PARALLEL", "4"))
     for name in ("MESA_GL_VERSION_OVERRIDE", "MESA_GLSL_VERSION_OVERRIDE",
                  "MESA_GLES_VERSION_OVERRIDE"):
         environment.pop(name, None)

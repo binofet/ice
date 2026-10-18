@@ -15,6 +15,7 @@ import xml.etree.ElementTree as ET
 
 from render_checks import cases as render_cases
 from run_stage import write_json
+import owned_runner
 
 NATIVE_STAGES = ("evidence", "gate-contract", "path-policy", "dependencies", "quality-tools", "consumer-cache",
                  "metagen-configure", "metagen-build", "metagen-discovery", "metagen",
@@ -79,6 +80,14 @@ def identify(output, profile):
               "cpp": os.environ.get("CI_CPP", "unspecified"), "profile": profile,
               "run_url": run_url, "run_attempt": os.environ.get("GITHUB_RUN_ATTEMPT"),
               "source_validated": not issues, "source_issues": issues}
+    if os.environ.get("CI_OWNED_RUNNER") == "1":
+        try:
+            record["owned_runtime"] = owned_runner.runtime()
+            record["owned_repository"] = os.environ.get("GITHUB_REPOSITORY")
+        except (OSError, ValueError) as error:
+            issues.append("Owned runtime: " + str(error))
+        record["source_validated"] = not issues
+        record["source_issues"] = issues
     output.mkdir(parents=True, exist_ok=True)
     write_json(output / "source.json", record)
     if issues:
@@ -178,13 +187,22 @@ def summarize(output):
         if not source.get("source_validated"):
             issues.append("Source validation failed: " + "; ".join(source.get("source_issues", [])))
         issues += final_source_issues(source)
+    issues += owned_runner.evidence_issues(output, source)
     expected, suite_plan = plan(source["profile"], source["runner_os"])
     stages = {}
     lines = [f"## ICE · {md(source['runner_os'])} · C++{md(source['cpp'])} · {source['profile']}", "",
              f"Tested commit: `{source.get('tested_commit', 'unavailable')}`",
              f"Source head: `{source.get('source_head', 'unavailable')}`",
              f"Base ({source.get('base_role', 'unavailable')}): `{source.get('tested_base')}`", "",
-             "| Stage | Result | Exit | Seconds |", "| --- | --- | ---: | ---: |"]
+             ]
+    if isinstance(source.get("owned_runtime"), dict):
+        native = source["owned_runtime"]
+        lines += ["", "Actual owned executor: " + md(native["system"]) + " / "
+                  + md(native["release"]) + " / " + md(native["architecture"])
+                  + "; Python " + md(native["python"]) + ".",
+                  "Image strings in job/artifact names are legacy gate-compatibility labels; "
+                  "they are not the actual OS release or a hosted-image claim."]
+    lines += ["", "| Stage | Result | Exit | Seconds |", "| --- | --- | ---: | ---: |"]
     for name in expected:
         path = output / f"{name}.json"
         stage = None
@@ -285,7 +303,7 @@ def summarize(output):
               "the public optional RTTR/Rust consumers are tested separately. Exact pins remain "
               "in the tested source; configuration.json records selected compiler/options and overrides.",
               "Windows runtime, mobile/Quest hardware, live providers, deployment and release are "
-              "not configured. No self-hosted runner is assumed.",
+              "not configured. Owned selectors are source configuration; actual registration/host commissioning is separate.",
               "Logs retain at most their final 8 MiB; provider console output is capped at 1 MiB "
               "plus its final 4 KiB. Truncation is explicit. JUnit and all per-case times are artifacts."]
     if issues:
