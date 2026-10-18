@@ -233,50 +233,100 @@ int scalar_format(lua_State *vm) {
 		return luaL_error(vm, "Formatted result exceeds 4096 bytes");
 	return 1;
 }
-void remove_fields(lua_State *vm, const char *const *names) {
-	for (std::size_t index = 0; names[index]; ++index) {
+void remove_fields(lua_State *vm, std::span<const char *const> names) {
+	for (const auto *name : names) {
 		lua_pushnil(vm);
-		lua_setfield(vm, -2, names[index]);
+		lua_setfield(vm, -2, name);
 	}
 }
+constexpr const char *removed_base[]{"collectgarbage", "dofile",      "load",  "loadfile",
+                                     "print",          "warn",        "pcall", "xpcall",
+                                     "getmetatable",   "setmetatable"};
+constexpr const char *removed_string[]{"dump", "find", "match",  "gmatch",
+                                       "gsub", "pack", "unpack", "packsize"};
+constexpr const char *removed_table[]{"move", "insert", "sort"};
+constexpr const char *unavailable_globals[]{"io", "os", "debug", "package", "coroutine", "require"};
+struct guarded_function {
+	const char   *name;
+	lua_CFunction function;
+	bool          original_upvalue;
+	const char   *contract;
+};
+constexpr guarded_function guarded_base[]{
+    {"tostring", scalar_tostring, false, "Accepts nil, boolean, number or string only."}};
+constexpr guarded_function guarded_math[]{
+    {"randomseed", explicit_randomseed, true,
+     "Requires one or two explicit integer seeds; each fresh VM starts at seed (0,0)."}};
+constexpr guarded_function guarded_string[]{
+    {"format", scalar_format, true,
+     "At most 32 string/number values, 4096-byte strings/result, no pointer conversion."}};
+constexpr guarded_function guarded_table[]{
+    {"remove", bounded_table_remove, false,
+     "Raw indexed removal; precharges 3 instruction units plus 2 per shifted element."}};
+struct library_policy {
+	const char                       *name;
+	lua_CFunction                     open;
+	std::span<const char *const>      removed;
+	std::span<const guarded_function> guarded;
+	bool                              seed_random = false;
+};
+constexpr library_policy libraries[]{
+    {"_G", luaopen_base, removed_base, guarded_base},
+    {LUA_MATHLIBNAME, luaopen_math, {}, guarded_math, true},
+    {LUA_STRLIBNAME, luaopen_string, removed_string, guarded_string},
+    {LUA_TABLIBNAME, luaopen_table, removed_table, guarded_table},
+    {LUA_UTF8LIBNAME, luaopen_utf8, {}, {}}};
 int open_libraries(lua_State *vm) {
-	luaL_requiref(vm, "_G", luaopen_base, 1);
-	static const char *const removed_base[]{"collectgarbage", "dofile",       "load",  "loadfile",
-	                                        "print",          "warn",         "pcall", "xpcall",
-	                                        "getmetatable",   "setmetatable", nullptr};
-	remove_fields(vm, removed_base);
-	lua_pushcfunction(vm, scalar_tostring);
-	lua_setfield(vm, -2, "tostring");
+	for (const auto &library : libraries) {
+		luaL_requiref(vm, library.name, library.open, 1);
+		if (library.seed_random) {
+			// Replace upstream ambient entropy before any user source runs.
+			lua_getfield(vm, -1, library.guarded.front().name);
+			lua_pushinteger(vm, 0);
+			lua_pushinteger(vm, 0);
+			lua_call(vm, 2, 0);
+		}
+		remove_fields(vm, library.removed);
+		for (const auto &guard : library.guarded) {
+			if (guard.original_upvalue)
+				lua_getfield(vm, -1, guard.name);
+			lua_pushcclosure(vm, guard.function, guard.original_upvalue ? 1 : 0);
+			lua_setfield(vm, -2, guard.name);
+		}
+		lua_pop(vm, 1);
+	}
+	lua_pushglobaltable(vm);
+	remove_fields(vm, unavailable_globals);
 	lua_pop(vm, 1);
-	luaL_requiref(vm, LUA_MATHLIBNAME, luaopen_math, 1);
-	// Upstream initially seeds from ambient entropy. Replace that state before
-	// executing any source, then retain its shared PRNG in both original closures.
-	lua_getfield(vm, -1, "randomseed");
-	lua_pushinteger(vm, 0);
-	lua_pushinteger(vm, 0);
-	lua_call(vm, 2, 0);
-	lua_getfield(vm, -1, "randomseed");
-	lua_pushcclosure(vm, explicit_randomseed, 1);
-	lua_setfield(vm, -2, "randomseed");
+	return 0;
+}
+struct environment_capture {
+	struct member {
+		std::size_t library;
+		const char *name, *type;
+	};
+	std::array<member, 256> members{};
+	std::size_t             count   = 0;
+	const char             *version = nullptr;
+};
+static_assert(std::is_trivially_destructible_v<environment_capture>);
+int capture_environment(lua_State *vm) {
+	auto *capture = static_cast<environment_capture *>(lua_touserdata(vm, 1));
+	lua_getglobal(vm, "_VERSION");
+	capture->version = lua_tostring(vm, -1);
 	lua_pop(vm, 1);
-	luaL_requiref(vm, LUA_STRLIBNAME, luaopen_string, 1);
-	lua_getfield(vm, -1, "format");
-	lua_pushcclosure(vm, scalar_format, 1);
-	lua_setfield(vm, -2, "format");
-	static const char *const removed_string[]{"dump", "find",   "match",    "gmatch", "gsub",
-	                                          "pack", "unpack", "packsize", nullptr};
-	remove_fields(vm, removed_string);
-	lua_pop(vm, 1);
-	luaL_requiref(vm, LUA_TABLIBNAME, luaopen_table, 1);
-	// Keep only the native loop whose indexed work is charged to our shared budget.
-	// Other potentially large native table loops remain unavailable.
-	static const char *const removed_table[]{"move", "insert", "sort", nullptr};
-	remove_fields(vm, removed_table);
-	lua_pushcfunction(vm, bounded_table_remove);
-	lua_setfield(vm, -2, "remove");
-	lua_pop(vm, 1);
-	luaL_requiref(vm, LUA_UTF8LIBNAME, luaopen_utf8, 1);
-	lua_pop(vm, 1);
+	for (std::size_t index = 0; index < std::size(libraries); ++index) {
+		lua_getglobal(vm, libraries[index].name);
+		lua_pushnil(vm);
+		while (lua_next(vm, -2)) {
+			if (lua_type(vm, -2) != LUA_TSTRING || capture->count == capture->members.size())
+				return luaL_error(vm, "Sandbox inventory exceeds its supported shape");
+			capture->members[capture->count++] = {index, lua_tostring(vm, -2),
+			                                      lua_typename(vm, lua_type(vm, -1))};
+			lua_pop(vm, 1);
+		}
+		lua_pop(vm, 1);
+	}
 	return 0;
 }
 struct compile_context {
@@ -520,6 +570,47 @@ std::string_view lua_message(lua_State *vm) {
 	return {text, size};
 }
 } // namespace
+
+ice::expected<lua_environment_description, diagnostic> describe_lua_environment() {
+	try {
+		memory_budget                                    memory{0, 1024 * 1024, false};
+		vm_context                                       runtime{};
+		std::unique_ptr<lua_State, decltype(&lua_close)> vm(
+		    lua_newstate(allocate, &memory, 0x494345u), lua_close);
+		if (!vm)
+			return ice::unexpected(failure(error_code::memory_limit, "", "Cannot inspect Lua VM"));
+		*static_cast<vm_context **>(lua_getextraspace(vm.get())) = &runtime;
+		environment_capture capture{};
+		if (protected_call(vm.get(), open_libraries, nullptr, 0) != LUA_OK ||
+		    protected_call(vm.get(), capture_environment, &capture, 0) != LUA_OK)
+			return ice::unexpected(
+			    failure(memory.denied ? error_code::memory_limit : error_code::runtime, "",
+			            lua_message(vm.get())));
+		if (!capture.version || lua_version(vm.get()) != LUA_VERSION_NUM)
+			return ice::unexpected(failure(error_code::runtime, "", "Lua version mismatch"));
+		lua_environment_description result;
+		result.version = capture.version;
+		result.release = LUA_RELEASE;
+		for (const auto &library : libraries) {
+			result.libraries.emplace(library.name, decltype(result.libraries)::mapped_type{});
+			const std::string prefix =
+			    std::string_view(library.name) == "_G" ? "" : std::string(library.name) + ".";
+			for (const auto *name : library.removed)
+				result.removed.push_back(prefix + name);
+			for (const auto &guard : library.guarded)
+				result.guarded.emplace(prefix + guard.name, guard.contract);
+		}
+		for (const auto *name : unavailable_globals)
+			result.removed.emplace_back(name);
+		for (std::size_t index = 0; index < capture.count; ++index) {
+			const auto &member = capture.members[index];
+			result.libraries.at(libraries[member.library].name).emplace(member.name, member.type);
+		}
+		return result;
+	} catch (const std::bad_alloc &) {
+		return ice::unexpected(failure(error_code::host_memory, "", "Cannot copy Lua inventory"));
+	}
+}
 
 struct lua_program::implementation {
 	memory_budget memory;
