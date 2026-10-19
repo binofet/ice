@@ -27,7 +27,7 @@ signal.signal(signal.SIGINT, stop)
 if mode == 'stubborn':
     signal.signal(signal.SIGTERM, signal.SIG_IGN)
     signal.signal(signal.SIGINT, signal.SIG_IGN)
-if mode == 'descendant':
+if mode in ('descendant','late-descendant'):
     code = """import os, pathlib, signal, sys, time
 signal.signal(signal.SIGTERM, signal.SIG_IGN)
 signal.signal(signal.SIGINT, signal.SIG_IGN)
@@ -47,6 +47,7 @@ pending=root/'ready.pending'
 pending.write_text(json.dumps({'pid':os.getpid(),'pgid':os.getpgrp(),'owner':os.getppid()}))
 pending.replace(root/'ready')
 print('child ready',flush=True)
+if mode=='late-descendant': sys.exit(0)
 while True: time.sleep(10)
 '''
 DRIVER = r'''
@@ -54,7 +55,24 @@ import importlib.util, json, pathlib, signal, sys
 helper, restored, grace = sys.argv[1:4]
 spec=importlib.util.spec_from_file_location('stage_fixture',helper)
 module=importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
-if grace!='default': module.CANCEL_GRACE_SECONDS=float(grace)
+if grace=='late':
+    original=module.write_json
+    fired=False
+    def write(path,record):
+        global fired
+        if not fired:
+            fired=True
+            root=path.parent
+            (root/'late-ready').write_text('ready')
+            import time
+            until=time.monotonic()+4
+            while not (root/'late-go').exists() and time.monotonic()<until: time.sleep(.01)
+            if not (root/'late-go').exists(): raise RuntimeError('late control not released')
+            os.kill(os.getpid(),signal.SIGTERM)
+        original(path,record)
+    import os
+    module.write_json=write
+elif grace!='default': module.CANCEL_GRACE_SECONDS=float(grace)
 calls=[]
 def previous(number, frame): calls.append(number)
 signal.signal(signal.SIGINT,previous); signal.signal(signal.SIGTERM,previous)
@@ -88,7 +106,7 @@ class StageCancellationTests(unittest.TestCase):
         previous = signal.signal(signal.SIGTERM, interrupted)
         self.addCleanup(signal.signal, signal.SIGTERM, previous)
 
-    def bash_fixture(self, number, rendered=False, exec_entry=True):
+    def bash_fixture(self, number, rendered=False, exec_entry=True, late=False):
         launcher = """import fcntl,os,sys
 fd=os.open(sys.argv[1],os.O_CREAT|os.O_RDWR,0o600)
 os.dup2(fd,9,inheritable=True)
@@ -105,7 +123,11 @@ os.execv('/bin/bash',['/bin/bash','--noprofile','--norc','-e','-o','pipefail',*s
             child_group = None
             with (root/'console').open('wb') as console, (root/'lock').open('a+b') as lock:
                 target = [sys.executable, '-B', str(HELPER), '--timeout-seconds', '10',
-                          'cancel-fixture', '--', sys.executable, str(root/'child.py'), str(root), 'descendant']
+                          'cancel-fixture', '--', sys.executable, str(root/'child.py'), str(root),
+                          'late-descendant' if late else 'descendant']
+                if late:
+                    target = [sys.executable, '-B', '-c', DRIVER, str(HELPER), str(root/'restored.json'),
+                              'late', *target[3:]]
                 if rendered:
                     target = [sys.executable, '-B', '-c', RENDER_DRIVER, str(HELPER.parent), str(root)]
                 argv = [sys.executable, '-B', '-c', launcher, str(root/'lock'), str(root/'entry.sh'), *target]
@@ -120,9 +142,10 @@ os.execv('/bin/bash',['/bin/bash','--noprofile','--norc','-e','-o','pipefail',*s
                     child_group = ready['pgid']
                     self.assertEqual(child_group, ready['pid'])
                     self.assertNotEqual(child_group, os.getpgrp())
-                    self.audit(event='owned', pids=[owner.pid, ready['owner'], ready['pid']],
+                    self.audit(event='owned', pids=[owner.pid, ready['owner'], ready['pid'],
+                                                   int((root/'descendant').read_text())],
                                groups=[owner.pid, child_group], route='entry-pid',
-                               rendered=rendered, exec_entry=exec_entry)
+                               rendered=rendered, exec_entry=exec_entry, late=late)
                     self.assertEqual(os.read(fifo, 1), b'R')
                     with self.assertRaises(BlockingIOError):
                         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -130,7 +153,13 @@ os.execv('/bin/bash',['/bin/bash','--noprofile','--norc','-e','-o','pipefail',*s
                         self.assertEqual(ready['owner'], owner.pid, 'entry PID is the stage owner')
                     else:
                         self.assertNotEqual(ready['owner'], owner.pid)
-                    os.kill(owner.pid, number)  # Runner signals the entry PID, not a PGID.
+                    if late:
+                        until=time.monotonic()+3
+                        while not (root/'late-ready').exists() and time.monotonic()<until: time.sleep(.01)
+                        self.assertTrue((root/'late-ready').exists())
+                        (root/'late-go').write_text('go')
+                    else:
+                        os.kill(owner.pid, number)  # Runner signals the entry PID, not a PGID.
                     if not exec_entry:
                         time.sleep(1.2)
                         self.assertFalse((root/'handled').exists(), 'Bash forwarded the PID signal')
@@ -147,7 +176,11 @@ os.execv('/bin/bash',['/bin/bash','--noprofile','--norc','-e','-o','pipefail',*s
                     except BlockingIOError:
                         pass
                     else:
-                        self.assertEqual(os.read(fifo, 1), b'', 'lock released before descendant cleanup')
+                        try:
+                            closed = os.read(fifo, 1) == b''
+                        except BlockingIOError:
+                            closed = False
+                        self.assertTrue(closed, 'lock released before descendant cleanup')
                     self.assertTrue(select.select([fifo], [], [], 4)[0])
                     self.assertEqual(os.read(fifo, 1), b'', 'canceled descendant still live')
                     until = time.monotonic()+2
@@ -179,6 +212,9 @@ os.execv('/bin/bash',['/bin/bash','--noprofile','--norc','-e','-o','pipefail',*s
 
     def test_bash_exec_entry_pid_forwards_int(self):
         self.bash_fixture(signal.SIGINT)
+
+    def test_late_cancel_retains_group_and_fd9_through_finalization(self):
+        self.bash_fixture(signal.SIGTERM, late=True)
 
     def test_render_entry_pid_forwards_to_active_helper_and_stops(self):
         for number in (signal.SIGTERM, signal.SIGINT):

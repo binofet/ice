@@ -50,6 +50,41 @@ def kill_child(state):
         pass
 
 
+def group_exists(state):
+    process = state.get('process')
+    if process is None or state.get('group_closed'):
+        return False
+    if os.name == 'nt':
+        return process.returncode is None
+    try:
+        os.killpg(process.pid, 0)
+        return True
+    except ProcessLookupError:
+        # Once absence is observed, never signal a possibly reused group ID.
+        state['group_closed'] = True
+        return False
+
+
+def finish_cancellation(state):
+    if state['signal'] is None or not group_exists(state):
+        return
+    signal_child(state, state['signal'])
+    terminated = state.get('terminated')
+    if terminated is not None and not terminated.is_set():
+        remaining = max(0, CANCEL_GRACE_SECONDS - (time.monotonic() - state['cancel_at']))
+        terminated.wait(remaining + .1)
+    if terminated is None or not terminated.is_set():
+        kill_child(state)
+    # Direct children are reaped by wait(); allow adopted group members to exit
+    # before the owner releases fd9. Record lack of confirmation rather than
+    # claiming a whole-host cleanup guarantee.
+    if not state.get('cleanup_joined'):
+        until = time.monotonic() + .5
+        while group_exists(state) and time.monotonic() < until:
+            time.sleep(.01)
+        state['cleanup_joined'] = True
+
+
 def write_json(path, value):
     pending = path.with_suffix(path.suffix + ".pending")
     pending.write_text(json.dumps(value, indent=2, allow_nan=False) + "\n", encoding="utf-8")
@@ -73,6 +108,16 @@ def run(stage, command, output, timeout_seconds):
                 previous[number] = signal.signal(number, cancel)
         return run_owned(stage, command, output, timeout_seconds, state)
     finally:
+        process = state.get('process')
+        if process is not None and not state.get('child_done'):
+            kill_child(state)
+            process.wait()
+        finish_cancellation(state)
+        state['group_closed'] = True
+        if state.get('finished') is not None:
+            state['finished'].set()
+        if state.get('watchdog') is not None:
+            state['watchdog'].join()
         for number, handler in previous.items():
             signal.signal(number, handler)
 
@@ -92,6 +137,7 @@ def run_owned(stage, command, output, timeout_seconds, state):
     timed_out = threading.Event()
     finished = threading.Event()
     terminated = threading.Event()
+    state.update(finished=finished, terminated=terminated, child_done=False)
 
     def emit(block):
         nonlocal console_open
@@ -138,7 +184,7 @@ def run_owned(stage, command, output, timeout_seconds, state):
         def supervise():
             while not finished.wait(.02):
                 now = time.monotonic()
-                if now - clock >= timeout_seconds:
+                if not state['child_done'] and now - clock >= timeout_seconds:
                     timed_out.set()
                     kill_child(state)
                     terminated.set()
@@ -149,6 +195,7 @@ def run_owned(stage, command, output, timeout_seconds, state):
                     return
 
         watchdog = threading.Thread(target=supervise, name='stage-deadline')
+        state['watchdog'] = watchdog
         watchdog.start()
         if os.name == 'nt':
             while block := process.stdout.read1(65536):
@@ -168,31 +215,19 @@ def run_owned(stage, command, output, timeout_seconds, state):
                     elif terminated.is_set():
                         break
         raw_result = process.wait()
+        state['child_done'] = True
         # The direct child may trap cancellation and exit 0 while descendants
         # close stdout and keep running. Keep the watchdog until group cleanup.
-        if state['signal'] is not None:
-            if os.name != 'nt':
-                try:
-                    os.killpg(process.pid, 0)
-                except ProcessLookupError:
-                    terminated.set()
-                    state['group_closed'] = True
-            if not state['group_closed']:
-                terminated.wait(CANCEL_GRACE_SECONDS + .1)
-                if not terminated.is_set():
-                    kill_child(state)
+        group_exists(state)
+        finish_cancellation(state)
         process.stdout.close()
     except OSError as error:
         retain((str(error) + "\n").encode("utf-8", errors="replace"))
         if process is not None:
             kill_child(state)
             process.wait()
+            state['child_done'] = True
         raw_result = 127
-    finally:
-        state['group_closed'] = True
-        finished.set()
-        if watchdog:
-            watchdog.join()
     result = (128 + state['signal'] if state['signal'] is not None else
               124 if timed_out.is_set() else raw_result if raw_result >= 0 else 128 - raw_result)
     retained_log = b"".join(chunks)
@@ -213,12 +248,15 @@ def run_owned(stage, command, output, timeout_seconds, state):
     # successful record behind. The first signal is immutable, so at most one
     # reconciliation write is needed.
     while True:
+        finish_cancellation(state)
+        record['duration_seconds'] = round(time.monotonic() - clock, 6)
         observed_signal = state['signal']
         if observed_signal is not None:
             result = 128 + observed_signal
             record.update(exit_code=result, cancelled=True, cancellation_signal=observed_signal,
                           cancellation_grace_seconds=CANCEL_GRACE_SECONDS,
                           cleanup_escalated=state.get('cleanup_escalated', False),
+                          group_cleanup_complete=not group_exists(state),
                           process_id=process.pid if process else None)
         write_json(output / f"{stage}.json", record)
         emit(f"\n{stage}: exit {result}, {record['duration_seconds']:.3f}s\n".encode())
