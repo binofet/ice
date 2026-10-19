@@ -96,6 +96,43 @@ The generic helpers do not merge branches or change provider settings.
 `spacegoo/`, when configured, is a separate deployment lane with its own intake
 authorization and job ownership; it must not reuse another project's runner.
 
+### ICE Xvfb diagnostic preflight
+
+The guarded `xvfb-readiness-v1` manual route remains diagnostic only. Its existing
+60-second stage now includes preflight and the subsequent Xvfb/client process
+tree. Under the actual owned account (UID/eUID 984 and matching GID/eGID), it
+reads the existing Mesa EGL vendor descriptor and intended helper/library files
+without executing or loading a graphics image. It requires a bounded valid
+version 1.0.x JSON descriptor identifying `libEGL_mesa.so.0`, matching intended
+X64 ELF files, root-owned system files without group/other write or setid bits,
+executable helpers, and unshadowed Xvfb/xauth commands. Missing, malformed,
+mismatched or conflicting graphics-selection inputs fail before Xvfb, with exit
+64 and a retained reason when the evidence directory is writable. No privileged
+probe or package/socket/driver change is needed.
+
+`xvfb-preflight.json` records descriptor bytes (base64, at most 4096 bytes) and
+SHA-256, opened file identities/hashes (at most 32 MiB each), account identity,
+and only a fixed graphics/loader selector allowlist (256 characters per value).
+Its total bound is 32768 bytes. Package versions are optional observations from
+the bounded installed package database; they are explicitly database claims,
+not proof of a binary's version. No full environment or credentials are exported.
+
+After successful preflight, the process sets
+`__EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json` in
+the environment used to execute `xvfb-run`. This restricts EGL vendor discovery
+before server startup, independently of `LIBGL_ALWAYS_SOFTWARE=1`.
+[libglvnd documents the selector and vendor descriptors](https://github.com/NVIDIA/libglvnd/blob/master/src/EGL/icd_enumeration.md).
+Conflicting inherited loader/driver overrides stop the diagnostic; the existing
+GL version overrides are removed as before. The Xvfb screen, client order,
+direct/wrapped exits, stderr, deadline and original failed evidence are retained.
+
+File observations are intended library identities, not loaded-library or
+renderer proof; a bare ICD library name is resolved by the loader later. A
+successful preflight permits the diagnostic to continue and does not establish
+X11 readiness, GLX success, native quality or an upstream fault's root cause.
+The original red run remains red. Actual readiness/renderer output and separate
+post-run idle evidence still require a separately admitted owned attempt.
+
 
 ## Owned executor source contract
 

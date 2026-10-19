@@ -16,6 +16,7 @@ import xml.etree.ElementTree as ET
 import report
 from test_owned_runner import OwnedRunnerTests, OwnedWorkflowTests
 from test_resource_limits import ResourceLimitTests
+from test_xvfb_readiness import XvfbReadinessTests
 import check_paths
 
 
