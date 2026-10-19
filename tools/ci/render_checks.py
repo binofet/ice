@@ -9,7 +9,7 @@ import sys
 
 
 def cases(build="build/ci"):
-    display = ["xvfb-run", "-a", "-s", "-screen 0 1280x800x24 -nolisten tcp"]
+    display = ["xvfb-run", "-a", "-e", "/dev/stderr", "-s", "-screen 0 1280x800x24 -nolisten tcp"]
     return (
         ("gpu-environment", [*display, "glxinfo", "-B"]),
         ("native-x11", [*display, f"{build}/ice_platform_input_x11_tests"]),

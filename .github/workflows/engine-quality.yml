@@ -5,6 +5,16 @@ on:
     branches: [master]
   pull_request:
   workflow_dispatch:
+    inputs:
+      diagnostic:
+        description: 'Explicit manual mode; ordinary quality defaults to none'
+        type: choice
+        options: [none, xvfb-readiness-v1]
+        default: none
+      expected_head:
+        description: 'Exact reviewed source SHA required only for xvfb-readiness-v1'
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -16,7 +26,7 @@ concurrency:
 jobs:
   native:
     name: ${{ matrix.os }} / optimized C++${{ matrix.cpp }}
-    if: github.repository == 'binofet/ice' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    if: github.repository == 'binofet/ice' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && (github.event_name != 'workflow_dispatch' || (inputs.diagnostic == 'none' && inputs.expected_head == '' && github.ref != 'refs/heads/codex/xvfb-readiness-20261019'))
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     strategy:
@@ -273,7 +283,7 @@ jobs:
 
   sanitizers:
     name: Ubuntu / scoped ASan+UBSan C++23
-    if: github.repository == 'binofet/ice' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    if: github.repository == 'binofet/ice' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && (github.event_name != 'workflow_dispatch' || (inputs.diagnostic == 'none' && inputs.expected_head == '' && github.ref != 'refs/heads/codex/xvfb-readiness-20261019'))
     runs-on: [self-hosted, Linux, X64, ice.cpu]
     timeout-minutes: 30
     defaults:
@@ -386,3 +396,187 @@ jobs:
             --artifact-id '${{ steps.upload.outputs.artifact-id }}' \
             --artifact-url '${{ steps.upload.outputs.artifact-url }}' \
             --outcome '${{ steps.upload.outcome }}'
+
+  reject-invalid-manual-route:
+    name: Refuse invalid manual quality route
+    if: >-
+      github.repository == 'binofet/ice' && github.event.repository.id == 40782766 &&
+      github.event.repository.fork == false && github.event_name == 'workflow_dispatch' &&
+      !((inputs.diagnostic == 'none' && inputs.expected_head == '' &&
+         github.ref != 'refs/heads/codex/xvfb-readiness-20261019') ||
+        (github.actor == 'binofet' && github.run_attempt == 1 &&
+         inputs.diagnostic == 'xvfb-readiness-v1' && inputs.expected_head == github.sha &&
+         github.ref == 'refs/heads/codex/xvfb-readiness-20261019'))
+    runs-on: [self-hosted, Linux, X64, ice.cpu]
+    timeout-minutes: 1
+    defaults:
+      run:
+        shell: /usr/local/libexec/ice-family-native-ci/owned-shell {0}
+    steps:
+      - name: Stop before checkout, display startup or build
+        run: |
+          printf '%s\n' 'Invalid manual route: no checkout, display diagnostic or quality matrix admitted.' >&2
+          exit 64
+
+  xvfb-readiness:
+    name: Linux / Xvfb readiness diagnostic only
+    if: >-
+      github.repository == 'binofet/ice' && github.event.repository.id == 40782766 &&
+      github.event.repository.fork == false && github.event_name == 'workflow_dispatch' &&
+      github.actor == 'binofet' && github.run_attempt == 1 &&
+      github.ref == 'refs/heads/codex/xvfb-readiness-20261019' &&
+      inputs.diagnostic == 'xvfb-readiness-v1' && inputs.expected_head == github.sha
+    runs-on: [self-hosted, Linux, X64, ice.cpu]
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: /usr/local/libexec/ice-family-native-ci/owned-shell {0}
+    env:
+      CI_OWNED_RUNNER: '1'
+      CI_BOOTSTRAP_PYTHON: /opt/ice-family-ci/toolchains/native-20261018-v1/bin/python3.12
+      CI_PROFILE: diagnostic-only
+      CI_CPP: diagnostic-only
+      CI_EVIDENCE_DIR: ${{ github.workspace }}/build/xvfb-readiness-${{ github.run_id }}-${{ github.run_attempt }}
+      DIAG_EXPECTED_HEAD: ${{ inputs.expected_head }}
+      CI_PARALLEL: '2'
+    steps:
+      - name: Check out the exact admitted diagnostic source
+        id: checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+          set-safe-directory: false
+          submodules: false
+
+      - name: Record diagnostic context and actual source identity
+        run: |
+          "$CI_BOOTSTRAP_PYTHON" -I -S -B - <<'PY'
+          import json, os, re
+          from pathlib import Path
+          expected = os.environ['DIAG_EXPECTED_HEAD']
+          event = json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text())
+          valid = (os.environ['GITHUB_EVENT_NAME'] == 'workflow_dispatch'
+                   and os.environ['GITHUB_REPOSITORY'] == 'binofet/ice'
+                   and os.environ['GITHUB_REF'] == 'refs/heads/codex/xvfb-readiness-20261019'
+                   and os.environ['GITHUB_ACTOR'] == 'binofet'
+                   and os.environ['GITHUB_RUN_ATTEMPT'] == '1'
+                   and re.fullmatch('[a-f0-9]{40}', expected)
+                   and expected == os.environ['GITHUB_SHA']
+                   and event['repository']['id'] == 40782766
+                   and event['repository']['fork'] is False
+                   and event['inputs']['diagnostic'] == 'xvfb-readiness-v1'
+                   and event['inputs']['expected_head'] == expected
+                   and os.getuid() == os.geteuid() == 984)
+          if not valid:
+              raise SystemExit('Diagnostic context refused before display startup')
+          output = Path(os.environ['CI_EVIDENCE_DIR'])
+          output.mkdir(parents=True, exist_ok=False)
+          record = dict(purpose='xvfb-readiness-diagnostic-only', expected_head=expected,
+                        event='workflow_dispatch', ref=os.environ['GITHUB_REF'],
+                        uid=os.getuid(), euid=os.geteuid(), gid=os.getgid(),
+                        compiler_invoked=False, paid_GPU=False, native_quality_qualified=False,
+                        source_identity_profile='native is reused for identity only; no full-plan summary')
+          (output / 'diagnostic-context.json').write_text(json.dumps(record, indent=2) + '\n')
+          print('DIAGNOSTIC ONLY: source identity and one display-readiness stage; no native quality acceptance.')
+          PY
+          "$CI_BOOTSTRAP_PYTHON" tools/ci/report.py init --profile native
+
+      - name: One bounded Xvfb, X11 readiness and GLX metadata attempt
+        id: diagnostic
+        run: |
+          "$CI_BOOTSTRAP_PYTHON" -I -S -B tools/ci/xvfb_readiness.py
+
+      - name: Retain the actual diagnostic result without fabricating native stages
+        if: ${{ always() && steps.checkout.outcome == 'success' }}
+        env:
+          DIAGNOSTIC_OUTCOME: ${{ steps.diagnostic.outcome }}
+        run: |
+          "$CI_BOOTSTRAP_PYTHON" -I -S -B - <<'PY'
+          import hashlib, json, math, os, re
+          from pathlib import Path
+          output = Path(os.environ['CI_EVIDENCE_DIR'])
+          output.mkdir(parents=True, exist_ok=True)
+          result = dict(purpose='xvfb-readiness-diagnostic-only', status='incomplete',
+                        expected_head=os.environ['DIAG_EXPECTED_HEAD'],
+                        step_outcome=os.environ['DIAGNOSTIC_OUTCOME'],
+                        native_quality_qualified=False,
+                        cleanup='Not inferred from timeout/cancellation; separate owned-idle inspection required')
+          def read(name, maximum):
+              raw = (output / name).read_bytes()
+              if len(raw) > maximum:
+                  raise ValueError('Diagnostic evidence bound exceeded')
+              return raw
+          try:
+              source = json.loads(read('source.json', 1024 * 1024))
+              stage = json.loads(read('xvfb-readiness.json', 16384))
+              log = read('xvfb-readiness.log', 8 * 1024 * 1024 + 256)
+              if not (source['source_validated'] is True
+                      and source['tested_commit'] == result['expected_head']
+                      and source['event'] == 'workflow_dispatch'
+                      and stage['stage'] == 'xvfb-readiness' and stage['timeout_seconds'] == 60
+                      and type(stage['exit_code']) is int and type(stage['process_exit_code']) is int
+                      and type(stage['timed_out']) is bool
+                      and math.isfinite(stage['duration_seconds']) and stage['duration_seconds'] >= 0):
+                  raise ValueError('Diagnostic source/stage binding refused')
+              markers = {}
+              for name in ('x11_readiness_exit', 'glxinfo_exit'):
+                  matches = re.findall(rb'^' + name.encode() + rb'=([0-9]{1,3})\r?$', log, re.M)
+                  if len(matches) > 1:
+                      raise ValueError('Duplicate direct-client exit marker')
+                  markers[name] = int(matches[0]) if matches else None
+              passed = (result['step_outcome'] == 'success' and stage['exit_code'] == 0
+                        and not stage['timed_out'] and all(value == 0 for value in markers.values()))
+              result.update(status='passed' if passed else 'failed',
+                            wrapped_stage_exit=stage['exit_code'],
+                            wrapped_process_exit=stage['process_exit_code'],
+                            timed_out=stage['timed_out'], duration_seconds=stage['duration_seconds'],
+                            direct_client_exits=markers, log_bytes=len(log),
+                            log_sha256=hashlib.sha256(log).hexdigest(),
+                            log_truncated=stage['log_truncated'], source=source)
+          except (OSError, ValueError, KeyError, TypeError) as error:
+              result['evidence_error_class'] = type(error).__name__
+          (output / 'diagnostic-result.json').write_text(json.dumps(result, indent=2, allow_nan=False) + '\n')
+          text = ('## ICE Xvfb readiness diagnostic only\n\n'
+                  + 'Result: ' + result['status'] + '\n\n'
+                  + 'Native quality qualification: **not performed**. See diagnostic-result.json and the bounded stage log.\n'
+                  + 'Client exits are explicit when reached; wrapped process/stage exits remain separate.\n'
+                  + 'Current process idle and Xvfb cleanup require separate observation.\n')
+          (output / 'diagnostic.md').write_text(text)
+          print(json.dumps(result, indent=2, allow_nan=False))
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write(text)
+          raise SystemExit(0 if result['status'] == 'passed' else 1)
+          PY
+
+      - name: Upload bounded diagnostic evidence even after failure
+        id: upload
+        if: ${{ always() && steps.checkout.outcome == 'success' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: ice-xvfb-readiness-${{ github.sha }}-${{ github.run_attempt }}
+          path: ${{ env.CI_EVIDENCE_DIR }}/
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Verify upload receipt only; never publish a native quality status
+        if: ${{ always() && steps.checkout.outcome == 'success' }}
+        env:
+          UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
+          ARTIFACT_ID: ${{ steps.upload.outputs.artifact-id }}
+          ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
+        run: |
+          "$CI_BOOTSTRAP_PYTHON" -I -S -B - <<'PY'
+          import json, os, re
+          artifact = os.environ['ARTIFACT_ID']
+          expected = ('https://github.com/binofet/ice/actions/runs/'
+                      + os.environ['GITHUB_RUN_ID'] + '/artifacts/' + artifact)
+          if not (os.environ['UPLOAD_OUTCOME'] == 'success'
+                  and re.fullmatch('[1-9][0-9]{0,19}', artifact)
+                  and os.environ['ARTIFACT_URL'] == expected):
+              raise SystemExit('Diagnostic upload receipt refused')
+          print(json.dumps(dict(purpose='xvfb-readiness-diagnostic-only', upload='confirmed',
+                                artifact_id=artifact, artifact_url=expected,
+                                native_quality_qualified=False)))
+          PY
