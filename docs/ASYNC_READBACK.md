@@ -53,3 +53,44 @@ CPU fixtures cover ticket ownership/admission/cancellation/failure and writer
 lifetime without creating any graphics device. Actual Metal/GL/GLES readbacks,
 packing/row identity, device teardown under pending work and performance require
 separate GPU/device qualification; compilation and CPU tests do not prove them.
+
+The manual `ice_async_readback_gpu_tests` target reuses the renderer test setup
+and `tests/data/mesh/probe.metal` / `probe.glsl` shaders. It is intentionally not
+registered with headless CTest. With a separately allocated build and GPU window,
+invoke one backend per process:
+
+```
+<build>/bin/ice_async_readback_gpu_tests metal <source>/tests/data/mesh <new-output-directory>
+<build>/bin/ice_async_readback_gpu_tests gl <source>/tests/data/mesh <another-new-output-directory>
+```
+
+Each process submits five 63x31 offscreen frames. Two indexed quads produce a red
+upper-left region and cyan-blue lower-right region on an asymmetric clear color.
+An analytic interior-pixel oracle checks the actual bytes, backend channel order,
+row origin and stride (Metal BGRA/top/256 bytes, desktop GL RGBA/bottom/252 bytes).
+Padding values are unspecified and excluded from the oracle. The first payload
+is moved to a CPU writer, which rechecks it, saves native bytes plus a normalized
+PPM and packing record, and retains admission until its thread releases the owner.
+Ticket-count and byte pressure, zero bounds, invalid dimensions/batch diagnostics,
+single take, logical cancellation, drop and eventual readmission are checked.
+The writer owns only pixels and fixture file output; it calls no device methods.
+
+Pending observations and busy counts after dropping are recorded, never forced.
+A fast GPU can complete before the first poll. A successful process with zero
+pending observations does **not** qualify native pending-to-ready behavior; a
+cancel/drop case without a pending observation does **not** qualify that pending
+path. Even with observations, these checks do not instrument GPU resource release
+or prove every lifetime interleaving. Native lifetime/admission source review and
+additional targeted acceptance remain necessary. No repeated/larger campaign is
+implicit in a missing observation. This fixture makes no performance claim.
+
+An unavailable backend/capability or unexpected native error fails with its real
+diagnostic; no skip, capability injection, GPU hang/device-loss injection or
+synchronous readback fallback is used. A capable run qualifies only its observed
+validation errors, not absent capability branches, allocation/map/command faults,
+device loss or failure cleanup. GLES/EGL and other platforms need their own
+target/device acceptance. Full app composition, presentation identity, resize,
+device teardown during pending work and app scheduling remain separate gates.
+Fixture polling uses ten-second local deadlines; an external process timeout is
+still required because a driver/filesystem call can block, including during final
+native-device teardown. Preserve partial output and the first actual failure.

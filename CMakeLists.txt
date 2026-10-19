@@ -201,6 +201,13 @@ if(BUILD_TESTING)
             $<$<BOOL:${ICE_BUILD_METAL}>:ICE_TEST_METAL=1>
             $<$<BOOL:${ICE_BUILD_OPENGL}>:ICE_TEST_OPENGL=1>)
         set_target_properties(ice_live_pipeline_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+        ice_test(ice_async_readback_gpu_tests tests/async_readback_gpu.cpp ice::render)
+        find_package(Threads REQUIRED)
+        target_link_libraries(ice_async_readback_gpu_tests PRIVATE Threads::Threads)
+        target_compile_definitions(ice_async_readback_gpu_tests PRIVATE
+            $<$<BOOL:${ICE_BUILD_METAL}>:ICE_TEST_METAL=1>
+            $<$<BOOL:${ICE_BUILD_OPENGL}>:ICE_TEST_OPENGL=1>)
+        set_target_properties(ice_async_readback_gpu_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
         # Requires a native GPU; run explicitly outside headless CPU CTest.
     endif()
     if(ICE_BUILD_DESKTOP)
