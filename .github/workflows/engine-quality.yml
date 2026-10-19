@@ -53,6 +53,7 @@ jobs:
         with:
           fetch-depth: 2
           persist-credentials: false
+          set-safe-directory: false
           submodules: false
 
       - name: Identify exact tested source, head and base
@@ -300,6 +301,7 @@ jobs:
         with:
           fetch-depth: 2
           persist-credentials: false
+          set-safe-directory: false
           submodules: false
 
       - name: Identify exact tested source, head and base

@@ -5,6 +5,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import sys
 import tempfile
 import unittest
@@ -184,6 +185,26 @@ class OwnedWorkflowTests(unittest.TestCase):
                         self.assertEqual(shells, ['shell: /bin/bash --noprofile --norc -e -o pipefail {0}'])
                         self.assertNotIn('owned-shell', text)
                         self.assertNotIn('pull_request.head', text)
+
+    def test_fresh_uid_checkouts_preserve_git_ownership_and_exact_action_pin(self):
+        root = Path(__file__).resolve().parents[2]
+        engine = (root / '.github/workflows/engine-quality.yml').is_file()
+        paths = [('.github/workflows/engine-quality.yml' if engine else '.github/workflows/quality.yml',
+                  2 if engine else 1), ('.github/workflows/family-gate.yml', 1),
+                 ('tools/ci/github/templates/family-gate.yml', 1)]
+        for path, expected in paths:
+            text = (root / path).read_text()
+            blocks = re.findall(r'^        uses: (actions/checkout@[a-f0-9]{40})[^\n]*\n'
+                                r'        with:\n((?:          [^\n]*\n)+)', text, re.MULTILINE)
+            self.assertEqual(len(blocks), expected)
+            self.assertEqual(text.count('uses: actions/checkout@'), expected)
+            for index, (action, inputs) in enumerate(blocks):
+                with self.subTest(checkout=path, index=index):
+                    self.assertEqual(action, 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1')
+                    values = dict(line.strip().split(': ', 1) for line in inputs.splitlines())
+                    self.assertEqual(values.get('set-safe-directory'), 'false')
+                    self.assertEqual(values.get('persist-credentials'), 'false')
+                    self.assertEqual(values.get('submodules'), 'false')
 
     def test_source_workflow_has_no_installer_or_hosted_fallback_and_activates_project_tools(self):
         root = Path(__file__).resolve().parents[2]

@@ -32,6 +32,7 @@ jobs:
         with:
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
+          set-safe-directory: false
           submodules: false
       - name: Verify preprovisioned owned control runtime
         run: |

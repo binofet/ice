@@ -115,6 +115,9 @@ released lane from Root; this preparation starts nothing.
 Trusted gate and review-signal control jobs instead use
 `/bin/bash --noprofile --norc -e -o pipefail {0}`. Control accounts intentionally
 have no shared CPU-lock access and must not invoke the candidate wrapper.
+Fresh dedicated-UID checkout steps set `set-safe-directory: false`, preserving
+normal Git ownership checks and avoiding checkout's global safe-directory write.
+Pinned checkout actions and `persist-credentials: false` remain unchanged.
 
 Bootstrap uses only the declared Python3.12.15 executable: Linux's versioned
 `/opt/ice-family-ci/toolchains/native-20261018-v1/bin/python3.12`, or Mac's
