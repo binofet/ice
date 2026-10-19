@@ -550,6 +550,28 @@ device::attach(const ice::platform::surface &target) {
 #endif
 	return failure("Native surface API is not supported by the selected backend");
 }
+ice::expected<readback_submission, diagnostic>
+device::render_offscreen_async(const frame_batch &batch, int width, int height,
+                               readback_limits limits) {
+	auto valid = detail::batch_access::validate(implementation_->token, batch);
+	if (!valid)
+		return ice::unexpected(valid.error());
+#ifdef ICE_RENDER_METAL
+	if (implementation_->metal) {
+		auto items = detail::batch_access::metal_items(batch);
+		return implementation_->metal->render_offscreen_async({items, batch.clear_color}, width,
+		                                                      height, limits);
+	}
+#endif
+#ifdef ICE_RENDER_OPENGL
+	if (implementation_->opengl) {
+		auto items = detail::batch_access::gl_items(batch);
+		return implementation_->opengl->render_offscreen_async({items, batch.clear_color}, width,
+		                                                       height, limits);
+	}
+#endif
+	return failure("Graphics backend unavailable");
+}
 ice::expected<image, diagnostic> device::render_offscreen(const pipeline &pipeline, int width,
                                                           int                        height,
                                                           std::span<const std::byte> uniforms,

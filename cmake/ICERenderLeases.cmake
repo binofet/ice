@@ -1,6 +1,7 @@
 include_guard(GLOBAL)
 get_filename_component(ICE_LEASE_ROOT "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
-add_library(ICERenderLeaseRuntime STATIC "${ICE_LEASE_ROOT}/engine/src/render/acquisition_lease.cpp")
+add_library(ICERenderLeaseRuntime STATIC "${ICE_LEASE_ROOT}/engine/src/render/acquisition_lease.cpp"
+    "${ICE_LEASE_ROOT}/engine/src/render/readback.cpp")
 add_library(ice::render_leases ALIAS ICERenderLeaseRuntime)
 target_include_directories(ICERenderLeaseRuntime PUBLIC "${ICE_LEASE_ROOT}/engine/include")
 target_link_libraries(ICERenderLeaseRuntime PUBLIC ice::expected)

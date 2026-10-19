@@ -1,9 +1,11 @@
 #include "ice/render/metal/device.h"
 #include "../batch_validation.h"
+#include "../readback_state.h"
 #include "ice/core/utf8.h"
 #import <Metal/Metal.h>
 #import <QuartzCore/CAMetalLayer.h>
 #include <TargetConditionals.h>
+#include <cstring>
 #if TARGET_OS_OSX
 #import <AppKit/AppKit.h>
 #endif
@@ -27,6 +29,8 @@ struct layer_lease {
 } // namespace
 namespace detail {
 struct device_state {
+	std::shared_ptr<ice::render::detail::readback_accounting> readbacks =
+	    std::make_shared<ice::render::detail::readback_accounting>();
 	id<MTLDevice>        device;
 	id<MTLCommandQueue>  queue;
 	std::mutex           mutex;
@@ -754,6 +758,129 @@ ice::expected<frame_status, diagnostic> presentation_surface::draw_batch(const f
 		[command presentDrawable:drawable];
 		[command commit];
 		return frame_status::submitted;
+	}
+}
+namespace {
+struct metal_readback {
+	std::shared_ptr<detail::device_state>                      state;
+	std::shared_ptr<ice::render::detail::readback_reservation> reservation;
+	id<MTLTexture>                                             color, depth;
+	id<MTLBuffer>                                              buffer;
+	int                                                        width = 0, height = 0;
+	std::size_t                                                stride = 0;
+	std::atomic<int>                                           completed{0};
+	std::string error = "Metal asynchronous readback failed";
+};
+class metal_readback_operation final : public ice::render::detail::readback_operation {
+	std::shared_ptr<metal_readback> transfer_;
+	bool                            cancelled_ = false, consumed_ = false;
+
+public:
+	explicit metal_readback_operation(std::shared_ptr<metal_readback> transfer)
+	    : transfer_(std::move(transfer)) {}
+	ice::expected<readback_status, diagnostic> poll() override {
+		if (consumed_)
+			return readback_status::consumed;
+		const auto done = transfer_->completed.load(std::memory_order_acquire);
+		if (!done)
+			return readback_status::pending;
+		if (cancelled_)
+			return readback_status::cancelled;
+		if (done < 0)
+			return failure(transfer_->error);
+		return readback_status::ready;
+	}
+	ice::expected<readback_pixels, diagnostic> take() override {
+		const auto status = poll();
+		if (!status)
+			return ice::unexpected(status.error());
+		if (*status != readback_status::ready)
+			return failure("Readback pixels are not ready or already consumed");
+		readback_pixels result;
+		result.width      = transfer_->width;
+		result.height     = transfer_->height;
+		result.row_stride = transfer_->stride;
+		result.layout     = readback_layout::bgra8;
+		result.origin     = readback_origin::top_left;
+		result.bytes.resize(result.row_stride * std::size_t(result.height));
+		std::memcpy(result.bytes.data(), transfer_->buffer.contents, result.bytes.size());
+		ice::render::detail::readback_access::retain(result, std::move(transfer_->reservation));
+		transfer_->buffer = nil;
+		transfer_->color  = nil;
+		transfer_->depth  = nil;
+		consumed_         = true;
+		return result;
+	}
+	void cancel() noexcept override { cancelled_ = true; }
+};
+} // namespace
+ice::expected<readback_submission, diagnostic>
+device::render_offscreen_async(const frame_batch &batch, int width, int height,
+                               readback_limits limits) {
+	if (width < 1 || height < 1 || width > 4096 || height > 4096)
+		return failure("Invalid asynchronous capture dimensions");
+	auto valid = detail::batch_access::validate(state_, batch);
+	if (!valid)
+		return ice::unexpected(valid.error());
+	const auto stride = (std::size_t(width) * 4 + 255) & ~std::size_t(255);
+	// Logical peak: color+depth, aligned staging and the extracted CPU copy.
+	const auto cost =
+	    std::size_t(width) * std::size_t(height) * 8 + stride * std::size_t(height) * 2;
+	auto reservation = ice::render::detail::reserve_readback(state_->readbacks, limits, cost);
+	if (!reservation)
+		return readback_submission{};
+	@autoreleasepool {
+		auto transfer         = std::make_shared<metal_readback>();
+		transfer->state       = state_;
+		transfer->reservation = std::move(reservation);
+		transfer->width       = width;
+		transfer->height      = height;
+		transfer->stride      = stride;
+		auto *descriptor =
+		    [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
+		                                                       width:width
+		                                                      height:height
+		                                                   mipmapped:NO];
+		descriptor.storageMode = MTLStorageModePrivate;
+		descriptor.usage       = MTLTextureUsageRenderTarget;
+		transfer->color        = [state_->device newTextureWithDescriptor:descriptor];
+		transfer->depth        = detail::batch_access::depth_texture(state_, width, height);
+		transfer->buffer       = [state_->device newBufferWithLength:stride * std::size_t(height)
+                                                       options:MTLResourceStorageModeShared];
+		id<MTLCommandBuffer> command = [state_->queue commandBuffer];
+		if (!transfer->color || !transfer->depth || !transfer->buffer || !command ||
+		    !detail::batch_access::encode(command, transfer->color, transfer->depth, batch))
+			return failure("Metal asynchronous capture allocation/encoding failed");
+		id<MTLBlitCommandEncoder> copy = [command blitCommandEncoder];
+		if (!copy)
+			return failure("Metal asynchronous readback encoder unavailable");
+		[copy copyFromTexture:transfer->color
+		                 sourceSlice:0
+		                 sourceLevel:0
+		                sourceOrigin:MTLOriginMake(0, 0, 0)
+		                  sourceSize:MTLSizeMake(width, height, 1)
+		                    toBuffer:transfer->buffer
+		           destinationOffset:0
+		      destinationBytesPerRow:stride
+		    destinationBytesPerImage:stride * std::size_t(height)];
+		[copy endEncoding];
+		readback_submission result{frame_status::submitted,
+		                           ice::render::detail::readback_access::ticket(
+		                               std::make_unique<metal_readback_operation>(transfer))};
+		// The block owns all native resources and admission even if the ticket is dropped.
+		[command addCompletedHandler:^(id<MTLCommandBuffer> finished) {
+		  if (finished.status != MTLCommandBufferStatusCompleted) {
+			  try {
+				  transfer->error =
+					  native_error(finished.error, "Metal asynchronous readback failed");
+			  } catch (...) { /* Keep the preallocated fallback diagnostic. */
+			  }
+			  transfer->completed.store(-1, std::memory_order_release);
+		  } else
+			  transfer->completed.store(1, std::memory_order_release);
+		}];
+		[command commit];
+		return result;
 	}
 }
 ice::expected<image, diagnostic> device::render_offscreen(const pipeline &pipeline, int width,
