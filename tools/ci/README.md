@@ -112,6 +112,9 @@ it is not a security sandbox or CPU quota and does not coordinate human build/GP
 use. Initial CMake/CTest worker budgets are Linux2/Mac1, including the Rust proof's
 nested build through `CMAKE_BUILD_PARALLEL_LEVEL`. The Mac CI start still needs a
 released lane from Root; this preparation starts nothing.
+The API audit receives `--workers "$CI_PARALLEL"` explicitly; its default outside
+that invocation remains four workers. Direct Rust proof compilation passes
+`-Ccodegen-units=1` on its actual compiler command.
 Trusted gate and review-signal control jobs instead use
 `/bin/bash --noprofile --norc -e -o pipefail {0}`. Control accounts intentionally
 have no shared CPU-lock access and must not invoke the candidate wrapper.

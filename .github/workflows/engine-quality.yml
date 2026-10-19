@@ -183,7 +183,7 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.quality_tools.outcome == 'success' }}
         run: |
           source "$CI_VENV/bin/activate"
-          python3 tools/ci/run_stage.py api -- python3 tools/quality/api.py --build-dir build/ci
+          python3 tools/ci/run_stage.py api -- python3 tools/quality/api.py --build-dir build/ci --workers "$CI_PARALLEL"
 
       - name: Pinned static analysis
         if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.quality_tools.outcome == 'success' }}
