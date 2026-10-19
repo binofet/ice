@@ -303,3 +303,19 @@ behavior or cross-platform deterministic lockstep.
 
 Public backend references: [Box2D documentation](https://box2d.org/documentation/)
 and [Jolt 5.6 documentation](https://jrouwe.github.io/JoltPhysicsDocs/5.6.0/).
+
+### Owned current collider readback
+
+`world3d::capture_collider` copies actual prepared rounded-box/sphere/capsule
+parameters or bounded triangles decoded from a native cooked mesh, together with
+accepted body-origin translation/rotation and sensor classification. No native,
+body or cook owner escapes the result. Triangle coordinates retain native cooking
+quantization, winding and body-local offsets. The read does not step, recook or
+mutate physics. Whole-shape budget exhaustion is explicit; plane, heightfield,
+character proxy and unknown/decorated geometry remain unsupported, with no visual
+mesh or bounds substitution. Triangle extraction uses two bounded passes and a
+fixed temporary chunk before allocating exact owned output storage.
+
+This isolated source checkpoint has not been compiled or executed. Native CPU
+fixtures and strict C++20/C++23 qualification are required before acceptance. The
+query is a native owner API, not a command/Lua/event/history or remote-view grant.

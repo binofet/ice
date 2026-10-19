@@ -2,6 +2,7 @@
 
 #include "ice/core/expected.h"
 #include "ice/physics/character3d.h"
+#include "ice/physics/collider_geometry3d.h"
 #include "ice/physics/types.h"
 #include <memory>
 #include <optional>
@@ -207,6 +208,12 @@ public:
 	ice::expected<void, diagnostic> erase(body_id body);
 	/// Copy current body state without advancing simulation.
 	ice::expected<body3d_snapshot, diagnostic> inspect(body_id body) const;
+	/// Copy actual prepared shape parameters or bounded native cooked triangles and the current
+	/// body-origin rigid pose. Does not step, cook, mutate or retain native owners/borrowed data.
+	/// Unsupported shapes and whole-shape budget exhaustion are explicit; no bounds/visual mesh
+	/// fallback is used. The output budget limits decoded mesh work and owned triangle bytes.
+	ice::expected<collider_geometry3d, diagnostic>
+	capture_collider(body_id body, collider_geometry3d_limits limits) const;
 	/// Place a body explicitly, optionally clearing velocity; wake changed dynamic bodies.
 	/// Exact readback/equivalent normalized q/-q with no velocity reset is a no-op.
 	ice::expected<void, diagnostic> set_pose(body_id body, const math::vec3 &position,

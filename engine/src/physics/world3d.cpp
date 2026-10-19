@@ -33,6 +33,7 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
+#include <new>
 #include <stdexcept>
 #include <type_traits>
 #include <utility>
@@ -840,6 +841,107 @@ ice::expected<body3d_snapshot, diagnostic> world3d::inspect(body_id body) const 
 	                       portable(angular),
 	                       entry.motion == motion_type::dynamic && !bodies.IsActive(entry.native),
 	                       entry.static_shape_identity};
+}
+ice::expected<collider_geometry3d, diagnostic>
+world3d::capture_collider(body_id body, collider_geometry3d_limits limits) const {
+	if (!state_ || state_->stepping || state_->applying_poses)
+		return ice::unexpected(diagnostic{"Collider readback is unavailable/busy"});
+	auto resolved = state_->resolve(body);
+	if (!resolved)
+		return ice::unexpected(resolved.error());
+	const auto &entry = state_->slots[*resolved];
+	const auto &bodies = state_->system.GetBodyInterface();
+	JPH::RVec3 position;
+	JPH::Quat rotation;
+	bodies.GetPositionAndRotation(entry.native, position, rotation);
+	collider_geometry3d result;
+	result.position = portable(position);
+	result.rotation = portable(rotation);
+	result.motion = entry.motion;
+	result.sensor = bodies.IsSensor(entry.native);
+	if (entry.character_proxy) {
+		result.shape = collider_unavailable3d{collider_unsupported3d::character_proxy};
+		return result;
+	}
+	const auto shape = bodies.GetShape(entry.native);
+	if (!shape)
+		return ice::unexpected(diagnostic{"Collider shape is unavailable"});
+	switch (shape->GetSubType()) {
+	case JPH::EShapeSubType::Box: {
+		const auto &box = static_cast<const JPH::BoxShape &>(*shape);
+		result.shape = collider_box3d{portable(box.GetHalfExtent()), box.GetConvexRadius()};
+		return result;
+	}
+	case JPH::EShapeSubType::Sphere:
+		result.shape = collider_sphere3d{static_cast<const JPH::SphereShape &>(*shape).GetRadius()};
+		return result;
+	case JPH::EShapeSubType::Capsule: {
+		const auto &capsule = static_cast<const JPH::CapsuleShape &>(*shape);
+		result.shape = collider_capsule3d{capsule.GetRadius(), capsule.GetHalfHeightOfCylinder()};
+		return result;
+	}
+	case JPH::EShapeSubType::Plane:
+		result.shape = collider_unavailable3d{collider_unsupported3d::plane};
+		return result;
+	case JPH::EShapeSubType::HeightField:
+		result.shape = collider_unavailable3d{collider_unsupported3d::heightfield};
+		return result;
+	case JPH::EShapeSubType::Mesh:
+		break;
+	default:
+		return result; // Unknown/decorated shapes stay explicitly unsupported.
+	}
+	// Two bounded passes avoid an unbounded stats walk, speculative maximum-size allocation,
+	// vector growth past the payload budget, or an incomplete surface reported as complete.
+	constexpr int chunk = JPH::Shape::cGetTrianglesMinTrianglesRequested;
+	std::array<JPH::Float3, chunk * 3> vertices;
+	const auto maximum = std::min(limits.triangles, limits.bytes / (3 * sizeof(math::vec3)));
+	JPH::Shape::GetTrianglesContext context;
+	auto start = [&] {
+		shape->GetTrianglesStart(context, JPH::AABox::sBiggest(), shape->GetCenterOfMass(),
+		                         JPH::Quat::sIdentity(), JPH::Vec3::sReplicate(1));
+	};
+	start();
+	std::size_t count = 0;
+	for (;;) {
+		const auto found = shape->GetTrianglesNext(context, chunk, vertices.data());
+		if (!found)
+			break;
+		if (found < 0 || found > chunk)
+			return ice::unexpected(diagnostic{"Invalid native collider triangle readback"});
+		if (std::size_t(found) > maximum - count) {
+			result.shape = collider_unavailable3d{collider_unsupported3d::budget};
+			return result;
+		}
+		count += std::size_t(found);
+	}
+	try {
+		collider_triangles3d surface;
+		surface.vertices.resize(count * 3);
+		start();
+		std::size_t written = 0;
+		for (;;) {
+			const auto found = shape->GetTrianglesNext(context, chunk, vertices.data());
+			if (!found)
+				break;
+			if (found < 0 || found > chunk || std::size_t(found) > count - written)
+				return ice::unexpected(diagnostic{"Native collider changed during readback"});
+			for (int i = 0; i < found * 3; ++i) {
+				const auto &v = vertices[std::size_t(i)];
+				const math::vec3 point{v.x, v.y, v.z};
+				if (!finite(point))
+					return ice::unexpected(diagnostic{"Invalid cooked collider vertex"});
+				surface.vertices[written * 3 + std::size_t(i)] = point;
+			}
+			written += std::size_t(found);
+		}
+		if (written != count)
+			return ice::unexpected(diagnostic{"Native collider changed during readback"});
+		result.shape = std::move(surface);
+		return result;
+	} catch (const std::bad_alloc &) {
+		return ice::unexpected(diagnostic{"Collider readback allocation failed"});
+	}
 }
 ice::expected<void, diagnostic> world3d::set_pose(body_id body, const math::vec3 &position,
                                                   const math::quat &rotation, bool reset_velocity) {
