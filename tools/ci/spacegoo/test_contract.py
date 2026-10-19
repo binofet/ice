@@ -279,7 +279,8 @@ class ContractTests(unittest.TestCase):
             finally:
                 for child in processes:
                     marker = root / "descendant.pid"
-                    if marker.exists():
+                    if marker.exists() and not (runner.stages and
+                                                runner.stages[-1].get("group_cleanup_complete")):
                         try:
                             group = os.getpgid(int(marker.read_text()))
                         except ProcessLookupError:
