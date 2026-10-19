@@ -159,9 +159,9 @@ workflow code. Nova owns provider approval, repository/UID isolation and host tr
 Candidate source run steps use `/usr/local/libexec/ice-family-native-ci/owned-shell {0}`.
 It inherits the environment and serializes run children with a 1200-second lock wait;
 it is not a security sandbox or CPU quota and does not coordinate human build/GPU
-use. Initial CMake/CTest worker budgets are Linux2/Mac1, including the Rust proof's
-nested build through `CMAKE_BUILD_PARALLEL_LEVEL`. The Mac CI start still needs a
-released lane from Root; this preparation starts nothing.
+use. CMake/CTest worker budgets are Linux2/Mac2, including the Rust proof's nested
+build through `CMAKE_BUILD_PARALLEL_LEVEL`. Native CI starts still need a separately
+released two-worker lane from Root; this source configuration allocates nothing.
 The API audit receives `--workers "$CI_PARALLEL"` explicitly; its default outside
 that invocation remains four workers. Direct Rust proof compilation passes
 `-Ccodegen-units=1` on its actual compiler command.

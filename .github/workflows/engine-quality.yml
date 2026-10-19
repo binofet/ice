@@ -47,8 +47,8 @@ jobs:
       CI_OWNED_RUNNER: '1'
       CI_VENV: ${{ github.workspace }}/build/ci-tools/venv
       CI_BOOTSTRAP_PYTHON: ${{ matrix.os == 'macos-15' && '/opt/homebrew/bin/python3.12' || '/opt/ice-family-ci/toolchains/native-20261018-v1/bin/python3.12' }}
-      CI_PARALLEL: ${{ matrix.os == 'macos-15' && '1' || '2' }}
-      CMAKE_BUILD_PARALLEL_LEVEL: ${{ matrix.os == 'macos-15' && '1' || '2' }}
+      CI_PARALLEL: '2'
+      CMAKE_BUILD_PARALLEL_LEVEL: '2'
       CC: ${{ matrix.os == 'macos-15' && '/usr/bin/clang' || 'gcc-13' }}
       CXX: ${{ matrix.os == 'macos-15' && '/usr/bin/clang++' || 'g++-13' }}
       CI_CPP: ${{ matrix.cpp }}

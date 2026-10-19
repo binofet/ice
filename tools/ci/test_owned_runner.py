@@ -242,7 +242,6 @@ class OwnedWorkflowTests(unittest.TestCase):
         self.assertIn("github.event.pull_request.head.repo.full_name == github.repository", text)
         self.assertIn('runner: [self-hosted, Linux, X64, ' + repo + '.cpu]', text)
         self.assertIn('runner: [self-hosted, macOS, ARM64, ' + repo + '.cpu]', text)
-        self.assertIn("matrix.os == 'macos-15' && '1' || '2'", text)
         self.assertIn('source "$CI_VENV/bin/activate"', text)
         self.assertIn('/opt/homebrew/bin/python3.12', text)
         self.assertIn('cpp: [20, 23]', text)
@@ -257,9 +256,14 @@ class OwnedWorkflowTests(unittest.TestCase):
                               if line.strip().startswith('shell:')]
                     self.assertEqual(shells, [expected_shell])
             for owner in ('native', 'sanitizers'):
+                for variable in ('CI_PARALLEL', 'CMAKE_BUILD_PARALLEL_LEVEL'):
+                    with self.subTest(worker_budget_owner=owner, variable=variable):
+                        self.assertEqual(re.findall(r'^      ' + variable + r": (.+)$",
+                                                    jobs[owner], re.MULTILINE), ["'2'"])
                 self.assertIn('source "$CI_VENV/bin/activate"', jobs[owner])
                 self.assertIn('tools/ci/test_evidence.py', jobs[owner])
         else:
+            self.assertIn("matrix.os == 'macos-15' && '1' || '2'", text)
             shells = [line.strip() for line in text.splitlines() if line.strip().startswith('shell:')]
             self.assertEqual(shells, [expected_shell])
         self.assertNotIn('sudo ', text)
