@@ -95,6 +95,7 @@ class RenderChecksTests(unittest.TestCase):
                 self.assertEqual(self.child.call_count, 10)
                 self.assertEqual(self.child.call_args_list[-1].args[0][4], 'gpu-hdr')
 
+    @unittest.skipIf(os.name == 'nt', 'POSIX helper signal propagation')
     def test_explicit_cancel_forwards_waits_and_stops_remaining_cases(self):
         previous = signal.getsignal(signal.SIGTERM)
         def wait():

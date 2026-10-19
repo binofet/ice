@@ -207,16 +207,23 @@ def run_owned(stage, command, output, timeout_seconds, state):
               "process_exit_code": raw_result, "timeout_seconds": timeout_seconds,
               "timed_out": timed_out.is_set(), "output_bytes": total,
               "log_truncated": total > LOG_LIMIT}
-    if state['signal'] is not None:
-        record.update(cancelled=True, cancellation_signal=state['signal'],
-                      cancellation_grace_seconds=CANCEL_GRACE_SECONDS,
-                      cleanup_escalated=state.get('cleanup_escalated', False),
-                      process_id=process.pid if process else None)
     if not console_open:
         record['console_output_failed'] = True
-    write_json(output / f"{stage}.json", record)
-    emit(f"\n{stage}: exit {result}, {record['duration_seconds']:.3f}s\n".encode())
-    return result
+    # A handled signal during log/JSON/console finalization must not leave a
+    # successful record behind. The first signal is immutable, so at most one
+    # reconciliation write is needed.
+    while True:
+        observed_signal = state['signal']
+        if observed_signal is not None:
+            result = 128 + observed_signal
+            record.update(exit_code=result, cancelled=True, cancellation_signal=observed_signal,
+                          cancellation_grace_seconds=CANCEL_GRACE_SECONDS,
+                          cleanup_escalated=state.get('cleanup_escalated', False),
+                          process_id=process.pid if process else None)
+        write_json(output / f"{stage}.json", record)
+        emit(f"\n{stage}: exit {result}, {record['duration_seconds']:.3f}s\n".encode())
+        if observed_signal == state['signal']:
+            return result
 
 
 def main():

@@ -355,6 +355,32 @@ os.execv('/bin/bash',['/bin/bash','--noprofile','--norc','-e','-o','pipefail',*s
                 self.assertEqual(record['process_exit_code'], expected)
                 self.assertNotIn('cancelled', record)
 
+    def test_signal_during_evidence_write_cannot_leave_success_record(self):
+        driver = r'''
+import importlib.util,os,pathlib,signal,sys
+spec=importlib.util.spec_from_file_location('stage_fixture',sys.argv[1])
+module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+original=module.write_json
+fired=False
+def write(path,record):
+    global fired
+    if not fired:
+        fired=True
+        os.kill(os.getpid(),signal.SIGTERM)
+    original(path,record)
+module.write_json=write
+sys.exit(module.run('late',[sys.executable,'-c','pass'],pathlib.Path(sys.argv[2]),3))
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            result = subprocess.run([sys.executable,'-B','-c',driver,str(HELPER),str(root)],
+                                    stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=5)
+            self.assertEqual(result.returncode,143)
+            record=json.loads((root/'late.json').read_text())
+            self.assertEqual(record['exit_code'],143)
+            self.assertEqual(record['process_exit_code'],0)
+            self.assertTrue(record['cancelled'])
+
 
 if __name__ == '__main__':
     unittest.main()
