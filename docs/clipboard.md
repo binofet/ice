@@ -1,0 +1,7 @@
+# Desktop clipboard text
+
+`desktop_window::read_clipboard_text(maximum_bytes)` and `write_clipboard_text(text)` are explicit UI-thread capabilities. The default read cap is 4096 bytes; callers can select up to 16MiB. Writes accept up to 16MiB. Invalid UTF-8/NUL and oversized results are rejected without truncation. Neither transport creates text-input or submit events. Clipboard data is not a runtime/model capability.
+
+AppKit uses NSPasteboard strings. Win32 uses checked CF_UNICODETEXT conversion and prepares storage before replacing the clipboard. X11 owns CLIPBOARD only, serves TARGETS/UTF8_STRING while the owning window lives and the UI pump runs, and directly reads another ICE owner's retained value. External X11 reads use a separate connection so they do not consume the main input queue; the selection-response wait is bounded to 500ms/events. Incremental INCR transfers are explicitly unsupported, and writes must fit the server's direct-property request limit. This is not a universal timeout for all synchronous X-server I/O or a clipboard-manager persistence guarantee.
+
+The ordinary fake-window test checks public limits, validation and diagnostics without touching any native clipboard. `ice_platform_clipboard_x11_tests` is explicit-only and requires an owned isolated Xvfb plus `ICE_CLIPBOARD_TEST_ISOLATED=1`; it is deliberately absent from ordinary CTest. Mac/Windows native user copy/paste acceptance is separate from compile and CPU proof.

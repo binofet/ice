@@ -1,0 +1,11 @@
+cmake_minimum_required(VERSION 3.20)
+project(ICEMotionTests LANGUAGES CXX)
+
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/ICEMotion.cmake")
+enable_testing()
+add_executable(ice_motion_tests pose.cpp)
+target_link_libraries(ice_motion_tests PRIVATE ice::motion)
+ice_strict_target(ice_motion_tests)
+foreach(case validation blend compose inverse invalid tags consumers)
+    add_test(NAME "ice_motion_${case}" COMMAND ice_motion_tests "${case}")
+endforeach()

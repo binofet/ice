@@ -106,13 +106,42 @@ ice::platform::pointer_mode desktop_window::pointer_mode() const {
 	const_cast<desktop_window *>(this)->refresh_input_cancellation();
 	return pointer_mode_;
 }
+ice::expected<std::string, window_diagnostic>
+desktop_window::read_clipboard_text(std::size_t maximum_bytes) {
+	if (!maximum_bytes || maximum_bytes > 16 * 1024 * 1024)
+		return ice::unexpected(window_diagnostic{"Invalid clipboard text byte limit"});
+	auto result = read_native_clipboard_text(maximum_bytes);
+	if (result && !ice::core::valid_utf8_text(*result, maximum_bytes))
+		return ice::unexpected(
+		    window_diagnostic{"Clipboard text exceeds its byte limit or is invalid UTF-8"});
+	return result;
+}
+ice::expected<void, window_diagnostic> desktop_window::write_clipboard_text(std::string_view text) {
+	if (!ice::core::valid_utf8_text(text, 16 * 1024 * 1024))
+		return ice::unexpected(
+		    window_diagnostic{"Clipboard text exceeds 16MiB or is invalid UTF-8"});
+	return write_native_clipboard_text(text);
+}
+ice::expected<std::string, window_diagnostic>
+desktop_window::read_native_clipboard_text(std::size_t maximum_bytes) {
+	(void)maximum_bytes;
+	return ice::unexpected(window_diagnostic{"Native clipboard text is unavailable"});
+}
+ice::expected<void, window_diagnostic>
+desktop_window::write_native_clipboard_text(std::string_view text) {
+	(void)text;
+	return ice::unexpected(window_diagnostic{"Native clipboard text is unavailable"});
+}
 bool desktop_window::set_text_input_rect(const text_input_rect &rect) {
 	if (!std::isfinite(rect.x) || !std::isfinite(rect.y) || !std::isfinite(rect.width) ||
 	    !std::isfinite(rect.height) || std::fabs(rect.x) > 1000000 || std::fabs(rect.y) > 1000000 ||
 	    rect.width < 0 || rect.height < 0 || rect.width > 16384 || rect.height > 16384)
 		return false;
+	if (text_input_rect_.x == rect.x && text_input_rect_.y == rect.y &&
+	    text_input_rect_.width == rect.width && text_input_rect_.height == rect.height)
+		return true;
 	text_input_rect_ = rect;
-	text_input_changed();
+	text_input_rect_changed();
 	return true;
 }
 } // namespace ice::platform

@@ -17,12 +17,14 @@ ice_strict_target(ICEAssetRuntime)
 
 include(../cmake/ICEMeta.cmake)
 include(../cmake/ICEInput.cmake)
+include(../cmake/ICEActionRouting.cmake)
+include(../cmake/ICEMotion.cmake)
 
 # Consumers may select individual modules. The aggregate includes enabled native backends,
 # without owning an application, window or device.
 add_library(ICEEngine INTERFACE)
 add_library(ice::engine ALIAS ICEEngine)
-target_link_libraries(ICEEngine INTERFACE ice::platform ice::input ice::assets ice::meta ice::data)
+target_link_libraries(ICEEngine INTERFACE ice::platform ice::input ice::action_router ice::motion ice::assets ice::meta ice::data)
 # Standard playground builds include both physics engines; tiny/watch hosts can omit them.
 set(physics_default ON)
 if(CMAKE_SYSTEM_NAME STREQUAL "watchOS")

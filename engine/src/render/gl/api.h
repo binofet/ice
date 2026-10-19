@@ -3,6 +3,9 @@
 #include <GL/glcorearb.h>
 namespace ice::render::gl::detail {
 struct functions {
+	PFNGLCLIENTWAITSYNCPROC           ClientWaitSync           = nullptr;
+	PFNGLMAPBUFFERRANGEPROC           MapBufferRange           = nullptr;
+	PFNGLUNMAPBUFFERPROC              UnmapBuffer              = nullptr;
 	PFNGLFRONTFACEPROC                FrontFace                = nullptr;
 	PFNGLFENCESYNCPROC                FenceSync                = nullptr;
 	PFNGLWAITSYNCPROC                 WaitSync                 = nullptr;
@@ -74,7 +77,13 @@ struct functions {
 	PFNGLFINISHPROC                   Finish                   = nullptr;
 	PFNGLFLUSHPROC                    Flush                    = nullptr;
 	bool load(native_context &context, std::string &error, bool embedded) {
-		FrontFace = reinterpret_cast<PFNGLFRONTFACEPROC>(context.resolve("glFrontFace"));
+		// Optional for synchronous callers; asynchronous capture reports unavailable explicitly.
+		ClientWaitSync =
+		    reinterpret_cast<PFNGLCLIENTWAITSYNCPROC>(context.resolve("glClientWaitSync"));
+		MapBufferRange =
+		    reinterpret_cast<PFNGLMAPBUFFERRANGEPROC>(context.resolve("glMapBufferRange"));
+		UnmapBuffer = reinterpret_cast<PFNGLUNMAPBUFFERPROC>(context.resolve("glUnmapBuffer"));
+		FrontFace   = reinterpret_cast<PFNGLFRONTFACEPROC>(context.resolve("glFrontFace"));
 		if (!FrontFace) {
 			error = "Missing OpenGL entry point glFrontFace";
 			return false;

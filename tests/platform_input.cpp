@@ -27,9 +27,11 @@ public:
 	ice::platform::native_window_handle native_handle() const override {
 		return {ice::platform::native_window_kind::appkit};
 	}
-	int cancellations = 0;
+	int cancellations = 0, activation_updates = 0, rectangle_updates = 0;
 
 private:
+	void text_input_changed() override { ++activation_updates; }
+	void text_input_rect_changed() override { ++rectangle_updates; }
 	void cancel_native_text_input() override { ++cancellations; }
 };
 void drain() {
@@ -67,11 +69,28 @@ int main() {
 	CHECK(first.id() && second.id() != first.id());
 	drain();
 	CHECK(!first.text_input_enabled());
+	CHECK(first.set_text_input_rect(first.text_input_area()));
+	CHECK(first.activation_updates == 0 && first.rectangle_updates == 0);
 	first.enable_text_input();
 	CHECK(first.text_input_enabled());
+	first.enable_text_input();
+	CHECK(first.activation_updates == 1 && first.rectangle_updates == 0);
 	CHECK(first.set_text_input_rect({10, 20, 1, 18}));
-	CHECK(!first.set_text_input_rect({std::numeric_limits<float>::quiet_NaN(), 0, 1, 18}));
+	CHECK(first.activation_updates == 1 && first.rectangle_updates == 1);
+	CHECK(first.set_text_input_rect({10, 20, 1, 18}));
+	CHECK(first.activation_updates == 1 && first.rectangle_updates == 1);
+	for (const auto rect : {text_input_rect{std::numeric_limits<float>::quiet_NaN(), 0, 1, 18},
+	                        text_input_rect{0, std::numeric_limits<float>::infinity(), 1, 18},
+	                        text_input_rect{0, 0, -1, 18}, text_input_rect{0, 0, 1, 16385},
+	                        text_input_rect{1000001, 0, 1, 18}})
+		CHECK(!first.set_text_input_rect(rect));
 	CHECK(first.text_input_area().x == 10 && first.text_input_area().y == 20);
+	CHECK(first.activation_updates == 1 && first.rectangle_updates == 1 &&
+	      first.cancellations == 0);
+	// Coordinate changes preserve the active IME lifetime and do not emit cancellation.
+	CHECK(first.set_text_input_rect({10, 20, 2, 24}));
+	CHECK(first.activation_updates == 1 && first.rectangle_updates == 2 &&
+	      first.cancellations == 0);
 	platform_event commit{platform_event_type::text_committed, first.id(), 0};
 	commit.text = "A\xF0\x9F\xA6\x8A\xC3\xA9";
 	CHECK(platform_events::post(commit));
@@ -111,6 +130,12 @@ int main() {
 	drain();
 	first.enable_text_input(false);
 	CHECK(first.cancellations == 1 && !first.text_input_enabled());
+	CHECK(first.activation_updates == 2 && first.rectangle_updates == 2);
+	first.enable_text_input(false);
+	CHECK(first.cancellations == 1 && first.activation_updates == 2);
+	CHECK(first.set_text_input_rect({30, 40, 2, 24}));
+	CHECK(first.activation_updates == 2 && first.rectangle_updates == 3 &&
+	      first.cancellations == 1 && !first.text_input_enabled());
 	CHECK(platform_events::poll(event) && event.type == platform_event_type::input_cancelled &&
 	      event.window == first.id());
 	platform_events::post(platform_event_type::focus_lost, second.id());

@@ -10,6 +10,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace ice::script {
 /// Owned, named scalar boundary: at most 128 fields, 128-byte nonempty UTF-8 names,
@@ -54,18 +55,33 @@ struct host_function {
 	/// movement/destruction or unbounded blocking work is allowed inside a handler.
 	std::function<ice::expected<scalar_record, diagnostic>(const scalar_record &)> invoke;
 };
-/// Per-program Lua heap and per-prepare/call bytecode limits. They do not cap host
+/// Per-program Lua heap and per-prepare/call instruction-work limits. They do not cap host
 /// resolver allocations, compiler/native-library wall time or the process C stack.
+/// table.remove precharges its raw indexed work to the same instruction counter;
+/// other native library work remains outside the bytecode hook.
 struct lua_limits {
 	/// Lua allocation bytes; allowed 64 KiB..1 GiB. Includes libraries and allocator headers.
 	std::size_t memory_bytes = 64 * 1024 * 1024;
-	/// Lua VM instructions per top-level execution/call, allowed 1..1000000000.
+	/// Lua VM instructions plus charged table.remove work per top-level execution/call,
+	/// allowed 1..1000000000. remove charges 3 units plus 2 per shifted element.
 	std::uint64_t instructions = 10000000;
 	/// Source bytes accepted after the provider read, allowed 1..1 MiB.
 	std::size_t source_bytes = 256 * 1024;
 	/// Host callback attempts per call, allowed 0..1000000. Zero disables host invocation.
 	std::uint32_t host_calls = 65536;
 };
+/// Owned inventory of a fresh sandbox before user source runs. Member values are Lua
+/// type names; removed/guarded names are qualified except for base globals.
+struct lua_environment_description {
+	std::string version, release;
+	std::string host_scope = "entry_call_only";
+	std::map<std::string, std::map<std::string, std::string, std::less<>>, std::less<>> libraries;
+	std::vector<std::string>                                                            removed;
+	std::map<std::string, std::string, std::less<>>                                     guarded;
+};
+/// Inspect the same initialization used by prepare, without source, URI access or host calls.
+/// Uses a temporary bounded VM; no borrowed Lua strings or native handles escape.
+ice::expected<lua_environment_description, diagnostic> describe_lua_environment();
 /// Interpreted Lua 5.5 instance with no native host pointers or ambient I/O exposed.
 /// Single-threaded: the host serializes prepare/call/destruction at its chosen boundary.
 /// Call returns owned outputs only on complete success. VM globals/upvalues can change

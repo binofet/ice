@@ -2,6 +2,7 @@
 #include "../physical_key_internal.h"
 #import <AppKit/AppKit.h>
 #import <CoreGraphics/CoreGraphics.h>
+#import <IOKit/hidsystem/IOLLEvent.h>
 #include <algorithm>
 #include <cstring>
 #include <vector>
@@ -44,9 +45,12 @@ std::size_t utf8_offset(NSString *text, NSUInteger offset) {
 @property(nonatomic) ice::platform::key_modifiers           modifiers;
 @property(nonatomic) BOOL                                   repeated;
 @property(nonatomic, strong) NSTextInputContext            *context;
+@property(nonatomic, strong) NSMenu                        *editEquivalents;
+@property(nonatomic, strong) NSEvent                       *equivalentEvent;
 - (void)cancelPreedit;
 - (void)resetPointer;
 - (void)cancelPhysical;
+- (void)releasePhysicalKeyIfHeld:(NSEvent *)event;
 @end
 @implementation ICEDesktopTextView
 - (BOOL)acceptsFirstResponder {
@@ -188,21 +192,16 @@ std::size_t utf8_offset(NSString *text, NSUInteger offset) {
 - (void)keyUp:(NSEvent *)native {
 	[self physicalKey:native pressed:NO];
 }
+- (void)releasePhysicalKeyIfHeld:(NSEvent *)native {
+	if (native.keyCode < physicalPressed_.size() && physicalPressed_[native.keyCode])
+		[self keyUp:native];
+}
 - (void)flagsChanged:(NSEvent *)native {
+	if (!self.owner || !self.window.isKeyWindow)
+		return;
 	using enum ice::platform::physical_key;
-	auto                 key  = ice::platform::detail::mac_physical_key(native.keyCode);
-	NSEventModifierFlags mask = 0;
-	if (key == left_shift || key == right_shift)
-		mask = NSEventModifierFlagShift;
-	if (key == left_control || key == right_control)
-		mask = NSEventModifierFlagControl;
-	if (key == left_alt || key == right_alt)
-		mask = NSEventModifierFlagOption;
-	if (key == left_super || key == right_super)
-		mask = NSEventModifierFlagCommand;
-	if (key == caps_lock)
-		mask = NSEventModifierFlagCapsLock;
-	if (!mask || native.keyCode >= physicalPressed_.size())
+	auto key = ice::platform::detail::mac_physical_key(native.keyCode);
+	if (native.keyCode >= physicalPressed_.size())
 		return;
 	// AppKit reports Caps Lock's toggle, not a held-key release. Publish a complete
 	// physical action; the actual latched state remains in event.modifiers.
@@ -211,14 +210,40 @@ std::size_t utf8_offset(NSString *text, NSUInteger offset) {
 		[self physicalKey:native pressed:NO];
 		return;
 	}
-	BOOL pressed = (native.modifierFlags & mask) != 0;
-	if (key != caps_lock && pressed)
-		pressed = !physicalPressed_[native.keyCode];
-	[self physicalKey:native pressed:pressed];
-}
-- (void)keyDown:(NSEvent *)event {
-	if (!self.owner || !self.window.isKeyWindow)
+	NSEventModifierFlags combined = 0, left_mask = 0, right_mask = 0, selected = 0;
+	if (key == left_shift || key == right_shift) {
+		combined   = NSEventModifierFlagShift;
+		left_mask  = NX_DEVICELSHIFTKEYMASK;
+		right_mask = NX_DEVICERSHIFTKEYMASK;
+		selected   = key == left_shift ? left_mask : right_mask;
+	} else if (key == left_control || key == right_control) {
+		combined   = NSEventModifierFlagControl;
+		left_mask  = NX_DEVICELCTLKEYMASK;
+		right_mask = NX_DEVICERCTLKEYMASK;
+		selected   = key == left_control ? left_mask : right_mask;
+	} else if (key == left_alt || key == right_alt) {
+		combined   = NSEventModifierFlagOption;
+		left_mask  = NX_DEVICELALTKEYMASK;
+		right_mask = NX_DEVICERALTKEYMASK;
+		selected   = key == left_alt ? left_mask : right_mask;
+	} else if (key == left_super || key == right_super) {
+		combined   = NSEventModifierFlagCommand;
+		left_mask  = NX_DEVICELCMDKEYMASK;
+		right_mask = NX_DEVICERCMDKEYMASK;
+		selected   = key == left_super ? left_mask : right_mask;
+	} else
 		return;
+	const auto flags = native.modifierFlags;
+	// The aggregate flag cannot identify which side changed after cancellation erased
+	// held history. Derive this transition from this event's sided flags. An incomplete
+	// or contradictory modifier sample cancels input; it cannot establish a fresh press.
+	if (bool(flags & combined) != bool(flags & (left_mask | right_mask))) {
+		self.owner->cancel_input();
+		return;
+	}
+	[self physicalKey:native pressed:(flags & selected) != 0];
+}
+- (void)recordKeyDown:(NSEvent *)event {
 	[self physicalKey:event pressed:YES];
 	self.modifiers = modifiers(event.modifierFlags);
 	self.repeated  = event.isARepeat;
@@ -228,8 +253,51 @@ std::size_t utf8_offset(NSString *text, NSUInteger offset) {
 	activity.repeat    = self.repeated;
 	if (!ice::platform::platform_events::post(std::move(activity)))
 		[self cancelPreedit];
+}
+- (void)keyDown:(NSEvent *)event {
+	if (!self.owner || !self.window.isKeyWindow)
+		return;
+	[self recordKeyDown:event];
 	if (self.owner->text_input_enabled())
 		[self interpretKeyEvents:@[ event ]];
+}
+- (BOOL)performKeyEquivalent:(NSEvent *)event {
+	if (event.type != NSEventTypeKeyDown || !self.owner || !self.window.isKeyWindow ||
+	    self.window.firstResponder != self || !self.owner->text_input_enabled())
+		return [super performKeyEquivalent:event];
+	if (!self.editEquivalents) {
+		NSMenu *menu                     = [[NSMenu alloc] initWithTitle:@"ICE text editing"];
+		menu.autoenablesItems            = NO;
+		NSArray<NSString *> *titles      = @[ @"Cut", @"Copy", @"Paste", @"Select All" ];
+		NSArray<NSString *> *keys        = @[ @"x", @"c", @"v", @"a" ];
+		const SEL            selectors[] = {@selector(cut:), @selector(copy:), @selector(paste:),
+		                                    @selector(selectAll:)};
+		for (NSUInteger index = 0; index < titles.count; ++index) {
+			NSMenuItem *item               = [menu addItemWithTitle:titles[index]
+                                               action:selectors[index]
+                                        keyEquivalent:keys[index]];
+			item.target                    = self;
+			item.keyEquivalentModifierMask = NSEventModifierFlagCommand;
+		}
+		self.editEquivalents = menu;
+	}
+	// AppKit performs character/layout/modifier matching; physical key codes do not
+	// choose text actions. A handled equivalent bypasses keyDown:, so its action
+	// records the same physical/activity stream before posting exactly one edit.
+	NSEvent *previous    = self.equivalentEvent;
+	self.equivalentEvent = event;
+	BOOL handled         = NO;
+	@try {
+		handled = [self.editEquivalents performKeyEquivalent:event];
+	} @finally {
+		self.equivalentEvent = previous;
+	}
+	return handled ? YES : [super performKeyEquivalent:event];
+}
+- (void)editAction:(SEL)selector {
+	if (self.equivalentEvent)
+		[self recordKeyDown:self.equivalentEvent];
+	[self doCommandBySelector:selector];
 }
 - (void)insertText:(id)value replacementRange:(NSRange)replacement {
 	(void)replacement;
@@ -377,19 +445,19 @@ std::size_t utf8_offset(NSString *text, NSUInteger offset) {
 }
 - (void)copy:(id)sender {
 	(void)sender;
-	[self doCommandBySelector:@selector(copy:)];
+	[self editAction:@selector(copy:)];
 }
 - (void)cut:(id)sender {
 	(void)sender;
-	[self doCommandBySelector:@selector(cut:)];
+	[self editAction:@selector(cut:)];
 }
 - (void)paste:(id)sender {
 	(void)sender;
-	[self doCommandBySelector:@selector(paste:)];
+	[self editAction:@selector(paste:)];
 }
 - (void)selectAll:(id)sender {
 	(void)sender;
-	[self doCommandBySelector:@selector(selectAll:)];
+	[self editAction:@selector(selectAll:)];
 }
 @end
 @interface ICEDesktopDelegate : NSObject <NSWindowDelegate>
@@ -422,8 +490,17 @@ std::size_t utf8_offset(NSString *text, NSUInteger offset) {
 	(void)notification;
 	self.owner->cancel_input();
 }
+- (void)invalidateTextCoordinates {
+	ICEDesktopTextView *view = (__bridge ICEDesktopTextView *)self.owner->native_handle().view;
+	[view.context invalidateCharacterCoordinates];
+}
+- (void)windowDidMove:(NSNotification *)notification {
+	(void)notification;
+	[self invalidateTextCoordinates];
+}
 - (void)windowDidResize:(NSNotification *)notification {
 	(void)notification;
+	[self invalidateTextCoordinates];
 	ice::platform::platform_events::post(ice::platform::platform_event_type::window_resized,
 	                                     self.owner->id());
 }
@@ -467,6 +544,43 @@ public:
 		std::erase(windows, this);
 		native_.delegate = nil;
 		[native_ close];
+	}
+	ice::expected<std::string, window_diagnostic>
+	read_native_clipboard_text(std::size_t maximum_bytes) override {
+		@autoreleasepool {
+			NSPasteboard *board = NSPasteboard.generalPasteboard;
+			NSString     *value = [board stringForType:NSPasteboardTypeString];
+			if (!value)
+				return std::string{};
+			const NSUInteger count = [value lengthOfBytesUsingEncoding:NSUTF8StringEncoding];
+			if (count > maximum_bytes)
+				return ice::unexpected(window_diagnostic{"Clipboard text exceeds its byte limit"});
+			NSData *bytes = [value dataUsingEncoding:NSUTF8StringEncoding allowLossyConversion:NO];
+			if (!bytes)
+				return ice::unexpected(
+				    window_diagnostic{"Clipboard text cannot be converted to UTF-8"});
+			return bytes.length ? std::string(static_cast<const char *>(bytes.bytes), bytes.length)
+			                    : std::string{};
+		}
+	}
+	ice::expected<void, window_diagnostic>
+	write_native_clipboard_text(std::string_view text) override {
+		@autoreleasepool {
+			NSString *value = [[NSString alloc] initWithBytes:text.data()
+			                                           length:text.size()
+			                                         encoding:NSUTF8StringEncoding];
+			if (!value)
+				return ice::unexpected(
+				    window_diagnostic{"Clipboard text cannot be converted from UTF-8"});
+			NSPasteboardItem *item = [NSPasteboardItem new];
+			if (![item setString:value forType:NSPasteboardTypeString])
+				return ice::unexpected(window_diagnostic{"Cannot prepare clipboard text"});
+			NSPasteboard *board = NSPasteboard.generalPasteboard;
+			[board clearContents];
+			if (![board writeObjects:@[ item ]])
+				return ice::unexpected(window_diagnostic{"Cannot publish clipboard text"});
+			return {};
+		}
 	}
 	void show(bool visible) override {
 		if (visible)
@@ -531,10 +645,11 @@ private:
 			[view_.inputContext activate];
 		} else
 			[view_.context deactivate];
-		[view_.context invalidateCharacterCoordinates];
+		text_input_rect_changed();
 	}
-	void                         cancel_native_text_input() override { [view_ cancelPreedit]; }
-	void                         cancel_native_physical_input() override { [view_ cancelPhysical]; }
+	void text_input_rect_changed() override { [view_.context invalidateCharacterCoordinates]; }
+	void cancel_native_text_input() override { [view_ cancelPreedit]; }
+	void cancel_native_physical_input() override { [view_ cancelPhysical]; }
 	ICEDesktopTextView *__strong view_;
 	NSWindow *__strong           native_;
 	ICEDesktopDelegate *__strong delegate_;
@@ -606,8 +721,15 @@ void pump_desktop_events() {
 		while (NSEvent *event = [NSApp nextEventMatchingMask:NSEventMaskAny
 		                                           untilDate:NSDate.distantPast
 		                                              inMode:NSDefaultRunLoopMode
-		                                             dequeue:YES])
+		                                             dequeue:YES]) {
 			[NSApp sendEvent:event];
+			// AppKit can consume Command-key releases before the view's keyUp:.
+			// Release only a still-held key after normal dispatch, so a delivered
+			// keyUp: is never duplicated. Focus loss/cancellation already clears it.
+			if (event.type == NSEventTypeKeyUp &&
+			    [event.window.contentView isKindOfClass:ICEDesktopTextView.class])
+				[(ICEDesktopTextView *)event.window.contentView releasePhysicalKeyIfHeld:event];
+		}
 		[NSApp updateWindows];
 	}
 }
