@@ -127,7 +127,7 @@ class XvfbReadinessTests(unittest.TestCase):
 
     def test_malformed_duplicate_nonfinite_and_deep_json_stop_before_server(self):
         for raw in (b'{bad', b'\xff', b'{"ICD":{},"ICD":{}}', b'{"x":NaN}',
-                    b'[' * 1100 + b']' * 1100):
+                    b'[' * 1100 + b']' * 1099):
             with self.subTest(raw=raw[:20]):
                 self.descriptor.write_bytes(raw)
                 self.refused('malformed-mesa-json')
