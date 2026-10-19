@@ -163,13 +163,14 @@ class GateTests(unittest.TestCase):
                     names, _=gate.stage_plan('ice', source)
                     producer, _=report.plan(profile, os_name, mode)
                     self.assertEqual(names, set(producer))
-                    self.assertEqual('lint' in names, profile == 'native' and mode != 'day')
+                    for name in ('api', 'lint'):
+                        self.assertEqual(name in names, profile == 'native' and mode != 'day')
         for mode in ('unknown', None, {}, 'nightly'):
             source=json.loads(evidence()['source.json']); source['quality_plan']=mode
             with self.assertRaises(ValueError):
                 gate.stage_plan('ice', source)
 
-    def test_explicit_day_omits_lint_but_preserves_all_other_gate_requirements(self):
+    def test_explicit_day_omits_documentation_and_lint_but_preserves_contracts(self):
         api=FakeAPI()
         for index, files in api.files.items():
             source=json.loads(files['source.json'])
@@ -180,7 +181,8 @@ class GateTests(unittest.TestCase):
         self.assertEqual(gate.gate(api, 'ice', 7)['source-quality']['state'], 'success')
         context=dict(head=HEAD, base=BASE)
         run=dict(id=123, run_attempt=1)
-        for mode, required in [(None, 'lint'), ('day', 'api'), ('day', 'format'), ('day', 'cpu')]:
+        for mode, required in [(None, 'api'), (None, 'lint'), ('day', 'format'), ('day', 'cpu'),
+                               ('day', 'metagen'), ('day', 'build'), ('day', 'gate-contract')]:
             files=evidence(quality_plan=mode)
             summary=json.loads(files['summary.json']); del summary['stages'][required]
             files['summary.json']=json.dumps(summary)

@@ -7,12 +7,14 @@ Legacy `ubuntu-24.04`/`macos-15` job/artifact names preserve the current trusted
 inventory and do not identify actual images. `source.json.owned_runtime` and the
 job summary report the observed OS release, architecture and Python instead.
 
-The explicit `day` plan runs PR/default-push compilation, tests, formatting,
-API contracts, sanitizers and native graphics as before, and does not produce a
-Clang-Tidy result. The `nightly` plan additionally requires the real Clang-Tidy
-sweeps in each native profile. An absent plan marker retains legacy strict lint
-requirements; unknown or event-conflicting markers fail. No passing/skipped lint
-record is synthesized for a day job. Producer and trusted-gate plans are checked
+The explicit `day` plan runs PR/default-push compilation (including public
+headers), native/API/Metagen contract tests, formatting, sanitizers and native
+graphics as before. It does not produce API-documentation or Clang-Tidy results.
+The `nightly` plan additionally requires the real expensive API documentation,
+readability/argument-documentation checks (`api`) and Clang-Tidy sweeps (`lint`)
+in each native profile. An absent plan marker retains both legacy strict
+requirements; unknown or event-conflicting markers fail. No passing/skipped
+analysis record is synthesized for a day job. Producer and trusted-gate plans are checked
 independently, and only a complete PR event can satisfy protected PR quality.
 
 The existing five profiles run nightly at `17 9 * * *` UTC (03:17 Boise during

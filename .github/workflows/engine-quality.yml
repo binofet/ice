@@ -217,7 +217,7 @@ jobs:
           exec python3 tools/ci/run_stage.py format -- python3 tools/quality/check.py format --all
 
       - name: Public API documentation and argument contracts
-        if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.quality_tools.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.quality_tools.outcome == 'success' && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.quality_plan == 'nightly')) }}
         run: |
           source "$CI_VENV/bin/activate"
           exec python3 tools/ci/run_stage.py api -- python3 tools/quality/api.py --build-dir build/ci --workers "$CI_API_PARALLEL"

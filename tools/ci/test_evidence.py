@@ -157,14 +157,23 @@ class EvidenceTests(unittest.TestCase):
                 self.fixture(output, quality_plan=mode)
                 self.assertEqual(self.summary(output), 0)
                 summary = json.loads((output/'summary.json').read_text())
-                self.assertEqual('lint' in summary['stages'], mode != 'day')
-                self.assertEqual((output/'lint.json').exists(), mode != 'day')
-                (output/('api.json' if mode == 'day' else 'lint.json')).unlink()
-                self.assertEqual(self.summary(output), 1)
+                for name in ('api', 'lint'):
+                    self.assertEqual(name in summary['stages'], mode != 'day')
+                    self.assertEqual((output/(name+'.json')).exists(), mode != 'day')
+                required = ['build', 'cpu', 'format', 'metagen']
+                if mode != 'day':
+                    required += ['api', 'lint']
+                for name in required:
+                    path=output/(name+'.json'); original=path.read_bytes(); path.unlink()
+                    self.assertEqual(self.summary(output), 1, name)
+                    path.write_bytes(original)
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory); self.fixture(output, quality_plan='nightly')
-            (output/'lint.json').write_text(json.dumps(dict(exit_code=23, duration_seconds=.1)))
-            self.assertEqual(self.summary(output), 1)
+            for name in ('api', 'lint'):
+                path=output/(name+'.json'); original=path.read_bytes()
+                path.write_text(json.dumps(dict(exit_code=23, duration_seconds=.1)))
+                self.assertEqual(self.summary(output), 1, name)
+                path.write_bytes(original)
 
     def test_unknown_null_and_event_conflicting_modes_are_not_reinterpreted(self):
         for mode, event in [('unknown', 'pull_request'), (None, 'pull_request'),

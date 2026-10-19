@@ -373,6 +373,10 @@ class OwnedWorkflowTests(unittest.TestCase):
         self.assertTrue(values['reject-invalid-manual-route'])
         self.assertFalse(values['native'] or values['xvfb-readiness'])
         lint = jobs['native'].split('      - name: Pinned static analysis')[1].split('      # Each executable')[0]
+        documentation = jobs['native'].split('      - name: Public API documentation and argument contracts')[1].split('      - name: Pinned static analysis')[0]
+        conditions = lambda block: [line.strip() for line in block.splitlines() if line.strip().startswith('if:')]
+        self.assertEqual(conditions(documentation), conditions(lint))
+        self.assertIn('run_stage.py api -- python3 tools/quality/api.py', documentation)
         self.assertIn("github.event_name == 'schedule'", lint)
         self.assertIn("inputs.quality_plan == 'nightly'", lint)
         for build in ('build/ci', 'build/metagen-ci'):

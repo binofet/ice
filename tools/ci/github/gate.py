@@ -192,9 +192,9 @@ def stage_plan(repo, source):
                  "ice_day_route_mismatch")
     if repo == "ice" and native:
         common |= {"path-policy", "quality-tools", "consumer-cache", "metagen-configure", "metagen-build",
-                   "metagen-discovery", "metagen", "rust", "format", "api"}
+                   "metagen-discovery", "metagen", "rust", "format"}
         if source.get("quality_plan") != "day":
-            common.add("lint")
+            common |= {"api", "lint"}
         suites.add("metagen")
     if repo == "ignition":
         common.add("ice")

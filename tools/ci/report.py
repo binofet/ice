@@ -19,7 +19,7 @@ import owned_runner
 
 NATIVE_STAGES = ("evidence", "gate-contract", "path-policy", "dependencies", "quality-tools", "consumer-cache",
                  "metagen-configure", "metagen-build", "metagen-discovery", "metagen",
-                 "rust", "configure", "build", "cpu-discovery", "cpu", "format", "api")
+                 "rust", "configure", "build", "cpu-discovery", "cpu", "format")
 SANITIZER_STAGES = ("evidence", "gate-contract", "dependencies", "configure", "build", "cpu-discovery", "cpu")
 GLES_STAGES = ("gles-configure", "gles-build", "gles-discovery", "gles")
 
@@ -33,7 +33,7 @@ def plan(profile, runner, quality_plan=None):
         raise ValueError("Unknown day/nightly quality plan")
     stages = NATIVE_STAGES if profile == "native" else SANITIZER_STAGES
     if profile == "native" and quality_plan != "day":
-        stages += ("lint",)
+        stages += ("api", "lint")
     if profile == "native" and runner == "Linux":
         stages += tuple(name for name, _ in render_cases()) + GLES_STAGES
     suites = [("cpu", "cpu-discovery.log", "cpu.xml")]
@@ -246,7 +246,7 @@ def summarize(output):
              f"Source head: `{source.get('source_head', 'unavailable')}`",
              f"Base ({source.get('base_role', 'unavailable')}): `{source.get('tested_base')}`", "",
              f"Quality plan: `{md(selected_plan if 'quality_plan' in source else 'legacy-strict')}`; "
-             "Clang-Tidy is required for nightly and legacy native profiles.",
+             "API documentation and Clang-Tidy are required for nightly and legacy native profiles.",
              ]
     if isinstance(source.get("owned_runtime"), dict):
         native = source["owned_runtime"]
