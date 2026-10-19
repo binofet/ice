@@ -85,7 +85,7 @@ class XvfbReadinessTests(unittest.TestCase):
         record = self.record()
         self.assertEqual(record['status'], 'failed')
         self.assertEqual(record['reason'], reason)
-        self.assertFalse(record['graphics_initialized'])
+        self.assertFalse(record['graphics_commands_invoked'])
         self.assertNotIn('must-never-be-recorded', json.dumps(record))
         return record
 

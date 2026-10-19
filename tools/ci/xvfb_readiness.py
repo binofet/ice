@@ -204,7 +204,7 @@ def display_command():
 def preflight_and_run():
     record = dict(format='ice-xvfb-preflight-v1', status='failed',
                   purpose='diagnostic-only; no native quality qualification',
-                  graphics_initialized=False, expected_head=os.environ.get('DIAG_EXPECTED_HEAD'),
+                  graphics_commands_invoked=False, expected_head=os.environ.get('DIAG_EXPECTED_HEAD'),
                   bounds=dict(descriptor_bytes=MAX_DESCRIPTOR, file_bytes=MAX_FILE,
                               selector_characters=256, record_bytes=MAX_RECORD))
     environment = None
