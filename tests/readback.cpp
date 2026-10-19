@@ -136,6 +136,5 @@ int main(int argc, char **argv) {
 		std::cerr << error.what() << '\n';
 		return 1;
 	}
-	std::cout << "CPU-only tickets: move/empty/pending/take-once/cancel/failure/admission/writer "
-	             "lifetime passed\n";
+	std::cout << "CPU-only readback " << argv[1] << " passed\n";
 }
