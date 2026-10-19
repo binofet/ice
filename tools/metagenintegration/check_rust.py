@@ -20,11 +20,12 @@ def main():
     if not rustc:
         parser.error('Install Rust 1.90+ or pass --rustc; this script never installs toolchains')
     build = args.native_build.resolve()
-    subprocess.run(['cmake', '--build', str(build), '--target', 'meta_wire_fixture', '--parallel', '4'], check=True)
+    subprocess.run(['cmake', '--build', str(build), '--target', 'meta_wire_fixture'], check=True)
     output = build / 'rust-proof'
     output.mkdir(exist_ok=True)
     executable = output / 'metagen-rust-proof'
-    subprocess.run([rustc, '--edition=2021', '-Dwarnings', str(ROOT / 'tools/metagenintegration/examples/rust/main.rs'),
+    subprocess.run([rustc, '--edition=2021', '-Dwarnings', '-Ccodegen-units=1',
+                    str(ROOT / 'tools/metagenintegration/examples/rust/main.rs'),
                     '-o', str(executable)], check=True)
     paths = [str(output / name) for name in ('cpp-default.icm', 'cpp-changed.icm', 'rust-default.icm', 'rust-changed.icm')]
     fixture = str(build / 'meta_wire_fixture')

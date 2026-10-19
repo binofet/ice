@@ -4,10 +4,13 @@ from copy import deepcopy
 from pathlib import Path
 import json
 import os
+import errno
+import signal
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 import xml.etree.ElementTree as ET
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -194,6 +197,103 @@ class ContractTests(unittest.TestCase):
             finally:
                 sentinel.terminate()
                 sentinel.wait()
+
+    def test_denied_group_signals_keep_timeout_evidence_and_reap_real_child(self):
+        with tempfile.TemporaryDirectory() as directory:
+            sentinel = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"],
+                                        start_new_session=True)
+            processes = []
+            real_popen, real_killpg = subprocess.Popen, os.killpg
+
+            def spawn(*args, **kwargs):
+                child = real_popen(*args, **kwargs)
+                processes.append(child)
+                self.assertEqual(os.getpgid(child.pid), child.pid)
+                return child
+
+            def deny_group_signal(group, number):
+                if number:
+                    raise PermissionError(errno.EPERM, "controlled group-signal denial")
+                return real_killpg(group, number)
+
+            try:
+                runner = job.Runner(Path(directory), {"PATH": "/usr/bin:/bin"}, .15)
+                with mock.patch.object(job.subprocess, "Popen", side_effect=spawn), \
+                     mock.patch.object(job.os, "killpg", side_effect=deny_group_signal):
+                    with self.assertRaisesRegex(ValueError, "Stage failed"):
+                        runner.run("denied", [sys.executable, "-c", "import time; time.sleep(30)"])
+                row = runner.stages[0]
+                self.assertEqual(row["exit_code"], 124)
+                self.assertTrue(row["timed_out"] and row["process_reaped"])
+                self.assertEqual(row["process_exit_code"], -signal.SIGKILL)
+                self.assertTrue(row["group_cleanup_complete"])
+                for number in (signal.SIGTERM, signal.SIGKILL):
+                    self.assertEqual(row["cleanup_errors"][str(int(number))], errno.EPERM)
+                self.assertIsNone(sentinel.poll())
+            finally:
+                for child in processes:
+                    if child.poll() is None:
+                        child.kill()
+                    child.wait(timeout=2)
+                sentinel.terminate()
+                sentinel.wait(timeout=2)
+
+    def test_timeout_reaps_zero_exit_parent_and_kills_stubborn_descendant(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            os.mkfifo(root / "alive")
+            fifo = os.open(root / "alive", os.O_RDONLY | os.O_NONBLOCK)
+            sentinel = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"],
+                                        start_new_session=True)
+            processes = []
+            real_popen = subprocess.Popen
+
+            def spawn(*args, **kwargs):
+                child = real_popen(*args, **kwargs)
+                processes.append(child)
+                self.assertEqual(os.getpgid(child.pid), child.pid)
+                return child
+
+            descendant = ("import os,pathlib,signal,sys,time; "
+                          "signal.signal(signal.SIGTERM,signal.SIG_IGN); "
+                          "fd=os.open(sys.argv[1],os.O_WRONLY); os.write(fd,b'R'); "
+                          "pathlib.Path(sys.argv[2]).write_text(str(os.getpid())); time.sleep(30)")
+            parent = ("import signal,subprocess,sys,time; "
+                      "signal.signal(signal.SIGTERM,lambda *_:sys.exit(0)); "
+                      "subprocess.Popen([sys.executable,'-c',sys.argv[1],sys.argv[2],sys.argv[3]],"
+                      "stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL); time.sleep(30)")
+            try:
+                runner = job.Runner(root, {"PATH": "/usr/bin:/bin"}, 1)
+                with mock.patch.object(job.subprocess, "Popen", side_effect=spawn):
+                    with self.assertRaisesRegex(ValueError, "Stage failed"):
+                        runner.run("descendant", [sys.executable, "-c", parent, descendant,
+                                                  root / "alive", root / "descendant.pid"])
+                row = runner.stages[0]
+                self.assertEqual(row["exit_code"], 124)
+                self.assertEqual(row["process_exit_code"], 0)
+                self.assertTrue(row["timed_out"] and row["process_reaped"])
+                self.assertTrue(row["group_cleanup_complete"])
+                self.assertEqual(os.read(fifo, 1), b'R')
+                self.assertEqual(os.read(fifo, 1), b'', "descendant still holds liveness FIFO")
+                self.assertIsNone(sentinel.poll())
+            finally:
+                for child in processes:
+                    marker = root / "descendant.pid"
+                    if marker.exists() and not (runner.stages and
+                                                runner.stages[-1].get("group_cleanup_complete")):
+                        try:
+                            group = os.getpgid(int(marker.read_text()))
+                        except ProcessLookupError:
+                            pass
+                        else:
+                            self.assertEqual(group, child.pid)
+                            os.killpg(group, signal.SIGKILL)
+                    if child.poll() is None:
+                        child.kill()
+                    child.wait(timeout=2)
+                sentinel.terminate()
+                sentinel.wait(timeout=2)
+                os.close(fifo)
 
     def test_real_python_junit_has_per_case_timing_and_skip_is_failure(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -15,10 +15,11 @@ import xml.etree.ElementTree as ET
 
 from render_checks import cases as render_cases
 from run_stage import write_json
+import owned_runner
 
 NATIVE_STAGES = ("evidence", "gate-contract", "path-policy", "dependencies", "quality-tools", "consumer-cache",
                  "metagen-configure", "metagen-build", "metagen-discovery", "metagen",
-                 "rust", "configure", "build", "cpu-discovery", "cpu", "format", "api", "lint")
+                 "rust", "configure", "build", "cpu-discovery", "cpu", "format")
 SANITIZER_STAGES = ("evidence", "gate-contract", "dependencies", "configure", "build", "cpu-discovery", "cpu")
 GLES_STAGES = ("gles-configure", "gles-build", "gles-discovery", "gles")
 
@@ -27,8 +28,12 @@ def git(*args):
     return subprocess.check_output(["git", *args], text=True).strip()
 
 
-def plan(profile, runner):
+def plan(profile, runner, quality_plan=None):
+    if quality_plan is not None and (not isinstance(quality_plan, str) or quality_plan not in {"day", "nightly"}):
+        raise ValueError("Unknown day/nightly quality plan")
     stages = NATIVE_STAGES if profile == "native" else SANITIZER_STAGES
+    if profile == "native" and quality_plan != "day":
+        stages += ("api", "lint")
     if profile == "native" and runner == "Linux":
         stages += tuple(name for name, _ in render_cases()) + GLES_STAGES
     suites = [("cpu", "cpu-discovery.log", "cpu.xml")]
@@ -42,6 +47,7 @@ def plan(profile, runner):
 def identify(output, profile):
     event_path = os.environ.get("GITHUB_EVENT_PATH")
     event = json.loads(Path(event_path).read_text(encoding="utf-8")) if event_path else {}
+    selected_plan = owned_runner.quality_plan("ice", payload=event)
     pull = event.get("pull_request")
     tested = git("rev-parse", "HEAD")
     parents = git("show", "-s", "--format=%P", "HEAD").split()
@@ -71,14 +77,38 @@ def identify(output, profile):
         run_url = (f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}"
                    f"/actions/runs/{os.environ['GITHUB_RUN_ID']}")
     record = {"event": os.environ.get("GITHUB_EVENT_NAME", "local"), "tested_commit": tested,
+              "quality_plan": selected_plan, "source_ref": os.environ.get("GITHUB_REF"),
+              "standards_plan": "day-cpp23-v1" if selected_plan == "day" else "nightly-cpp20-23-v1",
+              "event_schedule": event.get("schedule"),
+              "event_repository": {key: event.get("repository", {}).get(key)
+                                   for key in ("id", "fork", "default_branch")},
+              "workflow_inputs": {key: event["inputs"][key] for key in
+                                  ("quality_plan", "diagnostic", "expected_head")
+                                  if key in event.get("inputs", {})}
+                                  if os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch" else {},
               "source_head": source, "tested_base": base, "tested_candidate_head": candidate,
               "event_base": pull["base"]["sha"] if pull else before,
-              "base_role": "PR merge first parent" if pull else "push previous head (not a merge base)",
+              "base_role": "PR merge first parent" if pull else
+                           "push previous head (not a merge base)" if os.environ.get("GITHUB_EVENT_NAME") == "push"
+                           else "event source (no merge base)",
               "tree": git("rev-parse", "HEAD^{tree}"), "submodule_pins": links,
               "runner_os": os.environ.get("RUNNER_OS", sys.platform),
               "cpp": os.environ.get("CI_CPP", "unspecified"), "profile": profile,
               "run_url": run_url, "run_attempt": os.environ.get("GITHUB_RUN_ATTEMPT"),
               "source_validated": not issues, "source_issues": issues}
+    if os.environ.get("CI_OWNED_RUNNER") == "1":
+        try:
+            record["owned_runtime"] = owned_runner.runtime()
+            record["owned_repository"] = os.environ.get("GITHUB_REPOSITORY")
+        except (OSError, ValueError) as error:
+            issues.append("Owned runtime: " + str(error))
+        record["source_validated"] = not issues
+        record["source_issues"] = issues
+    try:
+        owned_runner.standards_plan(record)
+    except ValueError as error:
+        issues.append("Standards plan: " + str(error))
+    record['source_validated'] = not issues
     output.mkdir(parents=True, exist_ok=True)
     write_json(output / "source.json", record)
     if issues:
@@ -125,8 +155,31 @@ def cache_provenance(build):
             selected[key] = value
     overrides = {key: value for key, value in selected.items()
                  if key.startswith("FETCHCONTENT_SOURCE_DIR_") and value}
-    return {"build": str(build), "cache_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
-            "configuration": selected, "source_overrides": overrides}
+    result = {"build": str(build), "cache_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+              "configuration": selected, "source_overrides": overrides}
+    database = build / "compile_commands.json"
+    if database.is_file():
+        entries = json.loads(database.read_text())
+        result["configured_compile_commands"] = {
+            "entries": len(entries), "unique_files": len({row["file"] for row in entries}),
+            "sha256": hashlib.sha256(database.read_bytes()).hexdigest(),
+            "scope": "Configured translation units, not a count of executed compiler processes"}
+    return result
+
+
+def build_timing(output, name):
+    path = output / (name + ".log")
+    text = path.read_text(errors="replace") if path.is_file() else ""
+    times = re.findall(r"([\d.]+)\s+real\s+([\d.]+)\s+user\s+([\d.]+)\s+sys", text)
+    memory = re.findall(r"(\d+)\s+maximum resident set size", text)
+    if not times or not memory:
+        raise ValueError(name + ": native time -l metrics are missing")
+    values = [float(value) for value in times[-1]]
+    if not all(math.isfinite(value) and value >= 0 for value in values):
+        raise ValueError(name + ": invalid native time -l metrics")
+    return dict(zip(("wall_seconds", "user_seconds", "system_seconds"), values),
+                maximum_resident_set_size_bytes=int(memory[-1]),
+                scope="macOS time -l reported maximum RSS; not aggregate parallel-process memory")
 
 
 def append_summary(text):
@@ -178,13 +231,39 @@ def summarize(output):
         if not source.get("source_validated"):
             issues.append("Source validation failed: " + "; ".join(source.get("source_issues", [])))
         issues += final_source_issues(source)
-    expected, suite_plan = plan(source["profile"], source["runner_os"])
+    issues += owned_runner.evidence_issues(output, source)
+    selected_plan = source.get("quality_plan")
+    try:
+        observed_plan = owned_runner.quality_plan("ice", event=source.get("event", "local"),
+            payload={"inputs": source.get("workflow_inputs", {}),
+                     "repository": source.get("event_repository", {}),
+                     "schedule": source.get("event_schedule")},
+            ref=source.get("source_ref", ""), commit=source.get("tested_commit", ""))
+        if (("quality_plan" in source and selected_plan != observed_plan)
+                or ("quality_plan" not in source and observed_plan != "day")):
+            raise ValueError("Source day/nightly plan differs from the event route")
+        owned_runner.standards_plan(source)
+    except ValueError as error:
+        issues.append(str(error))
+    expected, suite_plan = plan(source["profile"], source["runner_os"],
+                                selected_plan if isinstance(selected_plan, str) and selected_plan in {"day", "nightly"} else None)
     stages = {}
     lines = [f"## ICE · {md(source['runner_os'])} · C++{md(source['cpp'])} · {source['profile']}", "",
              f"Tested commit: `{source.get('tested_commit', 'unavailable')}`",
              f"Source head: `{source.get('source_head', 'unavailable')}`",
              f"Base ({source.get('base_role', 'unavailable')}): `{source.get('tested_base')}`", "",
-             "| Stage | Result | Exit | Seconds |", "| --- | --- | ---: | ---: |"]
+             f"Quality plan: `{md(selected_plan if 'quality_plan' in source else 'legacy-strict')}`; "
+             "API documentation and Clang-Tidy are required for nightly and legacy native profiles.",
+             f"Standards plan: `{md(source.get('standards_plan', 'legacy-five-profiles'))}`.",
+             ]
+    if isinstance(source.get("owned_runtime"), dict):
+        native = source["owned_runtime"]
+        lines += ["", "Actual owned executor: " + md(native["system"]) + " / "
+                  + md(native["release"]) + " / " + md(native["architecture"])
+                  + "; Python " + md(native["python"]) + ".",
+                  "Image strings in job/artifact names are legacy gate-compatibility labels; "
+                  "they are not the actual OS release or a hosted-image claim."]
+    lines += ["", "| Stage | Result | Exit | Seconds |", "| --- | --- | ---: | ---: |"]
     for name in expected:
         path = output / f"{name}.json"
         stage = None
@@ -274,6 +353,22 @@ def summarize(output):
     else:
         lines += ["", "Sanitizers execute headless ownership/data/physics/script/audio regressions "
                   "only; no GPU, desktop window or optional RTTR runtime is tested in this job."]
+    timings = {}
+    if source["runner_os"] == "macOS" and source["profile"] == "native" and "quality_plan" in source:
+        for name in ("metagen-build", "build"):
+            try:
+                timings[name] = build_timing(output, name)
+            except ValueError as error:
+                issues.append(str(error))
+    write_json(output / "build-timings.json", timings)
+    if timings:
+        lines += ["", "### Native build resource measurements", "",
+                  "| Build | Wall s | User s | System s | Reported maximum RSS bytes |",
+                  "| --- | ---: | ---: | ---: | ---: |"]
+        for name, value in timings.items():
+            lines.append(f"| {name} | {value['wall_seconds']} | {value['user_seconds']} | "
+                         f"{value['system_seconds']} | {value['maximum_resident_set_size_bytes']} |")
+        lines += ["", "Maximum RSS is the native time report, not aggregate parallel-process memory."]
     caches = [cache_provenance(Path("build") / directory) for directory in
               ("ci", "metagen-ci", "gles-ci", "sanitizers")]
     caches = [cache for cache in caches if cache]
@@ -281,16 +376,21 @@ def summarize(output):
         if cache["source_overrides"]:
             issues.append("Unattested dependency source overrides: " + str(cache["source_overrides"]))
     write_json(output / "configuration.json", caches)
+    for cache in caches:
+        lines += ["", "Configured build: " + md(cache['build']) + "; generator: "
+                  + md(cache['configuration'].get('CMAKE_GENERATOR', 'unavailable'))
+                  + "; compile database: " + md(cache.get('configured_compile_commands', 'unavailable'))]
     lines += ["", "Private Metagen source is not fetched: cached consumer hash verification and "
               "the public optional RTTR/Rust consumers are tested separately. Exact pins remain "
               "in the tested source; configuration.json records selected compiler/options and overrides.",
               "Windows runtime, mobile/Quest hardware, live providers, deployment and release are "
-              "not configured. No self-hosted runner is assumed.",
+              "not configured. Owned selectors are source configuration; actual registration/host commissioning is separate.",
               "Logs retain at most their final 8 MiB; provider console output is capped at 1 MiB "
               "plus its final 4 KiB. Truncation is explicit. JUnit and all per-case times are artifacts."]
     if issues:
         lines += ["", "### Incomplete or failed evidence", "", *["- " + md(issue) for issue in issues]]
     summary = {"source": source, "stages": stages, "suites": suites,
+               "build_timings": timings, "configuration": caches,
                "report_incomplete": bool(issues), "issues": issues}
     write_json(output / "summary.json", summary)
     text = "\n".join(lines) + "\n"

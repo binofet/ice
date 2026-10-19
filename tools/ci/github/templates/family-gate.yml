@@ -21,7 +21,10 @@ concurrency:
 jobs:
   refresh:
     if: github.repository == '__REPOSITORY__'
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, Linux, X64, "${{ github.event.repository.name }}.control"]
+    defaults:
+      run:
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
     timeout-minutes: 15
     steps:
       - name: Check out only current trusted default-branch controller
@@ -29,8 +32,16 @@ jobs:
         with:
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
+          set-safe-directory: false
           submodules: false
+      - name: Verify preprovisioned owned control runtime
+        run: |
+          /opt/ice-family-ci/toolchains/native-20261018-v1/bin/python3.12 -c 'import platform,sys; (sys.version_info[:3] == (3,12,15) and platform.system() == "Linux" and platform.machine().lower() in ("x86_64","amd64")) or sys.exit("Owned Linux/X64 Python3.12.15 is required"); print(platform.platform()); print(platform.machine())'
+          /usr/bin/git --version
+          /usr/bin/gh --version
       - name: Authenticate current PR, review, tested merge and actual artifact uploads
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 tools/ci/github/gate.py refresh --repo "$GITHUB_REPOSITORY" --publish
+        run: |
+          test -n "$GH_TOKEN"
+          /opt/ice-family-ci/toolchains/native-20261018-v1/bin/python3.12 tools/ci/github/gate.py refresh --repo "$GITHUB_REPOSITORY" --publish

@@ -124,11 +124,20 @@ def scan(record):
     return required, documented, errors, contracts
 
 
+def positive_worker_count(value):
+    count = int(value)
+    if count < 1:
+        raise argparse.ArgumentTypeError("worker count must be a positive integer")
+    return count
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--build-dir", default="build/desktop-debug")
     parser.add_argument("--resource-dir", help="Clang builtin header resource directory")
     parser.add_argument("--report", help="write a JSON audit report")
+    parser.add_argument("--workers", type=positive_worker_count, default=4,
+                        help="translation-unit parsing workers (positive integer; default: 4)")
     args = parser.parse_args()
     global RESOURCE_DIR
     RESOURCE_DIR = args.resource_dir
@@ -142,7 +151,7 @@ def main():
     if not records:
         raise RuntimeError("No engine compiler commands found; configure the desktop preset")
     required, documented, errors, contracts = {}, set(), [], []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as workers:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=args.workers) as workers:
         for declarations, comments, failures, arguments in workers.map(scan, records):
             contracts.extend(arguments)
             required.update(declarations)

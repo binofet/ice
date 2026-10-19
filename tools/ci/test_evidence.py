@@ -14,6 +14,11 @@ from unittest.mock import patch
 import xml.etree.ElementTree as ET
 
 import report
+from test_owned_runner import OwnedRunnerTests, OwnedWorkflowTests
+from test_resource_limits import ResourceLimitTests
+from test_xvfb_readiness import XvfbReadinessTests
+from test_render_checks import RenderChecksTests
+from test_stage_cancellation import StageCancellationTests
 import check_paths
 
 
@@ -48,17 +53,49 @@ class EvidenceTests(unittest.TestCase):
                        ("ls-tree", "-r", "HEAD"): "160000 commit " + "d" * 40 + "\ttools/metagen",
                        ("status", "--porcelain=v1", "--untracked-files=no"): "",
                        ("rev-parse", "HEAD^{tree}"): "e" * 40}
-            with patch.dict(os.environ, environment), patch.object(
+            with patch.dict(os.environ, environment, clear=True), patch.object(
                     report, "git", side_effect=lambda *args: answers[args]):
                 report.identify(output, "native")
                 source = json.loads((output / "source.json").read_text())
                 self.assertEqual(source["tested_base"], "c" * 40)
                 self.assertEqual(source["submodule_pins"], {"tools/metagen": "d" * 40})
+                self.assertEqual(source['standards_plan'], 'day-cpp23-v1')
+                os.environ['CI_CPP'] = '20'
+                with self.assertRaisesRegex(ValueError, 'Standards plan'):
+                    report.identify(output, 'native')
+                self.assertFalse(json.loads((output/'source.json').read_text())['source_validated'])
+                os.environ['CI_CPP'] = '23'
+                report.identify(output, 'native')
                 self.assertNotIn("never-export-this", (output / "source.json").read_text())
+                os.environ["CI_OWNED_RUNNER"] = "1"
+                observed = OwnedRunnerTests().observed()
+                with patch.object(report.owned_runner, "runtime", return_value=observed):
+                    report.identify(output, "native")
+                self.assertEqual(json.loads((output / "source.json").read_text())["owned_runtime"], observed)
+                with patch.object(report.owned_runner, "runtime", side_effect=ValueError("fixture runtime mismatch")):
+                    with self.assertRaisesRegex(ValueError, "Owned runtime"):
+                        report.identify(output, "native")
+                self.assertFalse(json.loads((output / "source.json").read_text())["source_validated"])
+                del os.environ["CI_OWNED_RUNNER"]
                 answers[("show", "-s", "--format=%P", "HEAD")] = "e" * 40 + " " + "b" * 40
                 with self.assertRaisesRegex(ValueError, "merge parents differ"):
                     report.identify(output, "native")
                 self.assertFalse(json.loads((output / "source.json").read_text())["source_validated"])
+
+    def test_owned_runtime_summary_keeps_provenance_before_an_unbroken_stage_table(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            source = self.fixture(output)
+            source["owned_runtime"] = OwnedRunnerTests().observed('Darwin')
+            (output / "source.json").write_text(json.dumps(source))
+            with patch.object(report.owned_runner, "evidence_issues", return_value=[]):
+                self.assertEqual(self.summary(output), 0)
+            text = (output / "summary.md").read_text()
+            self.assertLess(text.index("Actual owned executor:"), text.index("| Stage |"))
+            self.assertIn("26.5.2", text)
+            self.assertIn("ARM64", text)
+            self.assertIn("3.12.15", text)
+            self.assertIn("| --- | --- | ---: | ---: |\n| evidence |", text)
 
     def stage(self, directory, code, stage="probe", timeout="10"):
         return subprocess.run(
@@ -96,14 +133,24 @@ class EvidenceTests(unittest.TestCase):
                 "'import time; time.sleep(10)'])", timeout=".2")
             self.assertEqual(result.returncode, 124)
 
-    def fixture(self, output, runner="macOS", profile="native"):
+    def fixture(self, output, runner="macOS", profile="native", quality_plan=None, standards=..., cpp='23'):
         source = self.source(runner, profile)
+        source['cpp'] = cpp
+        if standards is not ...:
+            source['standards_plan'] = standards
+        if quality_plan is not None:
+            source.update(quality_plan=quality_plan, event='schedule' if quality_plan == 'nightly' else 'pull_request',
+                          source_ref='refs/heads/master', event_schedule=report.owned_runner.NIGHTLY_CRON,
+                          event_repository=dict(id=40782766, fork=False, default_branch='master'))
         (output / "source.json").write_text(json.dumps(source))
-        stages, suites = report.plan(profile, runner)
+        stages, suites = report.plan(profile, runner, quality_plan)
         for name in stages:
             (output / f"{name}.json").write_text(json.dumps(
                 {"exit_code": 0, "duration_seconds": .125}))
             (output / f"{name}.log").write_text("stage executed\n")
+        if runner == 'macOS' and profile == 'native' and quality_plan is not None:
+            for name in ('build', 'metagen-build'):
+                (output / (name+'.log')).write_text('0.50 real 1.25 user 0.10 sys\n123456 maximum resident set size\n')
         if runner == "Linux" and profile == "native":
             (output / "gpu-environment.log").write_text("OpenGL renderer string: fixture Mesa\n")
             (output / "gles.log").write_text("1: Actual GLES driver: fixture Mesa / ES3.2\n")
@@ -112,6 +159,77 @@ class EvidenceTests(unittest.TestCase):
             (output / junit).write_text('<testsuite><testcase name="one" time=".2"/>'
                                        '<testcase name="two" time=".3"/></testsuite>')
         return source
+
+    def test_day_nightly_and_missing_legacy_modes_preserve_required_coverage(self):
+        for mode in (None, 'day', 'nightly'):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as directory:
+                output = Path(directory)
+                self.fixture(output, quality_plan=mode)
+                self.assertEqual(self.summary(output), 0)
+                summary = json.loads((output/'summary.json').read_text())
+                for name in ('api', 'lint'):
+                    self.assertEqual(name in summary['stages'], mode != 'day')
+                    self.assertEqual((output/(name+'.json')).exists(), mode != 'day')
+                required = ['build', 'cpu', 'format', 'metagen']
+                if mode != 'day':
+                    required += ['api', 'lint']
+                for name in required:
+                    path=output/(name+'.json'); original=path.read_bytes(); path.unlink()
+                    self.assertEqual(self.summary(output), 1, name)
+                    path.write_bytes(original)
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory); self.fixture(output, quality_plan='nightly')
+            for name in ('api', 'lint'):
+                path=output/(name+'.json'); original=path.read_bytes()
+                path.write_text(json.dumps(dict(exit_code=23, duration_seconds=.1)))
+                self.assertEqual(self.summary(output), 1, name)
+                path.write_bytes(original)
+
+    def test_unknown_null_and_event_conflicting_modes_are_not_reinterpreted(self):
+        for mode, event in [('unknown', 'pull_request'), (None, 'pull_request'),
+                            ({}, 'pull_request'), ('nightly', 'pull_request'), ('day', 'schedule')]:
+            with self.subTest(mode=mode, event=event), tempfile.TemporaryDirectory() as directory:
+                output=Path(directory); source=self.fixture(output, quality_plan='day')
+                source.update(quality_plan=mode, event=event)
+                (output/'source.json').write_text(json.dumps(source))
+                self.assertEqual(self.summary(output), 1)
+                self.assertTrue(json.loads((output/'summary.json').read_text())['report_incomplete'])
+
+    def test_standard_plans_reject_day_cpp20_and_keep_unmarked_evidence_legacy(self):
+        for quality, standards, cpp in [('day', ..., '20'), ('day', 'day-cpp23-v1', '23'),
+                                        ('nightly', 'nightly-cpp20-23-v1', '20'),
+                                        ('nightly', 'nightly-cpp20-23-v1', '23')]:
+            with self.subTest(quality=quality, standards=standards, cpp=cpp), tempfile.TemporaryDirectory() as directory:
+                output=Path(directory);self.fixture(output, quality_plan=quality, standards=standards, cpp=cpp)
+                self.assertEqual(self.summary(output), 0)
+        for quality, standards, cpp in [('day', 'day-cpp23-v1', '20'), ('day', None, '23'),
+                                        ('day', {}, '23'), ('day', 'unknown', '23'),
+                                        ('day', 'nightly-cpp20-23-v1', '23'),
+                                        ('nightly', 'day-cpp23-v1', '23')]:
+            with self.subTest(quality=quality, standards=standards, cpp=cpp), tempfile.TemporaryDirectory() as directory:
+                output=Path(directory);self.fixture(output, quality_plan=quality, standards=standards, cpp=cpp)
+                self.assertEqual(self.summary(output), 1)
+
+    def test_macos_build_timing_and_configured_compile_inventory_are_truthful(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output=Path(directory); self.fixture(output, quality_plan='day')
+            self.assertEqual(self.summary(output), 0)
+            measured=json.loads((output/'build-timings.json').read_text())
+            self.assertEqual(measured['build']['wall_seconds'], .5)
+            self.assertEqual(measured['build']['user_seconds'], 1.25)
+            self.assertEqual(measured['build']['system_seconds'], .1)
+            self.assertEqual(measured['build']['maximum_resident_set_size_bytes'], 123456)
+            self.assertIn('not aggregate', measured['build']['scope'])
+            (output/'build.log').write_text('No native time measurement\n')
+            self.assertEqual(self.summary(output), 1)
+            (output/'CMakeCache.txt').write_text('CMAKE_GENERATOR:INTERNAL=Unix Makefiles\n')
+            (output/'compile_commands.json').write_text(json.dumps([{'file':'a.cpp'}, {'file':'a.cpp'}, {'file':'b.cpp'}]))
+            provenance=report.cache_provenance(output)
+            self.assertEqual(provenance['configuration']['CMAKE_GENERATOR'], 'Unix Makefiles')
+            self.assertEqual(provenance['configured_compile_commands']['entries'], 3)
+            self.assertEqual(provenance['configured_compile_commands']['unique_files'], 2)
+            self.assertEqual(len(provenance['configured_compile_commands']['sha256']), 64)
+            self.assertIn('not a count of executed', provenance['configured_compile_commands']['scope'])
 
     def summary(self, output):
         with patch.dict(os.environ, {"GITHUB_STEP_SUMMARY": ""}), redirect_stdout(io.StringIO()), \

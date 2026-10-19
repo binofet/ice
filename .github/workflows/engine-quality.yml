@@ -4,35 +4,79 @@ on:
   push:
     branches: [master]
   pull_request:
+  schedule:
+    - cron: '17 9 * * *'
   workflow_dispatch:
+    inputs:
+      quality_plan:
+        description: 'Day quality or exact-head nightly qualification on master'
+        type: choice
+        options: [day, nightly]
+        default: day
+      diagnostic:
+        description: 'Explicit manual mode; ordinary quality defaults to none'
+        type: choice
+        options: [none, xvfb-readiness-v1]
+        default: none
+      expected_head:
+        description: 'Exact reviewed source SHA required for nightly or xvfb-readiness-v1'
+        type: string
+        default: ''
 
 permissions:
   contents: read
 
 concurrency:
-  group: ice-quality-${{ github.event.pull_request.number || github.ref }}
+  group: ice-quality-${{ (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.quality_plan == 'nightly')) && 'nightly' || 'day' }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   native:
     name: ${{ matrix.os }} / optimized C++${{ matrix.cpp }}
-    runs-on: ${{ matrix.os }}
+    if: >-
+      github.repository == 'binofet/ice' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
+      (github.event_name == 'push' || github.event_name == 'pull_request' ||
+       (github.event_name == 'schedule' && github.event.schedule == '17 9 * * *' &&
+        github.event.repository.id == 40782766 && github.event.repository.fork == false &&
+        github.event.repository.default_branch == 'master' && github.ref == 'refs/heads/master') ||
+       (github.event_name == 'workflow_dispatch' &&
+        ((inputs.quality_plan == 'day' && inputs.diagnostic == 'none' && inputs.expected_head == '' &&
+          github.ref != 'refs/heads/codex/xvfb-readiness-20261019') ||
+         (inputs.quality_plan == 'nightly' && inputs.diagnostic == 'none' && inputs.expected_head == github.sha &&
+          github.event.repository.id == 40782766 && github.event.repository.fork == false &&
+          github.event.repository.default_branch == 'master' && github.ref == 'refs/heads/master'))))
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
       max-parallel: 3
       matrix:
         os: [ubuntu-24.04, macos-15]
-        cpp: [20, 23]
+        cpp: ${{ fromJSON((github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.quality_plan == 'nightly')) && '[20,23]' || '[23]') }}
+        include:
+          - os: ubuntu-24.04
+            runner: [self-hosted, Linux, X64, ice.cpu]
+          - os: macos-15
+            runner: [self-hosted, macOS, ARM64, ice.cpu]
     defaults:
       run:
-        shell: bash
+        shell: /usr/local/libexec/ice-family-native-ci/owned-shell {0}
     env:
+      CI_OWNED_RUNNER: '1'
+      CI_VENV: ${{ github.workspace }}/build/ci-tools/venv
+      CI_BOOTSTRAP_PYTHON: ${{ matrix.os == 'macos-15' && '/opt/homebrew/bin/python3.12' || '/opt/ice-family-ci/toolchains/native-20261018-v1/bin/python3.12' }}
+      CI_PARALLEL: ${{ matrix.os == 'macos-15' && '10' || '2' }}
+      CMAKE_BUILD_PARALLEL_LEVEL: ${{ matrix.os == 'macos-15' && '10' || '2' }}
+      CI_TEST_PARALLEL: '2'
+      CI_API_PARALLEL: '2'
+      CC: ${{ matrix.os == 'macos-15' && '/usr/bin/clang' || 'gcc-13' }}
+      CXX: ${{ matrix.os == 'macos-15' && '/usr/bin/clang++' || 'g++-13' }}
       CI_CPP: ${{ matrix.cpp }}
       CI_PROFILE: native
       CI_EVIDENCE_DIR: ${{ github.workspace }}/build/ci-evidence
       LIBGL_ALWAYS_SOFTWARE: '1'
-      LP_NUM_THREADS: '4'
+      LP_NUM_THREADS: '2'
     steps:
       - name: Check out exact event commit, without private submodules
         id: checkout
@@ -40,63 +84,52 @@ jobs:
         with:
           fetch-depth: 2
           persist-credentials: false
+          set-safe-directory: false
           submodules: false
 
       - name: Identify exact tested source, head and base
-        run: python3 tools/ci/report.py init --profile native
+        run: |
+          "$CI_BOOTSTRAP_PYTHON" tools/ci/report.py init --profile native
 
-      - name: Python for pinned tools and cached consumers
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
-        with:
-          python-version: '3.12'
+      - name: Validate owned tools and prepare a fresh pinned project venv
+        id: dependencies
+        run: |
+          exec "$CI_BOOTSTRAP_PYTHON" tools/ci/run_stage.py dependencies -- "$CI_BOOTSTRAP_PYTHON" tools/ci/owned_runner.py prepare --repo ice --profile native
 
       - name: Evidence helper regressions
-        run: python3 tools/ci/run_stage.py evidence -- python3 tools/ci/test_evidence.py
+        run: |
+          source "$CI_VENV/bin/activate"
+          exec python3 tools/ci/run_stage.py evidence -- python3 tools/ci/test_evidence.py
 
       - name: Trusted gate contract regressions
-        run: python3 tools/ci/run_stage.py gate-contract -- python3 tools/ci/github/test_gate.py
+        run: |
+          source "$CI_VENV/bin/activate"
+          exec python3 tools/ci/run_stage.py gate-contract -- python3 tools/ci/github/test_gate.py
 
       - name: Lowercase project directory policy
         if: ${{ !cancelled() }}
-        run: python3 tools/ci/run_stage.py path-policy -- python3 tools/ci/check_paths.py
-
-      - name: Linux GCC and native Mesa development libraries
-        id: linux_dependencies
-        if: runner.os == 'Linux'
         run: |
-          python3 tools/ci/run_stage.py dependencies -- bash -euo pipefail -c '
-            sudo apt-get update
-            sudo apt-get install -y g++-13 clang-18 libx11-dev libgl-dev libopengl-dev libegl-dev \
-              libgles-dev libgl1-mesa-dri xvfb xauth mesa-utils libasound2-dev libpulse-dev
-            echo CC=gcc-13 >> "$GITHUB_ENV"
-            echo CXX=g++-13 >> "$GITHUB_ENV"
-            g++-13 --version
-            cmake --version
-          '
-
-      - name: macOS native toolchain
-        id: mac_dependencies
-        if: runner.os == 'macOS'
-        run: |
-          python3 tools/ci/run_stage.py dependencies -- bash -euo pipefail -c '
-            xcodebuild -version
-            xcrun clang++ --version
-            cmake --version
-          '
+          source "$CI_VENV/bin/activate"
+          exec python3 tools/ci/run_stage.py path-policy -- python3 tools/ci/check_paths.py
 
       - name: Pinned quality tools
         id: quality_tools
-        run: python3 tools/ci/run_stage.py quality-tools -- python3 -m pip install -r tools/quality/requirements.txt
+        run: |
+          source "$CI_VENV/bin/activate"
+          exec python3 tools/ci/run_stage.py quality-tools -- python3 tools/ci/owned_runner.py verify-quality --repo ice
 
       - name: Public cached Metagen consumer integrity (no private credentials)
         if: ${{ !cancelled() }}
-        run: python3 tools/ci/run_stage.py consumer-cache -- python3 tools/metagenintegration/check.py --cached-only
+        run: |
+          source "$CI_VENV/bin/activate"
+          exec python3 tools/ci/run_stage.py consumer-cache -- python3 tools/metagenintegration/check.py --cached-only
 
       - name: Configure optional public RTTR consumer
         id: metagen_configure
         if: ${{ !cancelled() }}
         run: |
-          python3 tools/ci/run_stage.py metagen-configure -- cmake \
+          source "$CI_VENV/bin/activate"
+          exec python3 tools/ci/run_stage.py metagen-configure -- cmake \
             -S tools/metagenintegration/native -B build/metagen-ci \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
             -DICE_METAGEN_RTTR=ON -DICE_WARNINGS_AS_ERRORS=ON -DICE_CXX_STANDARD="$CI_CPP"
@@ -104,17 +137,25 @@ jobs:
       - name: Build optional RTTR and serialization consumers
         id: metagen_build
         if: ${{ !cancelled() && steps.metagen_configure.outcome == 'success' }}
-        run: python3 tools/ci/run_stage.py metagen-build -- cmake --build build/metagen-ci --parallel 4
+        run: |
+          source "$CI_VENV/bin/activate"
+          if [[ "$RUNNER_OS" == 'macOS' ]]; then
+            exec python3 tools/ci/run_stage.py metagen-build -- /usr/bin/time -l cmake --build build/metagen-ci --parallel "$CI_PARALLEL"
+          fi
+          exec python3 tools/ci/run_stage.py metagen-build -- cmake --build build/metagen-ci --parallel "$CI_PARALLEL"
 
       - name: Discover optional consumer CTests
         if: ${{ !cancelled() && steps.metagen_build.outcome == 'success' }}
-        run: python3 tools/ci/run_stage.py metagen-discovery -- ctest --test-dir build/metagen-ci --show-only=json-v1
+        run: |
+          source "$CI_VENV/bin/activate"
+          exec python3 tools/ci/run_stage.py metagen-discovery -- ctest --test-dir build/metagen-ci --show-only=json-v1
 
       - name: Optional consumer regressions with measured JUnit
         if: ${{ !cancelled() && steps.metagen_build.outcome == 'success' }}
         run: |
-          python3 tools/ci/run_stage.py metagen -- ctest --test-dir build/metagen-ci \
-            --output-on-failure --parallel 2 --timeout 120 --no-tests=error \
+          source "$CI_VENV/bin/activate"
+          exec python3 tools/ci/run_stage.py metagen -- ctest --test-dir build/metagen-ci \
+            --output-on-failure --parallel "$CI_TEST_PARALLEL" --timeout 120 --no-tests=error \
             --test-output-size-passed 4096 --test-output-size-failed 16384 \
             --output-junit "$CI_EVIDENCE_DIR/metagen.xml"
 
@@ -122,9 +163,13 @@ jobs:
         if: ${{ !cancelled() && steps.metagen_build.outcome == 'success' }}
         env:
           RUSTUP_TOOLCHAIN: '1.90.0'
+          RUSTUP_AUTO_INSTALL: '0'
         run: |
-          python3 tools/ci/run_stage.py rust -- bash -euo pipefail -c '
-            rustup toolchain install 1.90.0 --profile minimal --no-self-update
+          source "$CI_VENV/bin/activate"
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            export RUSTUP_HOME=/opt/ice-family-ci/toolchains/native-20261018-v1/rustup
+          fi
+          exec python3 tools/ci/run_stage.py rust -- bash -euo pipefail -c '
             python3 tools/metagenintegration/check_rust.py --native-build build/metagen-ci
           '
 
@@ -132,7 +177,8 @@ jobs:
         id: configure
         if: ${{ !cancelled() }}
         run: |
-          python3 tools/ci/run_stage.py configure -- cmake -S . -B build/ci \
+          source "$CI_VENV/bin/activate"
+          exec python3 tools/ci/run_stage.py configure -- cmake -S . -B build/ci \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
             -DICE_WARNINGS_AS_ERRORS=ON -DICE_CXX_STANDARD="$CI_CPP" \
             -DICE_BUILD_GLES=OFF -DICE_BUILD_AUDIO_PLAYBACK=ON -DICE_BUILD_AUDIO_SPEECH=ON \
@@ -142,32 +188,45 @@ jobs:
       - name: Build engine modules, public headers and tests
         id: build
         if: ${{ !cancelled() && steps.configure.outcome == 'success' }}
-        run: python3 tools/ci/run_stage.py build -- cmake --build build/ci --parallel 4
+        run: |
+          source "$CI_VENV/bin/activate"
+          if [[ "$RUNNER_OS" == 'macOS' ]]; then
+            exec python3 tools/ci/run_stage.py build -- /usr/bin/time -l cmake --build build/ci --parallel "$CI_PARALLEL"
+          fi
+          exec python3 tools/ci/run_stage.py build -- cmake --build build/ci --parallel "$CI_PARALLEL"
 
       - name: Discover actual CPU test inventory
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        run: python3 tools/ci/run_stage.py cpu-discovery -- ctest --test-dir build/ci --show-only=json-v1
+        run: |
+          source "$CI_VENV/bin/activate"
+          exec python3 tools/ci/run_stage.py cpu-discovery -- ctest --test-dir build/ci --show-only=json-v1
 
       - name: CPU regressions with measured JUnit
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
-          python3 tools/ci/run_stage.py cpu -- ctest --test-dir build/ci \
-            --output-on-failure --parallel 4 --timeout 180 --no-tests=error \
+          source "$CI_VENV/bin/activate"
+          exec python3 tools/ci/run_stage.py cpu -- ctest --test-dir build/ci \
+            --output-on-failure --parallel "$CI_TEST_PARALLEL" --timeout 180 --no-tests=error \
             --test-output-size-passed 4096 --test-output-size-failed 16384 \
             --output-junit "$CI_EVIDENCE_DIR/cpu.xml"
 
       - name: Pinned formatting
         if: ${{ !cancelled() && steps.quality_tools.outcome == 'success' }}
-        run: python3 tools/ci/run_stage.py format -- python3 tools/quality/check.py format --all
+        run: |
+          source "$CI_VENV/bin/activate"
+          exec python3 tools/ci/run_stage.py format -- python3 tools/quality/check.py format --all
 
       - name: Public API documentation and argument contracts
-        if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.quality_tools.outcome == 'success' }}
-        run: python3 tools/ci/run_stage.py api -- python3 tools/quality/api.py --build-dir build/ci
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.quality_tools.outcome == 'success' && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.quality_plan == 'nightly')) }}
+        run: |
+          source "$CI_VENV/bin/activate"
+          exec python3 tools/ci/run_stage.py api -- python3 tools/quality/api.py --build-dir build/ci --workers "$CI_API_PARALLEL"
 
       - name: Pinned static analysis
-        if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.quality_tools.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.quality_tools.outcome == 'success' && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.quality_plan == 'nightly')) }}
         run: |
-          python3 tools/ci/run_stage.py lint -- bash -euo pipefail -c '
+          source "$CI_VENV/bin/activate"
+          exec python3 tools/ci/run_stage.py lint -- bash -euo pipefail -c '
             python3 tools/quality/check.py lint --build-dir build/ci
             python3 tools/quality/check.py lint --build-dir build/ci --files \
               engine/src/audio/playback.cpp engine/src/audio/wav.cpp \
@@ -183,13 +242,16 @@ jobs:
       # must not hide independent native, HDR, textured or skinning regressions.
       - name: Actual Linux X11 and software OpenGL, including HDR
         if: ${{ !cancelled() && runner.os == 'Linux' && steps.build.outcome == 'success' }}
-        run: python3 tools/ci/render_checks.py --build build/ci
+        run: |
+          source "$CI_VENV/bin/activate"
+          exec python3 tools/ci/render_checks.py --build build/ci
 
       - name: Configure separate headless EGL GLES profile
         id: gles_configure
         if: ${{ !cancelled() && runner.os == 'Linux' }}
         run: |
-          python3 tools/ci/run_stage.py gles-configure -- cmake -S . -B build/gles-ci \
+          source "$CI_VENV/bin/activate"
+          exec python3 tools/ci/run_stage.py gles-configure -- cmake -S . -B build/gles-ci \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
             -DICE_WARNINGS_AS_ERRORS=ON -DICE_CXX_STANDARD="$CI_CPP" \
             -DICE_BUILD_DESKTOP=OFF -DICE_BUILD_METAL=OFF -DICE_BUILD_OPENGL=OFF \
@@ -201,13 +263,15 @@ jobs:
         id: gles_build
         if: ${{ !cancelled() && runner.os == 'Linux' && steps.gles_configure.outcome == 'success' }}
         run: |
-          python3 tools/ci/run_stage.py gles-build -- cmake --build build/gles-ci \
-            --parallel 4 --target ice_gles_tests ice_acquisition_lease_tests ice_public_headers
+          source "$CI_VENV/bin/activate"
+          exec python3 tools/ci/run_stage.py gles-build -- cmake --build build/gles-ci \
+            --parallel "$CI_PARALLEL" --target ice_gles_tests ice_acquisition_lease_tests ice_public_headers
 
       - name: Discover exact EGL GLES and lease inventory
         if: ${{ !cancelled() && runner.os == 'Linux' && steps.gles_build.outcome == 'success' }}
         run: |
-          python3 tools/ci/run_stage.py gles-discovery -- ctest --test-dir build/gles-ci \
+          source "$CI_VENV/bin/activate"
+          exec python3 tools/ci/run_stage.py gles-discovery -- ctest --test-dir build/gles-ci \
             --show-only=json-v1 -R '^ice_(gles|acquisition_lease)$'
 
       - name: Actual surfaceless Mesa GLES and borrowed-target lease execution
@@ -215,14 +279,16 @@ jobs:
         env:
           EGL_PLATFORM: surfaceless
         run: |
-          python3 tools/ci/run_stage.py gles -- ctest --test-dir build/gles-ci \
+          source "$CI_VENV/bin/activate"
+          exec python3 tools/ci/run_stage.py gles -- ctest --test-dir build/gles-ci \
             -R '^ice_(gles|acquisition_lease)$' --verbose --timeout 180 --no-tests=error \
             --test-output-size-passed 4096 --test-output-size-failed 16384 \
             --output-junit "$CI_EVIDENCE_DIR/gles.xml"
 
       - name: Finalize exact-source, inventory, per-case timings and coverage report
         if: ${{ always() && steps.checkout.outcome == 'success' }}
-        run: python3 tools/ci/report.py summary
+        run: |
+          "$CI_BOOTSTRAP_PYTHON" tools/ci/report.py summary
 
       - name: Upload project evidence even after failures
         id: upload
@@ -237,19 +303,37 @@ jobs:
       - name: Verify provider upload receipt and finalization
         if: ${{ always() && steps.checkout.outcome == 'success' }}
         run: |
-          python3 tools/ci/report.py publication \
+          "$CI_BOOTSTRAP_PYTHON" tools/ci/report.py publication \
             --artifact-id '${{ steps.upload.outputs.artifact-id }}' \
             --artifact-url '${{ steps.upload.outputs.artifact-url }}' \
             --outcome '${{ steps.upload.outcome }}'
 
   sanitizers:
     name: Ubuntu / scoped ASan+UBSan C++23
-    runs-on: ubuntu-24.04
+    if: >-
+      github.repository == 'binofet/ice' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
+      (github.event_name == 'push' || github.event_name == 'pull_request' ||
+       (github.event_name == 'schedule' && github.event.schedule == '17 9 * * *' &&
+        github.event.repository.id == 40782766 && github.event.repository.fork == false &&
+        github.event.repository.default_branch == 'master' && github.ref == 'refs/heads/master') ||
+       (github.event_name == 'workflow_dispatch' &&
+        ((inputs.quality_plan == 'day' && inputs.diagnostic == 'none' && inputs.expected_head == '' &&
+          github.ref != 'refs/heads/codex/xvfb-readiness-20261019') ||
+         (inputs.quality_plan == 'nightly' && inputs.diagnostic == 'none' && inputs.expected_head == github.sha &&
+          github.event.repository.id == 40782766 && github.event.repository.fork == false &&
+          github.event.repository.default_branch == 'master' && github.ref == 'refs/heads/master'))))
+    runs-on: [self-hosted, Linux, X64, ice.cpu]
     timeout-minutes: 30
     defaults:
       run:
-        shell: bash
+        shell: /usr/local/libexec/ice-family-native-ci/owned-shell {0}
     env:
+      CI_OWNED_RUNNER: '1'
+      CI_VENV: ${{ github.workspace }}/build/ci-tools/venv
+      CI_BOOTSTRAP_PYTHON: /opt/ice-family-ci/toolchains/native-20261018-v1/bin/python3.12
+      CI_PARALLEL: '2'
+      CMAKE_BUILD_PARALLEL_LEVEL: '2'
       CI_CPP: '23'
       CI_PROFILE: sanitizers
       CI_EVIDENCE_DIR: ${{ github.workspace }}/build/ci-evidence
@@ -266,31 +350,34 @@ jobs:
         with:
           fetch-depth: 2
           persist-credentials: false
+          set-safe-directory: false
           submodules: false
 
       - name: Identify exact tested source, head and base
-        run: python3 tools/ci/report.py init --profile sanitizers
+        run: |
+          "$CI_BOOTSTRAP_PYTHON" tools/ci/report.py init --profile sanitizers
+
+      - name: Validate owned sanitizer tools and prepare a fresh pinned project venv
+        id: dependencies
+        run: |
+          exec "$CI_BOOTSTRAP_PYTHON" tools/ci/run_stage.py dependencies -- "$CI_BOOTSTRAP_PYTHON" tools/ci/owned_runner.py prepare --repo ice --profile sanitizers
 
       - name: Evidence helper regressions
-        run: python3 tools/ci/run_stage.py evidence -- python3 tools/ci/test_evidence.py
+        run: |
+          source "$CI_VENV/bin/activate"
+          exec python3 tools/ci/run_stage.py evidence -- python3 tools/ci/test_evidence.py
 
       - name: Trusted gate contract regressions
-        run: python3 tools/ci/run_stage.py gate-contract -- python3 tools/ci/github/test_gate.py
-
-      - name: Native sanitizer compiler
         run: |
-          python3 tools/ci/run_stage.py dependencies -- bash -euo pipefail -c '
-            sudo apt-get update
-            sudo apt-get install -y g++-13 libasound2-dev libpulse-dev
-            g++-13 --version
-            cmake --version
-          '
+          source "$CI_VENV/bin/activate"
+          exec python3 tools/ci/run_stage.py gate-contract -- python3 tools/ci/github/test_gate.py
 
       - name: Configure headless ownership regressions
         id: configure
         if: ${{ !cancelled() }}
         run: |
-          python3 tools/ci/run_stage.py configure -- cmake -S . -B build/sanitizers \
+          source "$CI_VENV/bin/activate"
+          exec python3 tools/ci/run_stage.py configure -- cmake -S . -B build/sanitizers \
             -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
             -DICE_CXX_STANDARD=23 -DICE_ENABLE_SANITIZERS=ON -DICE_WARNINGS_AS_ERRORS=ON \
             -DICE_BUILD_DESKTOP=OFF -DICE_BUILD_METAL=OFF -DICE_BUILD_OPENGL=OFF \
@@ -302,7 +389,8 @@ jobs:
         id: build
         if: ${{ !cancelled() && steps.configure.outcome == 'success' }}
         run: |
-          python3 tools/ci/run_stage.py build -- cmake --build build/sanitizers --parallel 4 \
+          source "$CI_VENV/bin/activate"
+          exec python3 tools/ci/run_stage.py build -- cmake --build build/sanitizers --parallel "$CI_PARALLEL" \
             --target ice_host_tests ice_input_action_tests ice_command_tests \
             ice_data_graph_tests ice_data_json_tests ice_character3d_tests ice_physics3d_tests \
             ice_static_collision3d_tests ice_script_lua_tests ice_audio_capture_tests ice_audio_capture_intent_tests ice_recording_store_tests \
@@ -312,20 +400,23 @@ jobs:
       - name: Discover exact sanitizer test inventory
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
-          python3 tools/ci/run_stage.py cpu-discovery -- ctest --test-dir build/sanitizers \
+          source "$CI_VENV/bin/activate"
+          exec python3 tools/ci/run_stage.py cpu-discovery -- ctest --test-dir build/sanitizers \
             --show-only=json-v1 -R "$CI_SANITIZER_TESTS"
 
       - name: Scoped memory and ownership regressions with measured JUnit
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
-          python3 tools/ci/run_stage.py cpu -- ctest --test-dir build/sanitizers \
-            -R "$CI_SANITIZER_TESTS" --output-on-failure --parallel 2 --timeout 180 --no-tests=error \
+          source "$CI_VENV/bin/activate"
+          exec python3 tools/ci/run_stage.py cpu -- ctest --test-dir build/sanitizers \
+            -R "$CI_SANITIZER_TESTS" --output-on-failure --parallel "$CI_PARALLEL" --timeout 180 --no-tests=error \
             --test-output-size-passed 4096 --test-output-size-failed 16384 \
             --output-junit "$CI_EVIDENCE_DIR/cpu.xml"
 
       - name: Finalize scoped sanitizer evidence
         if: ${{ always() && steps.checkout.outcome == 'success' }}
-        run: python3 tools/ci/report.py summary
+        run: |
+          "$CI_BOOTSTRAP_PYTHON" tools/ci/report.py summary
 
       - name: Upload scoped evidence even after failures
         id: upload
@@ -340,7 +431,193 @@ jobs:
       - name: Verify provider upload receipt and finalization
         if: ${{ always() && steps.checkout.outcome == 'success' }}
         run: |
-          python3 tools/ci/report.py publication \
+          "$CI_BOOTSTRAP_PYTHON" tools/ci/report.py publication \
             --artifact-id '${{ steps.upload.outputs.artifact-id }}' \
             --artifact-url '${{ steps.upload.outputs.artifact-url }}' \
             --outcome '${{ steps.upload.outcome }}'
+
+  reject-invalid-manual-route:
+    name: Refuse invalid manual quality route
+    if: >-
+      github.repository == 'binofet/ice' && github.event.repository.id == 40782766 &&
+      github.event.repository.fork == false && github.event_name == 'workflow_dispatch' &&
+      !((inputs.quality_plan == 'day' && inputs.diagnostic == 'none' && inputs.expected_head == '' &&
+         github.ref != 'refs/heads/codex/xvfb-readiness-20261019') ||
+        (inputs.quality_plan == 'nightly' && inputs.diagnostic == 'none' && inputs.expected_head == github.sha &&
+         github.event.repository.default_branch == 'master' && github.ref == 'refs/heads/master') ||
+        (github.actor == 'binofet' && github.run_attempt == 1 &&
+         inputs.quality_plan == 'day' && inputs.diagnostic == 'xvfb-readiness-v1' && inputs.expected_head == github.sha &&
+         github.ref == 'refs/heads/codex/xvfb-readiness-20261019'))
+    runs-on: [self-hosted, Linux, X64, ice.cpu]
+    timeout-minutes: 1
+    defaults:
+      run:
+        shell: /usr/local/libexec/ice-family-native-ci/owned-shell {0}
+    steps:
+      - name: Stop before checkout, display startup or build
+        run: |
+          printf '%s\n' 'Invalid manual route: no checkout, display diagnostic or quality matrix admitted.' >&2
+          exit 64
+
+  xvfb-readiness:
+    name: Linux / Xvfb readiness diagnostic only
+    if: >-
+      github.repository == 'binofet/ice' && github.event.repository.id == 40782766 &&
+      github.event.repository.fork == false && github.event_name == 'workflow_dispatch' &&
+      github.actor == 'binofet' && github.run_attempt == 1 &&
+      github.ref == 'refs/heads/codex/xvfb-readiness-20261019' &&
+      inputs.quality_plan == 'day' && inputs.diagnostic == 'xvfb-readiness-v1' && inputs.expected_head == github.sha
+    runs-on: [self-hosted, Linux, X64, ice.cpu]
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: /usr/local/libexec/ice-family-native-ci/owned-shell {0}
+    env:
+      CI_OWNED_RUNNER: '1'
+      CI_BOOTSTRAP_PYTHON: /opt/ice-family-ci/toolchains/native-20261018-v1/bin/python3.12
+      CI_PROFILE: diagnostic-only
+      CI_CPP: diagnostic-only
+      CI_EVIDENCE_DIR: ${{ github.workspace }}/build/xvfb-readiness-${{ github.run_id }}-${{ github.run_attempt }}
+      DIAG_EXPECTED_HEAD: ${{ inputs.expected_head }}
+      CI_PARALLEL: '2'
+    steps:
+      - name: Check out the exact admitted diagnostic source
+        id: checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+          set-safe-directory: false
+          submodules: false
+
+      - name: Record diagnostic context and actual source identity
+        run: |
+          "$CI_BOOTSTRAP_PYTHON" -I -S -B - <<'PY'
+          import json, os, re
+          from pathlib import Path
+          expected = os.environ['DIAG_EXPECTED_HEAD']
+          event = json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text())
+          valid = (os.environ['GITHUB_EVENT_NAME'] == 'workflow_dispatch'
+                   and os.environ['GITHUB_REPOSITORY'] == 'binofet/ice'
+                   and os.environ['GITHUB_REF'] == 'refs/heads/codex/xvfb-readiness-20261019'
+                   and os.environ['GITHUB_ACTOR'] == 'binofet'
+                   and os.environ['GITHUB_RUN_ATTEMPT'] == '1'
+                   and re.fullmatch('[a-f0-9]{40}', expected)
+                   and expected == os.environ['GITHUB_SHA']
+                   and event['repository']['id'] == 40782766
+                   and event['repository']['fork'] is False
+                   and event['inputs']['diagnostic'] == 'xvfb-readiness-v1'
+                   and event['inputs']['expected_head'] == expected
+                   and os.getuid() == os.geteuid() == 984)
+          if not valid:
+              raise SystemExit('Diagnostic context refused before display startup')
+          output = Path(os.environ['CI_EVIDENCE_DIR'])
+          output.mkdir(parents=True, exist_ok=False)
+          record = dict(purpose='xvfb-readiness-diagnostic-only', expected_head=expected,
+                        event='workflow_dispatch', ref=os.environ['GITHUB_REF'],
+                        uid=os.getuid(), euid=os.geteuid(), gid=os.getgid(),
+                        compiler_invoked=False, paid_GPU=False, native_quality_qualified=False,
+                        source_identity_profile='native is reused for identity only; no full-plan summary')
+          (output / 'diagnostic-context.json').write_text(json.dumps(record, indent=2) + '\n')
+          print('DIAGNOSTIC ONLY: source identity and one display-readiness stage; no native quality acceptance.')
+          PY
+          "$CI_BOOTSTRAP_PYTHON" tools/ci/report.py init --profile native
+
+      - name: One bounded Xvfb, X11 readiness and GLX metadata attempt
+        id: diagnostic
+        run: |
+          exec "$CI_BOOTSTRAP_PYTHON" -I -S -B tools/ci/xvfb_readiness.py
+
+      - name: Retain the actual diagnostic result without fabricating native stages
+        if: ${{ always() && steps.checkout.outcome == 'success' }}
+        env:
+          DIAGNOSTIC_OUTCOME: ${{ steps.diagnostic.outcome }}
+        run: |
+          "$CI_BOOTSTRAP_PYTHON" -I -S -B - <<'PY'
+          import hashlib, json, math, os, re
+          from pathlib import Path
+          output = Path(os.environ['CI_EVIDENCE_DIR'])
+          output.mkdir(parents=True, exist_ok=True)
+          result = dict(purpose='xvfb-readiness-diagnostic-only', status='incomplete',
+                        expected_head=os.environ['DIAG_EXPECTED_HEAD'],
+                        step_outcome=os.environ['DIAGNOSTIC_OUTCOME'],
+                        native_quality_qualified=False,
+                        cleanup='Not inferred from timeout/cancellation; separate owned-idle inspection required')
+          def read(name, maximum):
+              raw = (output / name).read_bytes()
+              if len(raw) > maximum:
+                  raise ValueError('Diagnostic evidence bound exceeded')
+              return raw
+          try:
+              source = json.loads(read('source.json', 1024 * 1024))
+              stage = json.loads(read('xvfb-readiness.json', 16384))
+              log = read('xvfb-readiness.log', 8 * 1024 * 1024 + 256)
+              if not (source['source_validated'] is True
+                      and source['tested_commit'] == result['expected_head']
+                      and source['event'] == 'workflow_dispatch'
+                      and stage['stage'] == 'xvfb-readiness' and stage['timeout_seconds'] == 60
+                      and type(stage['exit_code']) is int and type(stage['process_exit_code']) is int
+                      and type(stage['timed_out']) is bool
+                      and math.isfinite(stage['duration_seconds']) and stage['duration_seconds'] >= 0):
+                  raise ValueError('Diagnostic source/stage binding refused')
+              markers = {}
+              for name in ('x11_readiness_exit', 'glxinfo_exit'):
+                  matches = re.findall(rb'^' + name.encode() + rb'=([0-9]{1,3})\r?$', log, re.M)
+                  if len(matches) > 1:
+                      raise ValueError('Duplicate direct-client exit marker')
+                  markers[name] = int(matches[0]) if matches else None
+              passed = (result['step_outcome'] == 'success' and stage['exit_code'] == 0
+                        and not stage['timed_out'] and all(value == 0 for value in markers.values()))
+              result.update(status='passed' if passed else 'failed',
+                            wrapped_stage_exit=stage['exit_code'],
+                            wrapped_process_exit=stage['process_exit_code'],
+                            timed_out=stage['timed_out'], duration_seconds=stage['duration_seconds'],
+                            direct_client_exits=markers, log_bytes=len(log),
+                            log_sha256=hashlib.sha256(log).hexdigest(),
+                            log_truncated=stage['log_truncated'], source=source)
+          except (OSError, ValueError, KeyError, TypeError) as error:
+              result['evidence_error_class'] = type(error).__name__
+          (output / 'diagnostic-result.json').write_text(json.dumps(result, indent=2, allow_nan=False) + '\n')
+          text = ('## ICE Xvfb readiness diagnostic only\n\n'
+                  + 'Result: ' + result['status'] + '\n\n'
+                  + 'Native quality qualification: **not performed**. See diagnostic-result.json and the bounded stage log.\n'
+                  + 'Client exits are explicit when reached; wrapped process/stage exits remain separate.\n'
+                  + 'Current process idle and Xvfb cleanup require separate observation.\n')
+          (output / 'diagnostic.md').write_text(text)
+          print(json.dumps(result, indent=2, allow_nan=False))
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write(text)
+          raise SystemExit(0 if result['status'] == 'passed' else 1)
+          PY
+
+      - name: Upload bounded diagnostic evidence even after failure
+        id: upload
+        if: ${{ always() && steps.checkout.outcome == 'success' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: ice-xvfb-readiness-${{ github.sha }}-${{ github.run_attempt }}
+          path: ${{ env.CI_EVIDENCE_DIR }}/
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Verify upload receipt only; never publish a native quality status
+        if: ${{ always() && steps.checkout.outcome == 'success' }}
+        env:
+          UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
+          ARTIFACT_ID: ${{ steps.upload.outputs.artifact-id }}
+          ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
+        run: |
+          "$CI_BOOTSTRAP_PYTHON" -I -S -B - <<'PY'
+          import json, os, re
+          artifact = os.environ['ARTIFACT_ID']
+          expected = ('https://github.com/binofet/ice/actions/runs/'
+                      + os.environ['GITHUB_RUN_ID'] + '/artifacts/' + artifact)
+          if not (os.environ['UPLOAD_OUTCOME'] == 'success'
+                  and re.fullmatch('[1-9][0-9]{0,19}', artifact)
+                  and os.environ['ARTIFACT_URL'] == expected):
+              raise SystemExit('Diagnostic upload receipt refused')
+          print(json.dumps(dict(purpose='xvfb-readiness-diagnostic-only', upload='confirmed',
+                                artifact_id=artifact, artifact_url=expected,
+                                native_quality_qualified=False)))
+          PY

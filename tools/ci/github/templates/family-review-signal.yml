@@ -8,7 +8,10 @@ permissions: {}
 jobs:
   signal:
     if: github.repository == '__REPOSITORY__'
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, Linux, X64, "${{ github.event.repository.name }}.control"]
+    defaults:
+      run:
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
     timeout-minutes: 2
     steps:
       - name: Signal native review history changed
