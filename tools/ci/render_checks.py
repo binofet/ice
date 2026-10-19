@@ -4,6 +4,7 @@
 import argparse
 import os
 from pathlib import Path
+import signal
 import subprocess
 import sys
 
@@ -43,13 +44,38 @@ def main():
                  "MESA_GLES_VERSION_OVERRIDE"):
         environment.pop(name, None)
     print('EGL vendor descriptor: ' + str(xvfb.MESA_JSON) + ' sha256=' + descriptor['sha256'], flush=True)
-    failed = False
-    for name, command in cases(args.build):
-        result = subprocess.run([sys.executable, str(Path(__file__).with_name("run_stage.py")),
-                                 "--timeout-seconds", "240", name, "--", *command],
-                                env=environment)
-        failed |= result.returncode != 0
-    return int(failed)
+    failed, cancelled, active = False, None, None
+    previous = {}
+
+    def cancel(number, _frame):
+        nonlocal cancelled
+        if cancelled is None:
+            cancelled = number
+        if active is not None:
+            try:
+                active.send_signal(number)
+            except ProcessLookupError:
+                pass
+
+    try:
+        if os.name != 'nt':
+            for number in (signal.SIGINT, signal.SIGTERM):
+                previous[number] = signal.signal(number, cancel)
+        for name, command in cases(args.build):
+            if cancelled is not None:
+                break
+            active = subprocess.Popen([sys.executable, str(Path(__file__).with_name("run_stage.py")),
+                                       "--timeout-seconds", "240", name, "--", *command],
+                                      env=environment)
+            if cancelled is not None:
+                active.send_signal(cancelled)
+            result = active.wait()
+            active = None
+            failed |= result != 0
+        return 128 + cancelled if cancelled is not None else int(failed)
+    finally:
+        for number, handler in previous.items():
+            signal.signal(number, handler)
 
 
 if __name__ == "__main__":

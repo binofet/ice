@@ -4,6 +4,7 @@ from contextlib import ExitStack, redirect_stderr, redirect_stdout
 import io
 import json
 import os
+import signal
 from pathlib import Path
 from types import SimpleNamespace
 import tempfile
@@ -33,7 +34,8 @@ class RenderChecksTests(unittest.TestCase):
         self.stack.enter_context(patch.object(render.xvfb, 'observe_file', side_effect=observe_fixture))
         self.full_preflight = self.stack.enter_context(patch.object(render.xvfb, 'preflight'))
         self.child = self.stack.enter_context(patch.object(
-            render.subprocess, 'run', return_value=SimpleNamespace(returncode=0)))
+            render.subprocess, 'Popen'))
+        self.child.return_value.wait.return_value = 0
         self.stack.enter_context(patch.object(render.sys, 'argv', ['render_checks.py', '--build', '/fixture/build']))
         self.stack.enter_context(patch.dict(os.environ, {
             'CI_PARALLEL': '2', '__EGL_VENDOR_LIBRARY_FILENAMES': '/inherited/nvidia.json',
@@ -87,11 +89,22 @@ class RenderChecksTests(unittest.TestCase):
         for failed in range(10):
             with self.subTest(failed=failed):
                 self.child.reset_mock()
-                self.child.side_effect = [SimpleNamespace(returncode=23 if i == failed else 0)
+                self.child.side_effect = [SimpleNamespace(wait=lambda value=(23 if i == failed else 0): value)
                                           for i in range(10)]
                 self.assertEqual(render.main(), 1)
                 self.assertEqual(self.child.call_count, 10)
                 self.assertEqual(self.child.call_args_list[-1].args[0][4], 'gpu-hdr')
+
+    def test_explicit_cancel_forwards_waits_and_stops_remaining_cases(self):
+        previous = signal.getsignal(signal.SIGTERM)
+        def wait():
+            os.kill(os.getpid(), signal.SIGTERM)
+            return 0
+        self.child.return_value.wait.side_effect = wait
+        self.assertEqual(render.main(), 143)
+        self.assertEqual(self.child.call_count, 1)
+        self.child.return_value.send_signal.assert_called_once_with(signal.SIGTERM)
+        self.assertIs(signal.getsignal(signal.SIGTERM), previous)
 
     def test_missing_unreadable_or_untrusted_descriptor_refuses_before_any_stage(self):
         self.descriptor.unlink()

@@ -73,42 +73,42 @@ jobs:
       - name: Validate owned tools and prepare a fresh pinned project venv
         id: dependencies
         run: |
-          "$CI_BOOTSTRAP_PYTHON" tools/ci/run_stage.py dependencies -- "$CI_BOOTSTRAP_PYTHON" tools/ci/owned_runner.py prepare --repo ice --profile native
+          exec "$CI_BOOTSTRAP_PYTHON" tools/ci/run_stage.py dependencies -- "$CI_BOOTSTRAP_PYTHON" tools/ci/owned_runner.py prepare --repo ice --profile native
 
       - name: Evidence helper regressions
         run: |
           source "$CI_VENV/bin/activate"
-          python3 tools/ci/run_stage.py evidence -- python3 tools/ci/test_evidence.py
+          exec python3 tools/ci/run_stage.py evidence -- python3 tools/ci/test_evidence.py
 
       - name: Trusted gate contract regressions
         run: |
           source "$CI_VENV/bin/activate"
-          python3 tools/ci/run_stage.py gate-contract -- python3 tools/ci/github/test_gate.py
+          exec python3 tools/ci/run_stage.py gate-contract -- python3 tools/ci/github/test_gate.py
 
       - name: Lowercase project directory policy
         if: ${{ !cancelled() }}
         run: |
           source "$CI_VENV/bin/activate"
-          python3 tools/ci/run_stage.py path-policy -- python3 tools/ci/check_paths.py
+          exec python3 tools/ci/run_stage.py path-policy -- python3 tools/ci/check_paths.py
 
       - name: Pinned quality tools
         id: quality_tools
         run: |
           source "$CI_VENV/bin/activate"
-          python3 tools/ci/run_stage.py quality-tools -- python3 tools/ci/owned_runner.py verify-quality --repo ice
+          exec python3 tools/ci/run_stage.py quality-tools -- python3 tools/ci/owned_runner.py verify-quality --repo ice
 
       - name: Public cached Metagen consumer integrity (no private credentials)
         if: ${{ !cancelled() }}
         run: |
           source "$CI_VENV/bin/activate"
-          python3 tools/ci/run_stage.py consumer-cache -- python3 tools/metagenintegration/check.py --cached-only
+          exec python3 tools/ci/run_stage.py consumer-cache -- python3 tools/metagenintegration/check.py --cached-only
 
       - name: Configure optional public RTTR consumer
         id: metagen_configure
         if: ${{ !cancelled() }}
         run: |
           source "$CI_VENV/bin/activate"
-          python3 tools/ci/run_stage.py metagen-configure -- cmake \
+          exec python3 tools/ci/run_stage.py metagen-configure -- cmake \
             -S tools/metagenintegration/native -B build/metagen-ci \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
             -DICE_METAGEN_RTTR=ON -DICE_WARNINGS_AS_ERRORS=ON -DICE_CXX_STANDARD="$CI_CPP"
@@ -118,19 +118,19 @@ jobs:
         if: ${{ !cancelled() && steps.metagen_configure.outcome == 'success' }}
         run: |
           source "$CI_VENV/bin/activate"
-          python3 tools/ci/run_stage.py metagen-build -- cmake --build build/metagen-ci --parallel "$CI_PARALLEL"
+          exec python3 tools/ci/run_stage.py metagen-build -- cmake --build build/metagen-ci --parallel "$CI_PARALLEL"
 
       - name: Discover optional consumer CTests
         if: ${{ !cancelled() && steps.metagen_build.outcome == 'success' }}
         run: |
           source "$CI_VENV/bin/activate"
-          python3 tools/ci/run_stage.py metagen-discovery -- ctest --test-dir build/metagen-ci --show-only=json-v1
+          exec python3 tools/ci/run_stage.py metagen-discovery -- ctest --test-dir build/metagen-ci --show-only=json-v1
 
       - name: Optional consumer regressions with measured JUnit
         if: ${{ !cancelled() && steps.metagen_build.outcome == 'success' }}
         run: |
           source "$CI_VENV/bin/activate"
-          python3 tools/ci/run_stage.py metagen -- ctest --test-dir build/metagen-ci \
+          exec python3 tools/ci/run_stage.py metagen -- ctest --test-dir build/metagen-ci \
             --output-on-failure --parallel "$CI_PARALLEL" --timeout 120 --no-tests=error \
             --test-output-size-passed 4096 --test-output-size-failed 16384 \
             --output-junit "$CI_EVIDENCE_DIR/metagen.xml"
@@ -145,7 +145,7 @@ jobs:
           if [[ "$RUNNER_OS" == "Linux" ]]; then
             export RUSTUP_HOME=/opt/ice-family-ci/toolchains/native-20261018-v1/rustup
           fi
-          python3 tools/ci/run_stage.py rust -- bash -euo pipefail -c '
+          exec python3 tools/ci/run_stage.py rust -- bash -euo pipefail -c '
             python3 tools/metagenintegration/check_rust.py --native-build build/metagen-ci
           '
 
@@ -154,7 +154,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
           source "$CI_VENV/bin/activate"
-          python3 tools/ci/run_stage.py configure -- cmake -S . -B build/ci \
+          exec python3 tools/ci/run_stage.py configure -- cmake -S . -B build/ci \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
             -DICE_WARNINGS_AS_ERRORS=ON -DICE_CXX_STANDARD="$CI_CPP" \
             -DICE_BUILD_GLES=OFF -DICE_BUILD_AUDIO_PLAYBACK=ON -DICE_BUILD_AUDIO_SPEECH=ON \
@@ -166,19 +166,19 @@ jobs:
         if: ${{ !cancelled() && steps.configure.outcome == 'success' }}
         run: |
           source "$CI_VENV/bin/activate"
-          python3 tools/ci/run_stage.py build -- cmake --build build/ci --parallel "$CI_PARALLEL"
+          exec python3 tools/ci/run_stage.py build -- cmake --build build/ci --parallel "$CI_PARALLEL"
 
       - name: Discover actual CPU test inventory
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           source "$CI_VENV/bin/activate"
-          python3 tools/ci/run_stage.py cpu-discovery -- ctest --test-dir build/ci --show-only=json-v1
+          exec python3 tools/ci/run_stage.py cpu-discovery -- ctest --test-dir build/ci --show-only=json-v1
 
       - name: CPU regressions with measured JUnit
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           source "$CI_VENV/bin/activate"
-          python3 tools/ci/run_stage.py cpu -- ctest --test-dir build/ci \
+          exec python3 tools/ci/run_stage.py cpu -- ctest --test-dir build/ci \
             --output-on-failure --parallel "$CI_PARALLEL" --timeout 180 --no-tests=error \
             --test-output-size-passed 4096 --test-output-size-failed 16384 \
             --output-junit "$CI_EVIDENCE_DIR/cpu.xml"
@@ -187,19 +187,19 @@ jobs:
         if: ${{ !cancelled() && steps.quality_tools.outcome == 'success' }}
         run: |
           source "$CI_VENV/bin/activate"
-          python3 tools/ci/run_stage.py format -- python3 tools/quality/check.py format --all
+          exec python3 tools/ci/run_stage.py format -- python3 tools/quality/check.py format --all
 
       - name: Public API documentation and argument contracts
         if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.quality_tools.outcome == 'success' }}
         run: |
           source "$CI_VENV/bin/activate"
-          python3 tools/ci/run_stage.py api -- python3 tools/quality/api.py --build-dir build/ci --workers "$CI_PARALLEL"
+          exec python3 tools/ci/run_stage.py api -- python3 tools/quality/api.py --build-dir build/ci --workers "$CI_PARALLEL"
 
       - name: Pinned static analysis
         if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.quality_tools.outcome == 'success' }}
         run: |
           source "$CI_VENV/bin/activate"
-          python3 tools/ci/run_stage.py lint -- bash -euo pipefail -c '
+          exec python3 tools/ci/run_stage.py lint -- bash -euo pipefail -c '
             python3 tools/quality/check.py lint --build-dir build/ci
             python3 tools/quality/check.py lint --build-dir build/ci --files \
               engine/src/audio/playback.cpp engine/src/audio/wav.cpp \
@@ -217,14 +217,14 @@ jobs:
         if: ${{ !cancelled() && runner.os == 'Linux' && steps.build.outcome == 'success' }}
         run: |
           source "$CI_VENV/bin/activate"
-          python3 tools/ci/render_checks.py --build build/ci
+          exec python3 tools/ci/render_checks.py --build build/ci
 
       - name: Configure separate headless EGL GLES profile
         id: gles_configure
         if: ${{ !cancelled() && runner.os == 'Linux' }}
         run: |
           source "$CI_VENV/bin/activate"
-          python3 tools/ci/run_stage.py gles-configure -- cmake -S . -B build/gles-ci \
+          exec python3 tools/ci/run_stage.py gles-configure -- cmake -S . -B build/gles-ci \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
             -DICE_WARNINGS_AS_ERRORS=ON -DICE_CXX_STANDARD="$CI_CPP" \
             -DICE_BUILD_DESKTOP=OFF -DICE_BUILD_METAL=OFF -DICE_BUILD_OPENGL=OFF \
@@ -237,14 +237,14 @@ jobs:
         if: ${{ !cancelled() && runner.os == 'Linux' && steps.gles_configure.outcome == 'success' }}
         run: |
           source "$CI_VENV/bin/activate"
-          python3 tools/ci/run_stage.py gles-build -- cmake --build build/gles-ci \
+          exec python3 tools/ci/run_stage.py gles-build -- cmake --build build/gles-ci \
             --parallel "$CI_PARALLEL" --target ice_gles_tests ice_acquisition_lease_tests ice_public_headers
 
       - name: Discover exact EGL GLES and lease inventory
         if: ${{ !cancelled() && runner.os == 'Linux' && steps.gles_build.outcome == 'success' }}
         run: |
           source "$CI_VENV/bin/activate"
-          python3 tools/ci/run_stage.py gles-discovery -- ctest --test-dir build/gles-ci \
+          exec python3 tools/ci/run_stage.py gles-discovery -- ctest --test-dir build/gles-ci \
             --show-only=json-v1 -R '^ice_(gles|acquisition_lease)$'
 
       - name: Actual surfaceless Mesa GLES and borrowed-target lease execution
@@ -253,7 +253,7 @@ jobs:
           EGL_PLATFORM: surfaceless
         run: |
           source "$CI_VENV/bin/activate"
-          python3 tools/ci/run_stage.py gles -- ctest --test-dir build/gles-ci \
+          exec python3 tools/ci/run_stage.py gles -- ctest --test-dir build/gles-ci \
             -R '^ice_(gles|acquisition_lease)$' --verbose --timeout 180 --no-tests=error \
             --test-output-size-passed 4096 --test-output-size-failed 16384 \
             --output-junit "$CI_EVIDENCE_DIR/gles.xml"
@@ -321,24 +321,24 @@ jobs:
       - name: Validate owned sanitizer tools and prepare a fresh pinned project venv
         id: dependencies
         run: |
-          "$CI_BOOTSTRAP_PYTHON" tools/ci/run_stage.py dependencies -- "$CI_BOOTSTRAP_PYTHON" tools/ci/owned_runner.py prepare --repo ice --profile sanitizers
+          exec "$CI_BOOTSTRAP_PYTHON" tools/ci/run_stage.py dependencies -- "$CI_BOOTSTRAP_PYTHON" tools/ci/owned_runner.py prepare --repo ice --profile sanitizers
 
       - name: Evidence helper regressions
         run: |
           source "$CI_VENV/bin/activate"
-          python3 tools/ci/run_stage.py evidence -- python3 tools/ci/test_evidence.py
+          exec python3 tools/ci/run_stage.py evidence -- python3 tools/ci/test_evidence.py
 
       - name: Trusted gate contract regressions
         run: |
           source "$CI_VENV/bin/activate"
-          python3 tools/ci/run_stage.py gate-contract -- python3 tools/ci/github/test_gate.py
+          exec python3 tools/ci/run_stage.py gate-contract -- python3 tools/ci/github/test_gate.py
 
       - name: Configure headless ownership regressions
         id: configure
         if: ${{ !cancelled() }}
         run: |
           source "$CI_VENV/bin/activate"
-          python3 tools/ci/run_stage.py configure -- cmake -S . -B build/sanitizers \
+          exec python3 tools/ci/run_stage.py configure -- cmake -S . -B build/sanitizers \
             -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
             -DICE_CXX_STANDARD=23 -DICE_ENABLE_SANITIZERS=ON -DICE_WARNINGS_AS_ERRORS=ON \
             -DICE_BUILD_DESKTOP=OFF -DICE_BUILD_METAL=OFF -DICE_BUILD_OPENGL=OFF \
@@ -351,7 +351,7 @@ jobs:
         if: ${{ !cancelled() && steps.configure.outcome == 'success' }}
         run: |
           source "$CI_VENV/bin/activate"
-          python3 tools/ci/run_stage.py build -- cmake --build build/sanitizers --parallel "$CI_PARALLEL" \
+          exec python3 tools/ci/run_stage.py build -- cmake --build build/sanitizers --parallel "$CI_PARALLEL" \
             --target ice_host_tests ice_input_action_tests ice_command_tests \
             ice_data_graph_tests ice_data_json_tests ice_character3d_tests ice_physics3d_tests \
             ice_static_collision3d_tests ice_script_lua_tests ice_audio_capture_tests ice_audio_capture_intent_tests ice_recording_store_tests \
@@ -362,14 +362,14 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           source "$CI_VENV/bin/activate"
-          python3 tools/ci/run_stage.py cpu-discovery -- ctest --test-dir build/sanitizers \
+          exec python3 tools/ci/run_stage.py cpu-discovery -- ctest --test-dir build/sanitizers \
             --show-only=json-v1 -R "$CI_SANITIZER_TESTS"
 
       - name: Scoped memory and ownership regressions with measured JUnit
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           source "$CI_VENV/bin/activate"
-          python3 tools/ci/run_stage.py cpu -- ctest --test-dir build/sanitizers \
+          exec python3 tools/ci/run_stage.py cpu -- ctest --test-dir build/sanitizers \
             -R "$CI_SANITIZER_TESTS" --output-on-failure --parallel "$CI_PARALLEL" --timeout 180 --no-tests=error \
             --test-output-size-passed 4096 --test-output-size-failed 16384 \
             --output-junit "$CI_EVIDENCE_DIR/cpu.xml"
@@ -486,7 +486,7 @@ jobs:
       - name: One bounded Xvfb, X11 readiness and GLX metadata attempt
         id: diagnostic
         run: |
-          "$CI_BOOTSTRAP_PYTHON" -I -S -B tools/ci/xvfb_readiness.py
+          exec "$CI_BOOTSTRAP_PYTHON" -I -S -B tools/ci/xvfb_readiness.py
 
       - name: Retain the actual diagnostic result without fabricating native stages
         if: ${{ always() && steps.checkout.outcome == 'success' }}
