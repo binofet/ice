@@ -1,10 +1,13 @@
 #include "ice/net/companion_web.h"
 #include "ice/net/companion_link.h"
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <future>
 #include <thread>
+#include <vector>
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <winsock2.h>
@@ -61,6 +64,70 @@ static std::string exchange(unsigned short port, const std::string &request) {
 #endif
 	return response;
 }
+static void freshness_boundaries() {
+	ice::net::companion_link host, client;
+	check(host.listen(0, 123456, "127.0.0.1"), "freshness host");
+	host.accept_shots(true);
+	double protocol = 10;
+	check(client.connect("127.0.0.1", host.port(), 123456, protocol), "freshness client");
+	// Protocol time is monotonic and controlled; wall time only bounds socket progress.
+	auto await = [&](auto ready, const char *why) {
+		const double started = now();
+		while (!ready() && now() - started < 4) {
+			client.poll(protocol);
+			host.poll(protocol);
+			protocol += .005;
+			std::this_thread::sleep_for(std::chrono::milliseconds(2));
+		}
+		if (!ready())
+			std::fprintf(stderr,
+			             "freshness: protocol=%.6f wall_seconds=%.6f host_state=%d "
+			             "client_state=%d delivered=%u host_message=%s client_message=%s\n",
+			             protocol, now() - started, static_cast<int>(host.status()),
+			             static_cast<int>(client.status()), client.delivered(),
+			             host.message().c_str(), client.message().c_str());
+		check(ready(), why);
+	};
+	await(
+	    [&]() {
+		    return host.status() == ice::net::companion_link::state::connected &&
+		           client.status() == ice::net::companion_link::state::connected;
+	    },
+	    "bounded freshness handshake");
+	const auto device = host.peer_device();
+	for (unsigned sample = 0; sample < 3; ++sample) {
+		ice::input::shot_intent sent, received;
+		sent.aim                    = .4f;
+		sent.power                  = .6f;
+		const double   sent_at      = protocol;
+		const unsigned acknowledged = client.delivered();
+		check(client.send_shot(sent, protocol), "freshness shot queued");
+		await([&]() { return client.delivered() == acknowledged + 1; },
+		      "bounded accepted freshness receipt");
+		// An ACK proves the native host accepted/queued this sequence. Nobody has
+		// consumed it, and controlled setup remains inside its freshness window.
+		check(protocol - sent_at < .3, "freshness receipt precedes boundary");
+		protocol = sample == 0 ? sent_at + .34 : protocol + .36;
+		if (sample == 2)
+			host.poll(protocol);
+		const bool taken = host.take_shot(received, protocol);
+		std::printf("freshness sample=%u sent_at=%.6f consumed_at=%.6f accepted=%u taken=%d\n",
+		            sample, sent_at, protocol, client.delivered(), taken ? 1 : 0);
+		if (sample == 0) {
+			check(taken, "fresh queued action survives inside 350ms");
+			check(std::fabs(received.aim - sent.aim) < .00011f &&
+			          std::fabs(received.power - sent.power) < .00011f,
+			      "freshness payload matches");
+			check(!host.take_shot(received, protocol), "fresh action consumed once");
+		} else {
+			check(!taken, sample == 1 ? "late pull rejects expired accepted action"
+			                          : "poll expires accepted action before late pull");
+		}
+		check(host.status() == ice::net::companion_link::state::connected &&
+		          host.peer_device() == device,
+		      "freshness boundary did not reset authenticated peer");
+	}
+}
 int main() {
 	ice::net::companion_link host;
 	check(host.listen(0, 123456, "127.0.0.1"), "native host");
@@ -68,23 +135,75 @@ int main() {
 	ice::net::companion_web web;
 	check(web.start(host.port(), 123456), "web bridge");
 	std::string authority = "127.0.0.1:" + std::to_string(web.port());
-	auto        pump      = [&](int count) {
-        for (int i = 0; i < count; ++i) {
-            double t = now();
-            web.poll(t);
-            host.poll(t);
-            std::this_thread::sleep_for(std::chrono::milliseconds(2));
-        }
+	struct delivery {
+		ice::input::shot_intent shot;
+		std::uint64_t           owner;
+		double                  consumed_at;
+	};
+	std::vector<delivery> deliveries;
+	double      last_poll = -1, max_poll_gap = 0, request_started = 0, request_finished = 0;
+	unsigned    polls        = 0;
+	bool        http_pending = false;
+	std::string request_line;
+	auto        diagnostic = [&]() {
+        std::fprintf(stderr,
+		                    "companion_web: polls=%u max_poll_gap=%.6f request_seconds=%.6f "
+		                           "host_state=%d host_message=%s deliveries=%zu request=%s\n",
+		                    polls, max_poll_gap,
+		                    (http_pending ? now() : request_finished) - request_started,
+		                    static_cast<int>(host.status()), host.message().c_str(), deliveries.size(),
+		                    request_line.c_str());
+        for (const auto &event : deliveries)
+            std::fprintf(stderr,
+			                    "delivery: aim=%.6f power=%.6f queued_at=%.6f consumed_at=%.6f "
+			                           "queue_age=%.6f owner=%llu\n",
+			                    event.shot.aim, event.shot.power, event.shot.seconds, event.consumed_at,
+			                    event.consumed_at - event.shot.seconds,
+			                    static_cast<unsigned long long>(event.owner));
+	};
+	auto require = [&](bool ok, const char *why) {
+		if (!ok)
+			diagnostic();
+		check(ok, why);
+	};
+	auto pump = [&](int count) {
+		for (int i = 0; i < count; ++i) {
+			double t = now();
+			if (last_poll >= 0)
+				max_poll_gap = (std::max)(max_poll_gap, t - last_poll);
+			last_poll = t;
+			++polls;
+			web.poll(t);
+			host.poll(t);
+			ice::input::shot_intent shot;
+			if (host.take_shot(shot, t)) {
+				require(deliveries.size() < 16, "bounded native delivery observations");
+				deliveries.push_back({shot, web.claim_shot_owner(t), t});
+			}
+			std::this_thread::sleep_for(std::chrono::milliseconds(2));
+		}
+	};
+	auto await_delivery = [&](std::size_t count) {
+		const double started = now();
+		while (deliveries.size() < count && now() - started < 4)
+			pump(1);
+		require(deliveries.size() >= count, "bounded native intent delivery");
+		require(deliveries.size() == count, "no extra native delivery");
 	};
 	auto raw = [&](const std::string &request) {
+		request_line    = request.substr(0, (std::min)(request.find("\r\n"), std::size_t(96)));
+		request_started = request_finished = now();
+		http_pending                       = true;
 		auto result =
 		    std::async(std::launch::async, [&]() { return exchange(web.port(), request); });
 		double start = now();
 		while (result.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready &&
 		       now() - start < 4)
 			pump(1);
-		check(result.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready,
-		      "bounded HTTP response");
+		request_finished = now();
+		http_pending     = false;
+		require(result.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready,
+		        "bounded HTTP response");
 		return result.get();
 	};
 	auto request = [&](const char *method, const char *path, const std::string &body,
@@ -116,29 +235,42 @@ int main() {
 	};
 	check(request("POST", "/shot", shotBody(1, turn), bob).find("HTTP/1.1 409") == 0,
 	      "out of turn denied");
+	require(deliveries.empty(), "out of turn cannot deliver native intent");
+	const auto before_first = deliveries.size();
 	check(request("POST", "/shot", shotBody(1, turn), alice).find("HTTP/1.1 200") == 0,
 	      "current player queues shot");
-	pump(10);
-	ice::input::shot_intent shot;
-	check(host.take_shot(shot, now()) && shot.aim > .399 && shot.power > .599,
-	      "intent reaches native host");
-	auto owner = web.claim_shot_owner(now());
-	check(owner == web.room().players()[0].id, "shot ownership retained");
+	await_delivery(before_first + 1);
+	require(std::fabs(deliveries.back().shot.aim - .4f) < .00011f &&
+	            std::fabs(deliveries.back().shot.power - .6f) < .00011f,
+	        "native intent payload matches");
+	auto owner = deliveries.back().owner;
+	require(owner == web.room().players()[0].id, "shot ownership retained");
+	const auto before_duplicate = deliveries.size();
 	check(request("POST", "/shot", shotBody(1, turn), alice).find("HTTP/1.1 200") == 0,
 	      "duplicate retains result");
-	pump(10);
-	check(!host.take_shot(shot, now()), "duplicate cannot launch twice");
+	// Observe every delivery across the 60ms retry and 350ms pending window.
+	const double duplicate_started = now();
+	while (now() - duplicate_started < .4)
+		pump(1);
+	require(deliveries.size() == before_duplicate, "duplicate cannot launch twice");
 	check(web.finish_shot(owner, 50), "settle owned shot");
 	check(web.room().players()[0].score == 50, "score belongs to shooter");
 	check(request("POST", "/shot", shotBody(2, turn), bob).find("HTTP/1.1 409") == 0,
 	      "stale turn denied");
+	require(deliveries.size() == before_duplicate, "stale turn cannot deliver native intent");
+	const auto before_second = deliveries.size();
 	check(request("POST", "/shot", shotBody(3, web.room().turn()), bob).find("HTTP/1.1 200") == 0,
 	      "next player shoots");
-	pump(10);
-	check(host.take_shot(shot, now()), "second intent reaches host");
-	owner = web.claim_shot_owner(now());
+	await_delivery(before_second + 1);
+	require(std::fabs(deliveries.back().shot.aim - .4f) < .00011f &&
+	            std::fabs(deliveries.back().shot.power - .6f) < .00011f,
+	        "second native intent payload matches");
+	owner = deliveries.back().owner;
+	require(owner == web.room().players()[1].id, "second shot ownership retained");
+	const auto before_leave = deliveries.size();
 	check(request("POST", "/leave", "", bob).find("HTTP/1.1 200") == 0,
 	      "player leaves during flight");
+	require(deliveries.size() == before_leave, "leave cannot deliver another native intent");
 	check(web.finish_shot(owner, 20), "disconnected shooter still scores");
 	check(web.room().players()[1].score == 20, "disconnected ownership preserved");
 	check(request("POST", "/shot", shotBody(4, web.room().turn()), bob).find("HTTP/1.1 401") == 0,
@@ -154,5 +286,7 @@ int main() {
 	web.poll(now() + 2);
 	check(request("GET", "/status", "", alice).find("HTTP/1.1 401") == 0,
 	      "host suspension invalidates authority");
+	require(deliveries.size() == before_leave, "rejected requests cannot deliver native intents");
+	freshness_boundaries();
 	std::puts("Party HTTP/session/UDP/ownership tests passed");
 }
