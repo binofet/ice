@@ -9,6 +9,7 @@ import re
 import sys
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import owned_runner as owned
@@ -89,6 +90,36 @@ class OwnedRunnerTests(unittest.TestCase):
                 os.environ['GITHUB_WORKSPACE'] = str(root / 'other')
                 with self.assertRaisesRegex(ValueError, 'workspace'):
                     owned.source_scope('ice')
+
+    def test_nightly_event_authorization_requires_fixed_default_and_exact_manual_head(self):
+        payload = {'repository': {'id': 40782766, 'fork': False, 'default_branch': 'master'},
+                   'schedule': owned.NIGHTLY_CRON}
+        self.assertEqual(owned.quality_plan('ice', 'schedule', payload, 'refs/heads/master'), 'nightly')
+        for mutation in (lambda p: p['repository'].update(id=1), lambda p: p['repository'].update(fork=True),
+                         lambda p: p['repository'].update(default_branch='main'),
+                         lambda p: p.update(schedule='* * * * *')):
+            bad = copy.deepcopy(payload); mutation(bad)
+            with self.assertRaises(ValueError):
+                owned.quality_plan('ice', 'schedule', bad, 'refs/heads/master')
+        with self.assertRaises(ValueError):
+            owned.quality_plan('ice', 'schedule', payload, 'refs/heads/feature')
+        with self.assertRaises(ValueError):
+            owned.quality_plan('ignition', 'schedule', payload, 'refs/heads/master')
+        payload['inputs'] = dict(quality_plan='nightly', diagnostic='none', expected_head='a'*40)
+        self.assertEqual(owned.quality_plan('ice', 'workflow_dispatch', payload, 'refs/heads/master', 'a'*40), 'nightly')
+        for key, value in [('quality_plan', 'other'), ('quality_plan', None), ('diagnostic', 'xvfb-readiness-v1'),
+                           ('expected_head', 'b'*40)]:
+            bad = copy.deepcopy(payload); bad['inputs'][key] = value
+            with self.assertRaises(ValueError):
+                owned.quality_plan('ice', 'workflow_dispatch', bad, 'refs/heads/master', 'a'*40)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve(); event = root / 'event.json'
+            event.write_text(json.dumps(payload))
+            with patch.object(owned, 'ROOT', root), patch.dict(os.environ, {
+                    'GITHUB_REPOSITORY': 'binofet/ice', 'GITHUB_WORKSPACE': str(root),
+                    'GITHUB_EVENT_NAME': 'schedule', 'GITHUB_EVENT_PATH': str(event),
+                    'GITHUB_REF': 'refs/heads/master'}, clear=True):
+                owned.source_scope('ice')
 
     def test_fresh_project_venv_pip_is_explicit_pinned_and_ignores_personal_pip_configuration(self):
         for repo in ('ice', 'ignition'):
@@ -259,7 +290,8 @@ class OwnedWorkflowTests(unittest.TestCase):
                 for variable in ('CI_PARALLEL', 'CMAKE_BUILD_PARALLEL_LEVEL'):
                     with self.subTest(worker_budget_owner=owner, variable=variable):
                         self.assertEqual(re.findall(r'^      ' + variable + r": (.+)$",
-                                                    jobs[owner], re.MULTILINE), ["'2'"])
+                                                    jobs[owner], re.MULTILINE),
+                                         ["${{ matrix.os == 'macos-15' && '10' || '2' }}" if owner == 'native' else "'2'"])
                 self.assertIn('source "$CI_VENV/bin/activate"', jobs[owner])
                 self.assertIn('tools/ci/test_evidence.py', jobs[owner])
         else:
@@ -280,19 +312,16 @@ class OwnedWorkflowTests(unittest.TestCase):
             return  # Ignition has no ICE diagnostic route; original ownership checks still apply.
         jobs = self.workflow_jobs(path.read_text())
         fixed = "'refs/heads/codex/xvfb-readiness-20261019'"
-        normal = "(inputs.diagnostic == 'none' && inputs.expected_head == '' && github.ref != " + fixed + ")"
+        normal = "(inputs.quality_plan == 'day' && inputs.diagnostic == 'none' && inputs.expected_head == '' && github.ref != " + fixed + ")"
         actual_diagnostic = ("github.actor == 'binofet' && github.run_attempt == 1 && "
-            "inputs.diagnostic == 'xvfb-readiness-v1' && inputs.expected_head == github.sha && github.ref == " + fixed)
+            "inputs.quality_plan == 'day' && inputs.diagnostic == 'xvfb-readiness-v1' && inputs.expected_head == github.sha && github.ref == " + fixed)
         repository = ("github.repository == 'binofet/ice' && github.event.repository.id == 40782766 && "
             "github.event.repository.fork == false && github.event_name == 'workflow_dispatch'")
         expected_diagnostic = (repository + " && github.actor == 'binofet' && github.run_attempt == 1 && "
-            "github.ref == " + fixed + " && inputs.diagnostic == 'xvfb-readiness-v1' && inputs.expected_head == github.sha")
-        expected_refusal = repository + " && !(" + normal + " || (" + actual_diagnostic + "))"
-        original_quality = ("github.repository == 'binofet/ice' && (github.event_name != 'pull_request' || "
-            "github.event.pull_request.head.repo.full_name == github.repository)")
-        for owner in ('native', 'sanitizers'):
-            self.assertEqual(self.job_condition(jobs[owner]), original_quality +
-                " && (github.event_name != 'workflow_dispatch' || " + normal + ")")
+            "github.ref == " + fixed + " && inputs.quality_plan == 'day' && inputs.diagnostic == 'xvfb-readiness-v1' && inputs.expected_head == github.sha")
+        nightly = ("(inputs.quality_plan == 'nightly' && inputs.diagnostic == 'none' && inputs.expected_head == github.sha && "
+                   "github.event.repository.default_branch == 'master' && github.ref == 'refs/heads/master')")
+        expected_refusal = repository + " && !(" + normal + " || " + nightly + " || (" + actual_diagnostic + "))"
         self.assertEqual(self.job_condition(jobs['xvfb-readiness']), expected_diagnostic)
         self.assertEqual(self.job_condition(jobs['reject-invalid-manual-route']), expected_refusal)
         refusal = jobs['reject-invalid-manual-route']
@@ -305,6 +334,49 @@ class OwnedWorkflowTests(unittest.TestCase):
         self.assertIn('tools/ci/xvfb_readiness.py', diagnostic)
         self.assertNotIn('tools/ci/report.py summary', diagnostic)
         self.assertNotIn('tools/ci/report.py publication', diagnostic)
+
+    def test_day_nightly_routes_are_default_bound_and_keep_existing_profiles(self):
+        text = (Path(__file__).resolve().parents[2] / '.github/workflows/engine-quality.yml').read_text()
+        jobs = self.workflow_jobs(text)
+        self.assertIn("cron: '17 9 * * *'", text)
+        self.assertIn("&& 'nightly' || 'day'", text.split('jobs:')[0])
+        self.assertEqual(self.job_condition(jobs['native']), self.job_condition(jobs['sanitizers']))
+        def admitted(event, plan='day', ref='refs/heads/master', expected='', diagnostic='none',
+                     fork=False, default='master', same_repo=True):
+            repository = SimpleNamespace(id=40782766, fork=fork, default_branch=default)
+            pull = SimpleNamespace(head=SimpleNamespace(repo=SimpleNamespace(full_name='binofet/ice' if same_repo else 'fork/ice')))
+            github = SimpleNamespace(repository='binofet/ice', event_name=event, ref=ref, sha='a'*40,
+                actor='binofet', run_attempt=1,
+                event=SimpleNamespace(repository=repository, pull_request=pull, schedule='17 9 * * *'))
+            inputs = SimpleNamespace(quality_plan=plan, diagnostic=diagnostic, expected_head=expected)
+            values = {}
+            for name in jobs:
+                condition = self.job_condition(jobs[name]).replace('&&', ' and ').replace('||', ' or ').replace('!(', 'not (')
+                condition = re.sub(r'\bfalse\b', 'False', condition)
+                values[name] = bool(eval(condition, {'__builtins__': {}}, dict(github=github, inputs=inputs)))
+            return values
+        for event in ('push', 'pull_request', 'schedule'):
+            self.assertTrue(admitted(event)['native'])
+        self.assertTrue(admitted('workflow_dispatch')['native'])
+        self.assertTrue(admitted('workflow_dispatch', 'nightly', expected='a'*40)['native'])
+        for values in (admitted('schedule', ref='refs/heads/feature'), admitted('schedule', fork=True),
+                       admitted('schedule', default='main'), admitted('pull_request', same_repo=False),
+                       admitted('workflow_dispatch', 'nightly', expected='b'*40),
+                       admitted('workflow_dispatch', 'nightly', ref='refs/heads/feature', expected='a'*40)):
+            self.assertFalse(values['native'] or values['sanitizers'] or values['xvfb-readiness'])
+        values = admitted('workflow_dispatch', diagnostic='xvfb-readiness-v1',
+                          ref='refs/heads/codex/xvfb-readiness-20261019', expected='a'*40)
+        self.assertTrue(values['xvfb-readiness'])
+        self.assertFalse(values['native'] or values['reject-invalid-manual-route'])
+        values = admitted('workflow_dispatch', 'nightly', diagnostic='xvfb-readiness-v1',
+                          ref='refs/heads/codex/xvfb-readiness-20261019', expected='a'*40)
+        self.assertTrue(values['reject-invalid-manual-route'])
+        self.assertFalse(values['native'] or values['xvfb-readiness'])
+        lint = jobs['native'].split('      - name: Pinned static analysis')[1].split('      # Each executable')[0]
+        self.assertIn("github.event_name == 'schedule'", lint)
+        self.assertIn("inputs.quality_plan == 'nightly'", lint)
+        for build in ('build/ci', 'build/metagen-ci'):
+            self.assertIn('/usr/bin/time -l cmake --build '+build+' --parallel "$CI_PARALLEL"', jobs['native'])
 
 
 if __name__ == '__main__':

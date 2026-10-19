@@ -7,6 +7,33 @@ Legacy `ubuntu-24.04`/`macos-15` job/artifact names preserve the current trusted
 inventory and do not identify actual images. `source.json.owned_runtime` and the
 job summary report the observed OS release, architecture and Python instead.
 
+The explicit `day` plan runs PR/default-push compilation, tests, formatting,
+API contracts, sanitizers and native graphics as before, and does not produce a
+Clang-Tidy result. The `nightly` plan additionally requires the real Clang-Tidy
+sweeps in each native profile. An absent plan marker retains legacy strict lint
+requirements; unknown or event-conflicting markers fail. No passing/skipped lint
+record is synthesized for a day job. Producer and trusted-gate plans are checked
+independently, and only a complete PR event can satisfy protected PR quality.
+
+The existing five profiles run nightly at `17 9 * * *` UTC (03:17 Boise during
+daylight time, 02:17 during standard time), only while `master` is the fixed
+default branch. Manual qualification selects `quality_plan=nightly`,
+`diagnostic=none`, the `master` ref and `expected_head` equal to the event SHA.
+Other refs, mixed diagnostic/nightly inputs or a stale expected head are refused.
+Day and nightly concurrency lanes are separate. This source configuration does
+not dispatch, publish, commission or replace any already running cohort.
+
+Native Mac builds use ten workers on the reviewed 12-core/32-GiB host; Linux
+builds remain at two. CTest and API analysis each retain two workers explicitly.
+Mac engine and optional-consumer builds run through the existing stage helper
+and native `/usr/bin/time -l`: real exit status and wall/user/system seconds plus
+the reported maximum RSS remain in bounded logs and `build-timings.json`. RSS is
+the time-reported process/child maximum, not aggregate parallel-build memory or
+system peak usage. `configuration.json` retains CMake generator and hashed
+compile-database entry/unique-file counts. Those are configured translation
+units, not executed compiler-process counts. Existing stage tables retain the
+full measured breakdown; no per-translation-unit profiler is introduced.
+
 The native matrix builds C++20 and C++23 with `RelWithDebInfo`, strict warnings and
 the configured platform compiler. Linux requires preprovisioned GCC 13. macOS uses
 the runner's Xcode compiler and records its version. The separate C++23 Debug

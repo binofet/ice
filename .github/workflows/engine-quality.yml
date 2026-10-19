@@ -4,15 +4,22 @@ on:
   push:
     branches: [master]
   pull_request:
+  schedule:
+    - cron: '17 9 * * *'
   workflow_dispatch:
     inputs:
+      quality_plan:
+        description: 'Day quality or exact-head nightly qualification on master'
+        type: choice
+        options: [day, nightly]
+        default: day
       diagnostic:
         description: 'Explicit manual mode; ordinary quality defaults to none'
         type: choice
         options: [none, xvfb-readiness-v1]
         default: none
       expected_head:
-        description: 'Exact reviewed source SHA required only for xvfb-readiness-v1'
+        description: 'Exact reviewed source SHA required for nightly or xvfb-readiness-v1'
         type: string
         default: ''
 
@@ -20,13 +27,25 @@ permissions:
   contents: read
 
 concurrency:
-  group: ice-quality-${{ github.event.pull_request.number || github.ref }}
+  group: ice-quality-${{ (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.quality_plan == 'nightly')) && 'nightly' || 'day' }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   native:
     name: ${{ matrix.os }} / optimized C++${{ matrix.cpp }}
-    if: github.repository == 'binofet/ice' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && (github.event_name != 'workflow_dispatch' || (inputs.diagnostic == 'none' && inputs.expected_head == '' && github.ref != 'refs/heads/codex/xvfb-readiness-20261019'))
+    if: >-
+      github.repository == 'binofet/ice' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
+      (github.event_name == 'push' || github.event_name == 'pull_request' ||
+       (github.event_name == 'schedule' && github.event.schedule == '17 9 * * *' &&
+        github.event.repository.id == 40782766 && github.event.repository.fork == false &&
+        github.event.repository.default_branch == 'master' && github.ref == 'refs/heads/master') ||
+       (github.event_name == 'workflow_dispatch' &&
+        ((inputs.quality_plan == 'day' && inputs.diagnostic == 'none' && inputs.expected_head == '' &&
+          github.ref != 'refs/heads/codex/xvfb-readiness-20261019') ||
+         (inputs.quality_plan == 'nightly' && inputs.diagnostic == 'none' && inputs.expected_head == github.sha &&
+          github.event.repository.id == 40782766 && github.event.repository.fork == false &&
+          github.event.repository.default_branch == 'master' && github.ref == 'refs/heads/master'))))
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     strategy:
@@ -47,8 +66,10 @@ jobs:
       CI_OWNED_RUNNER: '1'
       CI_VENV: ${{ github.workspace }}/build/ci-tools/venv
       CI_BOOTSTRAP_PYTHON: ${{ matrix.os == 'macos-15' && '/opt/homebrew/bin/python3.12' || '/opt/ice-family-ci/toolchains/native-20261018-v1/bin/python3.12' }}
-      CI_PARALLEL: '2'
-      CMAKE_BUILD_PARALLEL_LEVEL: '2'
+      CI_PARALLEL: ${{ matrix.os == 'macos-15' && '10' || '2' }}
+      CMAKE_BUILD_PARALLEL_LEVEL: ${{ matrix.os == 'macos-15' && '10' || '2' }}
+      CI_TEST_PARALLEL: '2'
+      CI_API_PARALLEL: '2'
       CC: ${{ matrix.os == 'macos-15' && '/usr/bin/clang' || 'gcc-13' }}
       CXX: ${{ matrix.os == 'macos-15' && '/usr/bin/clang++' || 'g++-13' }}
       CI_CPP: ${{ matrix.cpp }}
@@ -118,6 +139,9 @@ jobs:
         if: ${{ !cancelled() && steps.metagen_configure.outcome == 'success' }}
         run: |
           source "$CI_VENV/bin/activate"
+          if [[ "$RUNNER_OS" == 'macOS' ]]; then
+            exec python3 tools/ci/run_stage.py metagen-build -- /usr/bin/time -l cmake --build build/metagen-ci --parallel "$CI_PARALLEL"
+          fi
           exec python3 tools/ci/run_stage.py metagen-build -- cmake --build build/metagen-ci --parallel "$CI_PARALLEL"
 
       - name: Discover optional consumer CTests
@@ -131,7 +155,7 @@ jobs:
         run: |
           source "$CI_VENV/bin/activate"
           exec python3 tools/ci/run_stage.py metagen -- ctest --test-dir build/metagen-ci \
-            --output-on-failure --parallel "$CI_PARALLEL" --timeout 120 --no-tests=error \
+            --output-on-failure --parallel "$CI_TEST_PARALLEL" --timeout 120 --no-tests=error \
             --test-output-size-passed 4096 --test-output-size-failed 16384 \
             --output-junit "$CI_EVIDENCE_DIR/metagen.xml"
 
@@ -166,6 +190,9 @@ jobs:
         if: ${{ !cancelled() && steps.configure.outcome == 'success' }}
         run: |
           source "$CI_VENV/bin/activate"
+          if [[ "$RUNNER_OS" == 'macOS' ]]; then
+            exec python3 tools/ci/run_stage.py build -- /usr/bin/time -l cmake --build build/ci --parallel "$CI_PARALLEL"
+          fi
           exec python3 tools/ci/run_stage.py build -- cmake --build build/ci --parallel "$CI_PARALLEL"
 
       - name: Discover actual CPU test inventory
@@ -179,7 +206,7 @@ jobs:
         run: |
           source "$CI_VENV/bin/activate"
           exec python3 tools/ci/run_stage.py cpu -- ctest --test-dir build/ci \
-            --output-on-failure --parallel "$CI_PARALLEL" --timeout 180 --no-tests=error \
+            --output-on-failure --parallel "$CI_TEST_PARALLEL" --timeout 180 --no-tests=error \
             --test-output-size-passed 4096 --test-output-size-failed 16384 \
             --output-junit "$CI_EVIDENCE_DIR/cpu.xml"
 
@@ -193,10 +220,10 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.quality_tools.outcome == 'success' }}
         run: |
           source "$CI_VENV/bin/activate"
-          exec python3 tools/ci/run_stage.py api -- python3 tools/quality/api.py --build-dir build/ci --workers "$CI_PARALLEL"
+          exec python3 tools/ci/run_stage.py api -- python3 tools/quality/api.py --build-dir build/ci --workers "$CI_API_PARALLEL"
 
       - name: Pinned static analysis
-        if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.quality_tools.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.quality_tools.outcome == 'success' && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.quality_plan == 'nightly')) }}
         run: |
           source "$CI_VENV/bin/activate"
           exec python3 tools/ci/run_stage.py lint -- bash -euo pipefail -c '
@@ -283,7 +310,19 @@ jobs:
 
   sanitizers:
     name: Ubuntu / scoped ASan+UBSan C++23
-    if: github.repository == 'binofet/ice' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && (github.event_name != 'workflow_dispatch' || (inputs.diagnostic == 'none' && inputs.expected_head == '' && github.ref != 'refs/heads/codex/xvfb-readiness-20261019'))
+    if: >-
+      github.repository == 'binofet/ice' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
+      (github.event_name == 'push' || github.event_name == 'pull_request' ||
+       (github.event_name == 'schedule' && github.event.schedule == '17 9 * * *' &&
+        github.event.repository.id == 40782766 && github.event.repository.fork == false &&
+        github.event.repository.default_branch == 'master' && github.ref == 'refs/heads/master') ||
+       (github.event_name == 'workflow_dispatch' &&
+        ((inputs.quality_plan == 'day' && inputs.diagnostic == 'none' && inputs.expected_head == '' &&
+          github.ref != 'refs/heads/codex/xvfb-readiness-20261019') ||
+         (inputs.quality_plan == 'nightly' && inputs.diagnostic == 'none' && inputs.expected_head == github.sha &&
+          github.event.repository.id == 40782766 && github.event.repository.fork == false &&
+          github.event.repository.default_branch == 'master' && github.ref == 'refs/heads/master'))))
     runs-on: [self-hosted, Linux, X64, ice.cpu]
     timeout-minutes: 30
     defaults:
@@ -402,10 +441,12 @@ jobs:
     if: >-
       github.repository == 'binofet/ice' && github.event.repository.id == 40782766 &&
       github.event.repository.fork == false && github.event_name == 'workflow_dispatch' &&
-      !((inputs.diagnostic == 'none' && inputs.expected_head == '' &&
+      !((inputs.quality_plan == 'day' && inputs.diagnostic == 'none' && inputs.expected_head == '' &&
          github.ref != 'refs/heads/codex/xvfb-readiness-20261019') ||
+        (inputs.quality_plan == 'nightly' && inputs.diagnostic == 'none' && inputs.expected_head == github.sha &&
+         github.event.repository.default_branch == 'master' && github.ref == 'refs/heads/master') ||
         (github.actor == 'binofet' && github.run_attempt == 1 &&
-         inputs.diagnostic == 'xvfb-readiness-v1' && inputs.expected_head == github.sha &&
+         inputs.quality_plan == 'day' && inputs.diagnostic == 'xvfb-readiness-v1' && inputs.expected_head == github.sha &&
          github.ref == 'refs/heads/codex/xvfb-readiness-20261019'))
     runs-on: [self-hosted, Linux, X64, ice.cpu]
     timeout-minutes: 1
@@ -425,7 +466,7 @@ jobs:
       github.event.repository.fork == false && github.event_name == 'workflow_dispatch' &&
       github.actor == 'binofet' && github.run_attempt == 1 &&
       github.ref == 'refs/heads/codex/xvfb-readiness-20261019' &&
-      inputs.diagnostic == 'xvfb-readiness-v1' && inputs.expected_head == github.sha
+      inputs.quality_plan == 'day' && inputs.diagnostic == 'xvfb-readiness-v1' && inputs.expected_head == github.sha
     runs-on: [self-hosted, Linux, X64, ice.cpu]
     timeout-minutes: 5
     defaults:

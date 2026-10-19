@@ -5,6 +5,7 @@ from pathlib import Path
 import io
 import json
 import tempfile
+import sys
 import unittest
 from unittest.mock import patch
 import zipfile
@@ -43,7 +44,7 @@ def zipped(files):
     return stream.getvalue()
 
 
-def evidence(repo="ice", os="Linux", cpp="20", profile="native"):
+def evidence(repo="ice", os="Linux", cpp="20", profile="native", quality_plan=None):
     source = {"event": "pull_request", "source_head": HEAD, "tested_base": BASE,
               "tested_candidate_head": HEAD, "tested_commit": MERGE, "runner_os": os,
               "run_url": f"https://github.com/binofet/{repo}/actions/runs/123", "run_attempt": "1",
@@ -51,6 +52,11 @@ def evidence(repo="ice", os="Linux", cpp="20", profile="native"):
               "identity_problems": []}
     if repo != "metagen":
         source.update(cpp=cpp, profile=profile)
+    if quality_plan is not None:
+        source.update(quality_plan=quality_plan)
+        if quality_plan == 'nightly':
+            source.update(event='schedule', source_ref='refs/heads/master', event_schedule='17 9 * * *',
+                          event_repository=dict(id=40782766, fork=False, default_branch='master'))
     names, suites = gate.stage_plan(repo, source)
     summary = {"source": source, "report_incomplete": False, "issues": [], "problems": [],
                "stages": {name: {"exit_code": 0, "duration_seconds": .1} for name in names}, "suites": {}}
@@ -146,6 +152,51 @@ class FakeAPI:
 
 
 class GateTests(unittest.TestCase):
+    def test_day_nightly_legacy_producer_and_trusted_plans_match(self):
+        with patch.object(sys, 'path', [str(Path(__file__).resolve().parents[1]), *sys.path]):
+            import report
+        for os_name, profile in [('Linux', 'native'), ('macOS', 'native'), ('Linux', 'sanitizers')]:
+            for mode in (None, 'day', 'nightly'):
+                with self.subTest(os=os_name, profile=profile, mode=mode):
+                    files=evidence(os=os_name, profile=profile, quality_plan=mode)
+                    source=json.loads(files['source.json'])
+                    names, _=gate.stage_plan('ice', source)
+                    producer, _=report.plan(profile, os_name, mode)
+                    self.assertEqual(names, set(producer))
+                    self.assertEqual('lint' in names, profile == 'native' and mode != 'day')
+        for mode in ('unknown', None, {}, 'nightly'):
+            source=json.loads(evidence()['source.json']); source['quality_plan']=mode
+            with self.assertRaises(ValueError):
+                gate.stage_plan('ice', source)
+
+    def test_explicit_day_omits_lint_but_preserves_all_other_gate_requirements(self):
+        api=FakeAPI()
+        for index, files in api.files.items():
+            source=json.loads(files['source.json'])
+            api.files[index]=evidence(os=source['runner_os'], cpp=source['cpp'],
+                                      profile=source['profile'], quality_plan='day')
+        for artifact in api.artifacts:
+            artifact['digest']='sha256:'+gate.sha(zipped(api.files[artifact['id']]))
+        self.assertEqual(gate.gate(api, 'ice', 7)['source-quality']['state'], 'success')
+        context=dict(head=HEAD, base=BASE)
+        run=dict(id=123, run_attempt=1)
+        for mode, required in [(None, 'lint'), ('day', 'api'), ('day', 'format'), ('day', 'cpu')]:
+            files=evidence(quality_plan=mode)
+            summary=json.loads(files['summary.json']); del summary['stages'][required]
+            files['summary.json']=json.dumps(summary)
+            with self.assertRaisesRegex(ValueError, 'required_stage_evidence_missing'):
+                gate.artifact_evidence(zipped(files), 'ice', context, run)
+
+    def test_nightly_never_substitutes_for_pull_request_quality(self):
+        files=evidence(quality_plan='nightly')
+        with self.assertRaisesRegex(ValueError, 'artifact_source_summary_run_mismatch'):
+            gate.artifact_evidence(zipped(files), 'ice', dict(head=HEAD, base=BASE), dict(id=123, run_attempt=1))
+        for event in ('schedule', 'workflow_dispatch'):
+            api=FakeAPI()
+            for run in api.runs:
+                run['event']=event
+            self.assertEqual(gate.gate(api, 'ice', 7)['source-quality']['state'], 'failure')
+
     def test_all_three_fixed_repositories_accept_realistic_complete_evidence(self):
         for repo in gate.POLICIES:
             with self.subTest(repo=repo):

@@ -102,10 +102,15 @@ class ResourceLimitTests(unittest.TestCase):
         at = command.index('tools/quality/api.py')
         arguments = command[at + 1:]
         self.assertEqual(arguments.count('--workers'), 1)
-        self.assertEqual(arguments[arguments.index('--workers') + 1], '$CI_PARALLEL')
-        for budget in ('1', '2'):
+        self.assertEqual(arguments[arguments.index('--workers') + 1], '$CI_API_PARALLEL')
+        self.assertIn("      CI_API_PARALLEL: '2'", text)
+        self.assertIn("      CI_TEST_PARALLEL: '2'", text)
+        self.assertIn("CI_PARALLEL: ${{ matrix.os == 'macos-15' && '10' || '2' }}", text)
+        self.assertIn('ctest --test-dir build/ci', text)
+        self.assertIn('--output-on-failure --parallel "$CI_TEST_PARALLEL"', text)
+        for budget in ('2',):
             with self.subTest(ci_budget=budget):
-                self.run_api([budget if value == '$CI_PARALLEL' else value for value in arguments], int(budget))
+                self.run_api([budget if value == '$CI_API_PARALLEL' else value for value in arguments], int(budget))
 
     def test_direct_rustc_argv_pins_one_codegen_unit_and_retains_fixture_roundtrip(self):
         module = load_module('resource_rust_fixture', 'tools/metagenintegration/check_rust.py')

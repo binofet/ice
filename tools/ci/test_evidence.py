@@ -126,14 +126,21 @@ class EvidenceTests(unittest.TestCase):
                 "'import time; time.sleep(10)'])", timeout=".2")
             self.assertEqual(result.returncode, 124)
 
-    def fixture(self, output, runner="macOS", profile="native"):
+    def fixture(self, output, runner="macOS", profile="native", quality_plan=None):
         source = self.source(runner, profile)
+        if quality_plan is not None:
+            source.update(quality_plan=quality_plan, event='schedule' if quality_plan == 'nightly' else 'pull_request',
+                          source_ref='refs/heads/master', event_schedule=report.owned_runner.NIGHTLY_CRON,
+                          event_repository=dict(id=40782766, fork=False, default_branch='master'))
         (output / "source.json").write_text(json.dumps(source))
-        stages, suites = report.plan(profile, runner)
+        stages, suites = report.plan(profile, runner, quality_plan)
         for name in stages:
             (output / f"{name}.json").write_text(json.dumps(
                 {"exit_code": 0, "duration_seconds": .125}))
             (output / f"{name}.log").write_text("stage executed\n")
+        if runner == 'macOS' and profile == 'native' and quality_plan is not None:
+            for name in ('build', 'metagen-build'):
+                (output / (name+'.log')).write_text('0.50 real 1.25 user 0.10 sys\n123456 maximum resident set size\n')
         if runner == "Linux" and profile == "native":
             (output / "gpu-environment.log").write_text("OpenGL renderer string: fixture Mesa\n")
             (output / "gles.log").write_text("1: Actual GLES driver: fixture Mesa / ES3.2\n")
@@ -142,6 +149,53 @@ class EvidenceTests(unittest.TestCase):
             (output / junit).write_text('<testsuite><testcase name="one" time=".2"/>'
                                        '<testcase name="two" time=".3"/></testsuite>')
         return source
+
+    def test_day_nightly_and_missing_legacy_modes_preserve_required_coverage(self):
+        for mode in (None, 'day', 'nightly'):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as directory:
+                output = Path(directory)
+                self.fixture(output, quality_plan=mode)
+                self.assertEqual(self.summary(output), 0)
+                summary = json.loads((output/'summary.json').read_text())
+                self.assertEqual('lint' in summary['stages'], mode != 'day')
+                self.assertEqual((output/'lint.json').exists(), mode != 'day')
+                (output/('api.json' if mode == 'day' else 'lint.json')).unlink()
+                self.assertEqual(self.summary(output), 1)
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory); self.fixture(output, quality_plan='nightly')
+            (output/'lint.json').write_text(json.dumps(dict(exit_code=23, duration_seconds=.1)))
+            self.assertEqual(self.summary(output), 1)
+
+    def test_unknown_null_and_event_conflicting_modes_are_not_reinterpreted(self):
+        for mode, event in [('unknown', 'pull_request'), (None, 'pull_request'),
+                            ({}, 'pull_request'), ('nightly', 'pull_request'), ('day', 'schedule')]:
+            with self.subTest(mode=mode, event=event), tempfile.TemporaryDirectory() as directory:
+                output=Path(directory); source=self.fixture(output, quality_plan='day')
+                source.update(quality_plan=mode, event=event)
+                (output/'source.json').write_text(json.dumps(source))
+                self.assertEqual(self.summary(output), 1)
+                self.assertTrue(json.loads((output/'summary.json').read_text())['report_incomplete'])
+
+    def test_macos_build_timing_and_configured_compile_inventory_are_truthful(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output=Path(directory); self.fixture(output, quality_plan='day')
+            self.assertEqual(self.summary(output), 0)
+            measured=json.loads((output/'build-timings.json').read_text())
+            self.assertEqual(measured['build']['wall_seconds'], .5)
+            self.assertEqual(measured['build']['user_seconds'], 1.25)
+            self.assertEqual(measured['build']['system_seconds'], .1)
+            self.assertEqual(measured['build']['maximum_resident_set_size_bytes'], 123456)
+            self.assertIn('not aggregate', measured['build']['scope'])
+            (output/'build.log').write_text('No native time measurement\n')
+            self.assertEqual(self.summary(output), 1)
+            (output/'CMakeCache.txt').write_text('CMAKE_GENERATOR:INTERNAL=Unix Makefiles\n')
+            (output/'compile_commands.json').write_text(json.dumps([{'file':'a.cpp'}, {'file':'a.cpp'}, {'file':'b.cpp'}]))
+            provenance=report.cache_provenance(output)
+            self.assertEqual(provenance['configuration']['CMAKE_GENERATOR'], 'Unix Makefiles')
+            self.assertEqual(provenance['configured_compile_commands']['entries'], 3)
+            self.assertEqual(provenance['configured_compile_commands']['unique_files'], 2)
+            self.assertEqual(len(provenance['configured_compile_commands']['sha256']), 64)
+            self.assertIn('not a count of executed', provenance['configured_compile_commands']['scope'])
 
     def summary(self, output):
         with patch.dict(os.environ, {"GITHUB_STEP_SUMMARY": ""}), redirect_stdout(io.StringIO()), \

@@ -169,9 +169,32 @@ def stage_plan(repo, source):
                 "csharp-smoke", "csharp-core", "rust-consumer"}, set()
     native = source.get("profile", "native") != "sanitizers"
     linux = source["runner_os"] == "Linux"
+    if repo == "ice":
+        selected = source.get("quality_plan")
+        need("quality_plan" not in source or (isinstance(selected, str) and selected in {"day", "nightly"}),
+             "ice_quality_plan_unknown")
+        if selected == "nightly":
+            repository = source.get("event_repository", {})
+            inputs = source.get("workflow_inputs", {})
+            need(isinstance(repository, dict) and isinstance(inputs, dict), "ice_nightly_route_mismatch")
+            need(source.get("source_ref") == "refs/heads/master"
+                 and repository.get("id") == 40782766 and repository.get("fork") is False
+                 and repository.get("default_branch") == "master"
+                 and ((source.get("event") == "schedule" and source.get("event_schedule") == "17 9 * * *")
+                      or (source.get("event") == "workflow_dispatch" and inputs.get("quality_plan") == "nightly"
+                          and inputs.get("diagnostic") == "none"
+                          and inputs.get("expected_head") == source.get("tested_commit"))),
+                 "ice_nightly_route_mismatch")
+        else:
+            need(source.get("event") != "schedule"
+                 and not (source.get("event") == "workflow_dispatch"
+                          and source.get("workflow_inputs", {}).get("quality_plan") == "nightly"),
+                 "ice_day_route_mismatch")
     if repo == "ice" and native:
         common |= {"path-policy", "quality-tools", "consumer-cache", "metagen-configure", "metagen-build",
-                   "metagen-discovery", "metagen", "rust", "format", "api", "lint"}
+                   "metagen-discovery", "metagen", "rust", "format", "api"}
+        if source.get("quality_plan") != "day":
+            common.add("lint")
         suites.add("metagen")
     if repo == "ignition":
         common.add("ice")

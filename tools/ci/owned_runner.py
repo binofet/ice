@@ -50,11 +50,41 @@ def runtime():
     return result
 
 
+NIGHTLY_CRON = '17 9 * * *'
+
+
+def quality_plan(repo, event=None, payload=None, ref=None, commit=None):
+    event = os.environ.get('GITHUB_EVENT_NAME', 'local') if event is None else event
+    if payload is None:
+        path = os.environ.get('GITHUB_EVENT_PATH')
+        payload = json.loads(Path(path).read_text()) if path else {}
+    inputs = payload.get('inputs', {}) if event == 'workflow_dispatch' else {}
+    require(isinstance(inputs, dict), 'Quality inputs must be an object')
+    selected = inputs.get('quality_plan', 'day')
+    require(isinstance(selected, str) and selected in {'day', 'nightly'}, 'Unknown day/nightly quality plan')
+    if event != 'schedule' and selected != 'nightly':
+        return 'day'
+    repository = payload.get('repository', {})
+    require(isinstance(repository, dict), 'Nightly repository metadata must be an object')
+    require(repo == 'ice' and repository.get('id') == 40782766
+            and repository.get('fork') is False and repository.get('default_branch') == 'master'
+            and (os.environ.get('GITHUB_REF') if ref is None else ref) == 'refs/heads/master',
+            'Nightly quality requires the fixed ICE default branch')
+    if event == 'schedule':
+        require(payload.get('schedule') == NIGHTLY_CRON, 'Unexpected nightly schedule')
+    else:
+        require(event == 'workflow_dispatch' and inputs.get('diagnostic') == 'none'
+                and inputs.get('expected_head') == (os.environ.get('GITHUB_SHA') if commit is None else commit),
+                'Manual nightly quality requires the exact event head and no diagnostic')
+    return 'nightly'
+
+
 def source_scope(repo):
     require(os.environ.get('GITHUB_REPOSITORY') == 'binofet/' + repo, 'Unexpected source repository')
     require(Path(os.environ.get('GITHUB_WORKSPACE', '')).resolve() == ROOT, 'Unexpected source workspace')
     event = os.environ.get('GITHUB_EVENT_NAME')
-    require(event in {'push', 'pull_request', 'workflow_dispatch'}, 'Unsupported source event')
+    require(event in {'push', 'pull_request', 'workflow_dispatch', 'schedule'}, 'Unsupported source event')
+    quality_plan(repo)
     if event == 'pull_request':
         payload = json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text())
         require(payload.get('pull_request', {}).get('head', {}).get('repo', {}).get('full_name') == 'binofet/' + repo,
