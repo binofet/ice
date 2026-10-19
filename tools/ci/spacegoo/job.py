@@ -34,6 +34,28 @@ class Runner:
                                    stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                    stderr=subprocess.STDOUT, start_new_session=True)
         timeout = False
+        group_closed, cleanup_errors = False, {}
+
+        def signal_owned(number):
+            nonlocal group_closed
+            if group_closed:
+                return
+            try:
+                os.killpg(process.pid, number)
+            except ProcessLookupError:
+                # Observed absence ends ownership; never target a reused PGID.
+                group_closed = True
+            except PermissionError as error:
+                cleanup_errors[str(int(number))] = error.errno
+
+        def wait_group(seconds):
+            until = time.monotonic() + seconds
+            while not group_closed:
+                signal_owned(0)
+                if group_closed or time.monotonic() >= until:
+                    break
+                time.sleep(.01)
+
         poller = selectors.DefaultSelector()
         poller.register(process.stdout, selectors.EVENT_READ)
         try:
@@ -59,22 +81,39 @@ class Runner:
         finally:
             # A child retaining stdout cannot keep the stage alive indefinitely. Escaped
             # sessions remain in the systemd cgroup and are killed when that unit stops.
-            for sig in (signal.SIGTERM, signal.SIGKILL):
+            signal_owned(0)
+            signal_owned(signal.SIGTERM)
+            wait_group(.25)
+            signal_owned(signal.SIGKILL)
+            try:
+                process.wait(timeout=.5)
+            except subprocess.TimeoutExpired:
+                # A denied group signal must not bypass direct-child cleanup.
                 try:
-                    os.killpg(process.pid, sig)
-                except ProcessLookupError:
-                    pass
-            process.wait()
+                    process.kill()
+                except PermissionError as error:
+                    cleanup_errors['direct_kill'] = error.errno
+                try:
+                    process.wait(timeout=.5)
+                except subprocess.TimeoutExpired:
+                    cleanup_errors['direct_wait'] = 'timeout'
+            wait_group(.5)
             poller.close()
             process.stdout.close()
         if timeout:
             result = 124
+        elif result == 0 and (not group_closed or process.returncode is None):
+            result = 125
         log = self.output / (name + ".log")
         log.write_bytes((b"[truncated: final 1 MiB]\n" if total > LOG_BYTES else b"") + b"".join(tail))
         row = {"name": name, "command": [str(x) for x in command], "exit_code": result,
                "timed_out": timeout, "seconds": round(time.monotonic() - started, 6),
                "log": log.name, "log_sha256": digest(log), "output_bytes": total,
-               "log_truncated": total > LOG_BYTES}
+               "log_truncated": total > LOG_BYTES, "process_id": process.pid,
+               "process_exit_code": process.returncode, "group_cleanup_complete": group_closed,
+               "process_reaped": process.returncode is not None}
+        if cleanup_errors:
+            row['cleanup_errors'] = cleanup_errors
         self.stages.append(row)
         print(json.dumps(row), flush=True)
         need(result == 0, "Stage failed: " + name)
