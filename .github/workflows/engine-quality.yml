@@ -53,7 +53,7 @@ jobs:
       max-parallel: 3
       matrix:
         os: [ubuntu-24.04, macos-15]
-        cpp: [20, 23]
+        cpp: ${{ fromJSON((github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.quality_plan == 'nightly')) && '[20,23]' || '[23]') }}
         include:
           - os: ubuntu-24.04
             runner: [self-hosted, Linux, X64, ice.cpu]

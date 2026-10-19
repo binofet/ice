@@ -121,6 +121,20 @@ class OwnedRunnerTests(unittest.TestCase):
                     'GITHUB_REF': 'refs/heads/master'}, clear=True):
                 owned.source_scope('ice')
 
+    def test_standard_policy_separates_new_day_from_unmarked_legacy(self):
+        self.assertEqual(owned.standards_plan(dict(quality_plan='day', cpp='20')), 'legacy')
+        for mode, quality, cpp in [('day-cpp23-v1', 'day', '23'),
+                                   ('nightly-cpp20-23-v1', 'nightly', '20'),
+                                   ('nightly-cpp20-23-v1', 'nightly', '23')]:
+            self.assertEqual(owned.standards_plan(dict(standards_plan=mode, quality_plan=quality,
+                                                      cpp=cpp, profile='native')), mode)
+        for mode, quality, cpp, profile in [(None,'day','23','native'), ({},'day','23','native'),
+                ('unknown','day','23','native'), ('day-cpp23-v1','day','20','native'),
+                ('day-cpp23-v1','nightly','23','native'), ('nightly-cpp20-23-v1','day','23','native'),
+                ('nightly-cpp20-23-v1','nightly','20','sanitizers')]:
+            with self.subTest(mode=mode, quality=quality, cpp=cpp, profile=profile), self.assertRaises(ValueError):
+                owned.standards_plan(dict(standards_plan=mode, quality_plan=quality, cpp=cpp, profile=profile))
+
     def test_fresh_project_venv_pip_is_explicit_pinned_and_ignores_personal_pip_configuration(self):
         for repo in ('ice', 'ignition'):
             with self.subTest(repo=repo), tempfile.TemporaryDirectory() as directory:
@@ -275,7 +289,10 @@ class OwnedWorkflowTests(unittest.TestCase):
         self.assertIn('runner: [self-hosted, macOS, ARM64, ' + repo + '.cpu]', text)
         self.assertIn('source "$CI_VENV/bin/activate"', text)
         self.assertIn('/opt/homebrew/bin/python3.12', text)
-        self.assertIn('cpp: [20, 23]', text)
+        if repo == 'ice':
+            self.assertIn('cpp: ${{ fromJSON(', text)
+        else:
+            self.assertIn('cpp: [20, 23]', text)
         expected_shell = 'shell: /usr/local/libexec/ice-family-native-ci/owned-shell {0}'
         if repo == 'ice':
             jobs = self.workflow_jobs(text)
@@ -340,6 +357,14 @@ class OwnedWorkflowTests(unittest.TestCase):
         jobs = self.workflow_jobs(text)
         self.assertIn("cron: '17 9 * * *'", text)
         self.assertIn("&& 'nightly' || 'day'", text.split('jobs:')[0])
+        expression=re.search(r"^        cpp: \$\{\{ fromJSON\((.+)\) \}\}$", jobs['native'], re.MULTILINE).group(1)
+        for event, plan, expected in [('push','day',[23]), ('pull_request','day',[23]),
+                ('workflow_dispatch','day',[23]), ('schedule','day',[20,23]),
+                ('workflow_dispatch','nightly',[20,23])]:
+            github=SimpleNamespace(event_name=event);inputs=SimpleNamespace(quality_plan=plan)
+            actual=json.loads(eval(expression.replace('&&',' and ').replace('||',' or '),
+                                   {'__builtins__':{}}, dict(github=github,inputs=inputs)))
+            self.assertEqual(actual, expected)
         self.assertEqual(self.job_condition(jobs['native']), self.job_condition(jobs['sanitizers']))
         def admitted(event, plan='day', ref='refs/heads/master', expected='', diagnostic='none',
                      fork=False, default='master', same_repo=True):

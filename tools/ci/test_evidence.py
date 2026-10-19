@@ -59,6 +59,13 @@ class EvidenceTests(unittest.TestCase):
                 source = json.loads((output / "source.json").read_text())
                 self.assertEqual(source["tested_base"], "c" * 40)
                 self.assertEqual(source["submodule_pins"], {"tools/metagen": "d" * 40})
+                self.assertEqual(source['standards_plan'], 'day-cpp23-v1')
+                os.environ['CI_CPP'] = '20'
+                with self.assertRaisesRegex(ValueError, 'Standards plan'):
+                    report.identify(output, 'native')
+                self.assertFalse(json.loads((output/'source.json').read_text())['source_validated'])
+                os.environ['CI_CPP'] = '23'
+                report.identify(output, 'native')
                 self.assertNotIn("never-export-this", (output / "source.json").read_text())
                 os.environ["CI_OWNED_RUNNER"] = "1"
                 observed = OwnedRunnerTests().observed()
@@ -126,8 +133,11 @@ class EvidenceTests(unittest.TestCase):
                 "'import time; time.sleep(10)'])", timeout=".2")
             self.assertEqual(result.returncode, 124)
 
-    def fixture(self, output, runner="macOS", profile="native", quality_plan=None):
+    def fixture(self, output, runner="macOS", profile="native", quality_plan=None, standards=..., cpp='23'):
         source = self.source(runner, profile)
+        source['cpp'] = cpp
+        if standards is not ...:
+            source['standards_plan'] = standards
         if quality_plan is not None:
             source.update(quality_plan=quality_plan, event='schedule' if quality_plan == 'nightly' else 'pull_request',
                           source_ref='refs/heads/master', event_schedule=report.owned_runner.NIGHTLY_CRON,
@@ -184,6 +194,21 @@ class EvidenceTests(unittest.TestCase):
                 (output/'source.json').write_text(json.dumps(source))
                 self.assertEqual(self.summary(output), 1)
                 self.assertTrue(json.loads((output/'summary.json').read_text())['report_incomplete'])
+
+    def test_standard_plans_reject_day_cpp20_and_keep_unmarked_evidence_legacy(self):
+        for quality, standards, cpp in [('day', ..., '20'), ('day', 'day-cpp23-v1', '23'),
+                                        ('nightly', 'nightly-cpp20-23-v1', '20'),
+                                        ('nightly', 'nightly-cpp20-23-v1', '23')]:
+            with self.subTest(quality=quality, standards=standards, cpp=cpp), tempfile.TemporaryDirectory() as directory:
+                output=Path(directory);self.fixture(output, quality_plan=quality, standards=standards, cpp=cpp)
+                self.assertEqual(self.summary(output), 0)
+        for quality, standards, cpp in [('day', 'day-cpp23-v1', '20'), ('day', None, '23'),
+                                        ('day', {}, '23'), ('day', 'unknown', '23'),
+                                        ('day', 'nightly-cpp20-23-v1', '23'),
+                                        ('nightly', 'day-cpp23-v1', '23')]:
+            with self.subTest(quality=quality, standards=standards, cpp=cpp), tempfile.TemporaryDirectory() as directory:
+                output=Path(directory);self.fixture(output, quality_plan=quality, standards=standards, cpp=cpp)
+                self.assertEqual(self.summary(output), 1)
 
     def test_macos_build_timing_and_configured_compile_inventory_are_truthful(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -17,6 +17,23 @@ requirements; unknown or event-conflicting markers fail. No passing/skipped
 analysis record is synthesized for a day job. Producer and trusted-gate plans are checked
 independently, and only a complete PR event can satisfy protected PR quality.
 
+Routine implementation, focused local configure/build/test, PRs and default
+pushes use C++23 for every teammate. Do not routinely repeat C++20 validation.
+C++20 compatibility runs nightly. If an actual nightly compatibility failure
+appears, assign one agent to diagnose/fix it and run the targeted C++20
+reproduction/recheck; other agents continue their C++23 work.
+
+New day evidence declares `standards_plan=day-cpp23-v1` and requires exactly
+Linux C++23 native, Mac C++23 native and Linux C++23 sanitizers: three real
+profiles/artifacts. Nightly declares `nightly-cpp20-23-v1`, running both native
+standards on both platforms plus C++23 sanitizers: five profiles. C++20 day jobs
+and artifacts are absent, not synthesized as green/skipped. The two existing
+manual auxiliaries remain completed/skipped on PR runs. Missing standards
+metadata retains the strict five-profile inventory, including accepted 5b
+evidence that already declared day analysis but ran both standards. Analysis
+and standards markers have separate compatibility meanings. Unknown/null/mixed
+or conflicting standards markers fail; nightly never substitutes for PR quality.
+
 The existing five profiles run nightly at `17 9 * * *` UTC (03:17 Boise during
 daylight time, 02:17 during standard time), only while `master` is the fixed
 default branch. Manual qualification selects `quality_plan=nightly`,
@@ -36,7 +53,7 @@ compile-database entry/unique-file counts. Those are configured translation
 units, not executed compiler-process counts. Existing stage tables retain the
 full measured breakdown; no per-translation-unit profiler is introduced.
 
-The native matrix builds C++20 and C++23 with `RelWithDebInfo`, strict warnings and
+The native matrix builds C++23 by day and C++20/C++23 nightly with `RelWithDebInfo`, strict warnings and
 the configured platform compiler. Linux requires preprovisioned GCC 13. macOS uses
 the runner's Xcode compiler and records its version. The separate C++23 Debug
 ASan/UBSan job builds only its declared headless ownership/data/physics/Lua/audio
@@ -44,7 +61,7 @@ test targets. Its CTest regex is used for both discovery and execution; it does
 not represent all CPU tests or graphics coverage. At most three native jobs plus
 one sanitizer job run concurrently in one workflow attempt.
 
-The same four native jobs explicitly enable optional audio playback, adding the
+All native profiles explicitly enable optional audio playback, adding the
 real OpenAL Soft loopback, WAV decoder and isolated native-null rejection CTests
 to discovered CPU inventory. The latter process requires exact `ALSOFT_DRIVERS=null`
 before calling native creation; invoking it without that setting opens nothing.
@@ -62,7 +79,8 @@ Apple provider and its manual qualifier, but never runs native synthesis in CI.
 The manual installed-voice executable is deliberately absent from CTest.
 Instrumentation covers adopted ICE wrapper/decoder/tests, not every upstream DSP translation
 unit. No speaker output, microphone or native TTS provider is exercised. Matrix names
-and the trusted controller's exact five-job inventory remain unchanged.
+remain unchanged; the trusted controller requires the exact three-profile day
+or five-profile legacy/nightly inventory selected by verified source markers.
 
 Each job records the checked-out commit/tree, source head, tested base and declared
 submodule pins. A PR must be the exact event merge commit with matching base/head
@@ -188,10 +206,11 @@ workflow code. Nova owns provider approval, repository/UID isolation and host tr
 Candidate source run steps use `/usr/local/libexec/ice-family-native-ci/owned-shell {0}`.
 It inherits the environment and serializes run children with a 1200-second lock wait;
 it is not a security sandbox or CPU quota and does not coordinate human build/GPU
-use. CMake/CTest worker budgets are Linux2/Mac2, including the Rust proof's nested
-build through `CMAKE_BUILD_PARALLEL_LEVEL`. Native CI starts still need a separately
-released two-worker lane from Root; this source configuration allocates nothing.
-The API audit receives `--workers "$CI_PARALLEL"` explicitly; its default outside
+use. Compile worker budgets are Linux2/Mac10, including the Rust proof's nested
+build through `CMAKE_BUILD_PARALLEL_LEVEL`. CTest and API workers remain two.
+Native CI starts still need a separately admitted resource budget from Root;
+this source configuration allocates nothing. The nightly API audit receives
+`--workers "$CI_API_PARALLEL"` explicitly; its default outside
 that invocation remains four workers. Direct Rust proof compilation passes
 `-Ccodegen-units=1` on its actual compiler command.
 Trusted gate and review-signal control jobs instead use

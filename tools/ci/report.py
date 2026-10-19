@@ -78,6 +78,7 @@ def identify(output, profile):
                    f"/actions/runs/{os.environ['GITHUB_RUN_ID']}")
     record = {"event": os.environ.get("GITHUB_EVENT_NAME", "local"), "tested_commit": tested,
               "quality_plan": selected_plan, "source_ref": os.environ.get("GITHUB_REF"),
+              "standards_plan": "day-cpp23-v1" if selected_plan == "day" else "nightly-cpp20-23-v1",
               "event_schedule": event.get("schedule"),
               "event_repository": {key: event.get("repository", {}).get(key)
                                    for key in ("id", "fork", "default_branch")},
@@ -103,6 +104,11 @@ def identify(output, profile):
             issues.append("Owned runtime: " + str(error))
         record["source_validated"] = not issues
         record["source_issues"] = issues
+    try:
+        owned_runner.standards_plan(record)
+    except ValueError as error:
+        issues.append("Standards plan: " + str(error))
+    record['source_validated'] = not issues
     output.mkdir(parents=True, exist_ok=True)
     write_json(output / "source.json", record)
     if issues:
@@ -236,6 +242,7 @@ def summarize(output):
         if (("quality_plan" in source and selected_plan != observed_plan)
                 or ("quality_plan" not in source and observed_plan != "day")):
             raise ValueError("Source day/nightly plan differs from the event route")
+        owned_runner.standards_plan(source)
     except ValueError as error:
         issues.append(str(error))
     expected, suite_plan = plan(source["profile"], source["runner_os"],
@@ -247,6 +254,7 @@ def summarize(output):
              f"Base ({source.get('base_role', 'unavailable')}): `{source.get('tested_base')}`", "",
              f"Quality plan: `{md(selected_plan if 'quality_plan' in source else 'legacy-strict')}`; "
              "API documentation and Clang-Tidy are required for nightly and legacy native profiles.",
+             f"Standards plan: `{md(source.get('standards_plan', 'legacy-five-profiles'))}`.",
              ]
     if isinstance(source.get("owned_runtime"), dict):
         native = source["owned_runtime"]

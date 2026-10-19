@@ -79,6 +79,21 @@ def quality_plan(repo, event=None, payload=None, ref=None, commit=None):
     return 'nightly'
 
 
+def standards_plan(source):
+    if 'standards_plan' not in source:
+        return 'legacy'
+    selected = source['standards_plan']
+    require(isinstance(selected, str) and selected in {'day-cpp23-v1', 'nightly-cpp20-23-v1'},
+            'Unknown standards plan')
+    expected = 'day' if selected == 'day-cpp23-v1' else 'nightly'
+    require(source.get('quality_plan') == expected, 'Standards and quality plans conflict')
+    allowed = {'23'} if selected == 'day-cpp23-v1' else {'20', '23'}
+    require(str(source.get('cpp')) in allowed, 'C++ standard is outside the declared plan')
+    require(source.get('profile') != 'sanitizers' or str(source.get('cpp')) == '23',
+            'Sanitizers require C++23')
+    return selected
+
+
 def source_scope(repo):
     require(os.environ.get('GITHUB_REPOSITORY') == 'binofet/' + repo, 'Unexpected source repository')
     require(Path(os.environ.get('GITHUB_WORKSPACE', '')).resolve() == ROOT, 'Unexpected source workspace')

@@ -44,7 +44,7 @@ def zipped(files):
     return stream.getvalue()
 
 
-def evidence(repo="ice", os="Linux", cpp="20", profile="native", quality_plan=None):
+def evidence(repo="ice", os="Linux", cpp="20", profile="native", quality_plan=None, standards=...):
     source = {"event": "pull_request", "source_head": HEAD, "tested_base": BASE,
               "tested_candidate_head": HEAD, "tested_commit": MERGE, "runner_os": os,
               "run_url": f"https://github.com/binofet/{repo}/actions/runs/123", "run_attempt": "1",
@@ -52,6 +52,8 @@ def evidence(repo="ice", os="Linux", cpp="20", profile="native", quality_plan=No
               "identity_problems": []}
     if repo != "metagen":
         source.update(cpp=cpp, profile=profile)
+    if standards is not ...:
+        source['standards_plan'] = standards
     if quality_plan is not None:
         source.update(quality_plan=quality_plan)
         if quality_plan == 'nightly':
@@ -89,7 +91,7 @@ def evidence(repo="ice", os="Linux", cpp="20", profile="native", quality_plan=No
 
 
 class FakeAPI:
-    def __init__(self, repo="ice"):
+    def __init__(self, repo="ice", standards=...):
         self.repo = repo
         self.pr = pull(repo)
         self.reviews = [review(repo)]
@@ -99,14 +101,19 @@ class FakeAPI:
                       "repository": {"id": config["id"]}, "head_repository": {"id": config["id"]},
                       "run_attempt": 1, "status": "completed", "conclusion": "success"}]
         self.jobs = [{"name": n, "status": "completed", "conclusion": "success"} for n in config["jobs"]]
+        if repo == 'ice' and standards == 'day-cpp23-v1':
+            self.jobs = [job for job in self.jobs if not job['name'].endswith('C++20')]
         if repo == "ice":
             self.jobs += [{"name": name, "status": "completed", "conclusion": "skipped"} for name in
                           ("Linux / Xvfb readiness diagnostic only", "Refuse invalid manual quality route")]
+        cpp_values = (23,) if repo == 'ice' and standards == 'day-cpp23-v1' else (20, 23)
         identities = ([('Linux', '', 'native'), ('macOS', '', 'native')] if repo == "metagen" else
-                      [(o, str(c), 'native') for o in ('Linux', 'macOS') for c in (20, 23)])
+                      [(o, str(c), 'native') for o in ('Linux', 'macOS') for c in cpp_values])
         if repo == "ice":
             identities.append(('Linux', '23', 'sanitizers'))
-        self.files = {index + 1: evidence(repo, *identity) for index, identity in enumerate(identities)}
+        quality = 'day' if standards == 'day-cpp23-v1' else 'nightly' if standards == 'nightly-cpp20-23-v1' else None
+        self.files = {index + 1: evidence(repo, *identity, quality_plan=quality, standards=standards)
+                      for index, identity in enumerate(identities)}
         self.artifacts = [{"id": index, "name": repo + "-fixture" + str(index) + "-1",
                            "expired": False, "size_in_bytes": 1000,
                            "digest": "sha256:" + gate.sha(zipped(self.files[index])),
@@ -152,6 +159,66 @@ class FakeAPI:
 
 
 class GateTests(unittest.TestCase):
+    def test_new_day_accepts_exact_three_profiles_and_two_skipped_manual_jobs(self):
+        api=FakeAPI(standards='day-cpp23-v1')
+        self.assertEqual(len(api.jobs), 5)
+        self.assertEqual(len(api.artifacts), 3)
+        self.assertEqual({(json.loads(files['source.json'])['runner_os'],
+                          json.loads(files['source.json'])['profile']) for files in api.files.values()},
+                         {('Linux','native'),('macOS','native'),('Linux','sanitizers')})
+        self.assertTrue(all(json.loads(files['source.json'])['cpp']=='23' for files in api.files.values()))
+        self.assertEqual(gate.gate(api,'ice',7)['source-quality']['state'], 'success')
+        self.assertEqual(len(gate.profile_jobs('ice','nightly-cpp20-23-v1')),5)
+
+    def test_day_missing_duplicate_or_extra_profile_is_rejected(self):
+        for mutation in ('missing-job','missing-artifact','duplicate-artifact','extra-cpp20-jobs',
+                         'skipped-cpp20-jobs','extra-cpp20-artifacts','manual-success','manual-queued','manual-missing'):
+            with self.subTest(mutation=mutation):
+                api=FakeAPI(standards='day-cpp23-v1')
+                if mutation=='missing-job': api.jobs.pop(0)
+                elif mutation=='missing-artifact': api.artifacts.pop(0)
+                elif mutation=='duplicate-artifact': api.files[2]=deepcopy(api.files[1])
+                elif mutation in ('extra-cpp20-jobs','skipped-cpp20-jobs'):
+                    api.jobs += [dict(name=name,status='completed',conclusion='skipped' if mutation=='skipped-cpp20-jobs' else 'success') for name in
+                                 ('ubuntu-24.04 / optimized C++20','macos-15 / optimized C++20')]
+                elif mutation=='extra-cpp20-artifacts':
+                    old=FakeAPI()
+                    for index, old_id in ((4,1),(5,3)):
+                        api.files[index]=deepcopy(old.files[old_id])
+                        artifact=deepcopy(api.artifacts[0]);artifact.update(id=index,name='ice-extra'+str(index)+'-1')
+                        api.artifacts.append(artifact)
+                elif mutation=='manual-success': api.jobs[-1]['conclusion']='success'
+                elif mutation=='manual-queued': api.jobs[-1].update(status='queued',conclusion=None)
+                else: api.jobs.pop()
+                for artifact in api.artifacts:
+                    artifact['digest']='sha256:'+gate.sha(zipped(api.files[artifact['id']]))
+                self.assertEqual(gate.gate(api,'ice',7)['source-quality']['state'], 'failure')
+
+    def test_missing_standard_marker_does_not_reinterpret_five_profile_day_evidence(self):
+        api=FakeAPI(standards='day-cpp23-v1')
+        for files in api.files.values():
+            source=json.loads(files['source.json']);del source['standards_plan']
+            summary=json.loads(files['summary.json']);summary['source']=source
+            files.update({'source.json':json.dumps(source),'summary.json':json.dumps(summary)})
+        for artifact in api.artifacts:
+            artifact['digest']='sha256:'+gate.sha(zipped(api.files[artifact['id']]))
+        self.assertEqual(gate.gate(api,'ice',7)['source-quality']['state'], 'failure')
+        self.assertEqual(len(gate.profile_jobs('ice','legacy')),5)
+
+    def test_mixed_unknown_or_conflicting_standard_markers_are_rejected(self):
+        for marker, cpp in [(..., '23'), (None,'23'), ({},'23'), ('unknown','23'),
+                            ('nightly-cpp20-23-v1','23'), ('day-cpp23-v1','20')]:
+            with self.subTest(marker=marker,cpp=cpp):
+                api=FakeAPI(standards='day-cpp23-v1');files=api.files[1]
+                source=json.loads(files['source.json']);source['cpp']=cpp
+                if marker is ...: del source['standards_plan']
+                else: source['standards_plan']=marker
+                summary=json.loads(files['summary.json']);summary['source']=source
+                files.update({'source.json':json.dumps(source),'summary.json':json.dumps(summary)})
+                for artifact in api.artifacts:
+                    artifact['digest']='sha256:'+gate.sha(zipped(api.files[artifact['id']]))
+                self.assertEqual(gate.gate(api,'ice',7)['source-quality']['state'], 'failure')
+
     def test_day_nightly_legacy_producer_and_trusted_plans_match(self):
         with patch.object(sys, 'path', [str(Path(__file__).resolve().parents[1]), *sys.path]):
             import report
@@ -169,6 +236,12 @@ class GateTests(unittest.TestCase):
             source=json.loads(evidence()['source.json']); source['quality_plan']=mode
             with self.assertRaises(ValueError):
                 gate.stage_plan('ice', source)
+        for mode, quality, cpp in [('day-cpp23-v1','day','23'),
+                                   ('nightly-cpp20-23-v1','nightly','20'),
+                                   ('nightly-cpp20-23-v1','nightly','23')]:
+            source=json.loads(evidence(cpp=cpp, quality_plan=quality, standards=mode)['source.json'])
+            self.assertEqual(gate.standards_plan(source), report.owned_runner.standards_plan(source))
+            self.assertEqual(gate.stage_plan('ice',source)[0], set(report.plan('native','Linux',quality)[0]))
 
     def test_explicit_day_omits_documentation_and_lint_but_preserves_contracts(self):
         api=FakeAPI()
@@ -190,9 +263,10 @@ class GateTests(unittest.TestCase):
                 gate.artifact_evidence(zipped(files), 'ice', context, run)
 
     def test_nightly_never_substitutes_for_pull_request_quality(self):
-        files=evidence(quality_plan='nightly')
-        with self.assertRaisesRegex(ValueError, 'artifact_source_summary_run_mismatch'):
-            gate.artifact_evidence(zipped(files), 'ice', dict(head=HEAD, base=BASE), dict(id=123, run_attempt=1))
+        for mode in (..., 'nightly-cpp20-23-v1'):
+            files=evidence(quality_plan='nightly', standards=mode)
+            with self.assertRaisesRegex(ValueError, 'artifact_source_summary_run_mismatch'):
+                gate.artifact_evidence(zipped(files), 'ice', dict(head=HEAD, base=BASE), dict(id=123, run_attempt=1))
         for event in ('schedule', 'workflow_dispatch'):
             api=FakeAPI()
             for run in api.runs:

@@ -161,6 +161,28 @@ def cases(raw, measured=True):
     return rows
 
 
+def standards_plan(source):
+    if "standards_plan" not in source:
+        return "legacy"
+    selected = source["standards_plan"]
+    need(isinstance(selected, str) and selected in {"day-cpp23-v1", "nightly-cpp20-23-v1"},
+         "ice_standards_plan_unknown")
+    expected = "day" if selected == "day-cpp23-v1" else "nightly"
+    need(source.get("quality_plan") == expected, "ice_standards_quality_plan_conflict")
+    allowed = {"23"} if selected == "day-cpp23-v1" else {"20", "23"}
+    need(str(source.get("cpp")) in allowed, "ice_standard_outside_plan")
+    need(source.get("profile") != "sanitizers" or str(source.get("cpp")) == "23",
+         "ice_sanitizers_require_cpp23")
+    return selected
+
+
+def profile_jobs(repo, selected="legacy"):
+    jobs = POLICIES[repo]["jobs"]
+    if repo == "ice" and selected == "day-cpp23-v1":
+        return [name for name in jobs if not name.endswith("C++20")]
+    return jobs
+
+
 def stage_plan(repo, source):
     common = {"evidence", "gate-contract", "dependencies", "configure", "build", "cpu-discovery", "cpu"}
     suites = {"cpu"}
@@ -190,6 +212,7 @@ def stage_plan(repo, source):
                  and not (source.get("event") == "workflow_dispatch"
                           and source.get("workflow_inputs", {}).get("quality_plan") == "nightly"),
                  "ice_day_route_mismatch")
+        standards_plan(source)
     if repo == "ice" and native:
         common |= {"path-policy", "quality-tools", "consumer-cache", "metagen-configure", "metagen-build",
                    "metagen-discovery", "metagen", "rust", "format"}
@@ -284,6 +307,7 @@ def artifact_evidence(raw, repo, context, run):
              "generated_file_inventory_differs")
     identity = (source["runner_os"], str(source.get("cpp", "")), source.get("profile", "native"))
     return {"identity": identity, "candidate": source["tested_commit"], "primary_tests": len(primary_cases),
+            "standards_plan": standards_plan(source) if repo == "ice" else "legacy",
             "zip_sha256": sha(raw), "source_sha256": sha(files[prefix + "source.json"]),
             "summary_sha256": sha(files[prefix + "summary.json"])}
 
@@ -344,14 +368,19 @@ def quality(api, context):
          and run.get("conclusion") == "success", "latest_quality_run_not_successful")
     jobs = api.pages(base + f"/actions/runs/{run['id']}/attempts/{run['run_attempt']}/jobs", "jobs")
     skipped_jobs = config.get("skipped_jobs", [])
-    need(Counter(j.get("name") for j in jobs) == Counter(config["jobs"] + skipped_jobs)
-         and all(j.get("status") == "completed"
-                 and j.get("conclusion") == ("skipped" if j.get("name") in skipped_jobs else "success")
-                 for j in jobs), "required_jobs_missing_failed_cancelled_or_skipped")
+    possible_jobs = [config['jobs'] + skipped_jobs]
+    if repo == 'ice':
+        possible_jobs.append(profile_jobs(repo, 'day-cpp23-v1') + skipped_jobs)
+    job_names = Counter(j.get('name') for j in jobs)
+    need(any(job_names == Counter(names) for names in possible_jobs)
+         and all(j.get('status') == 'completed'
+                 and j.get('conclusion') == ('skipped' if j.get('name') in skipped_jobs else 'success')
+                 for j in jobs), 'required_jobs_missing_failed_cancelled_or_skipped')
     artifacts = api.pages(base + f"/actions/runs/{run['id']}/artifacts", "artifacts", maximum=100)
     if repo != "metagen":
         artifacts = [a for a in artifacts if a.get("name", "").endswith("-" + str(run["run_attempt"]))]
-    need(len(artifacts) == len(config["jobs"]), "artifact_inventory_missing_or_extra")
+    need(len(artifacts) in ({3, 5} if repo == "ice" else {len(config["jobs"])}),
+         "artifact_inventory_missing_or_extra")
     evidence = []
     for artifact in artifacts:
         need(artifact.get("expired") is False and type(artifact.get("id")) is int
@@ -367,8 +396,16 @@ def quality(api, context):
         item["artifact_id"] = artifact["id"]
         item["provider_digest"] = artifact["digest"]
         evidence.append(item)
+    modes = {item['standards_plan'] for item in evidence}
+    need(len(modes) == 1, "matrix_standards_plan_mismatch")
+    selected = modes.pop()
+    required_jobs = profile_jobs(repo, selected)
+    need(job_names == Counter(required_jobs + skipped_jobs),
+         "required_jobs_missing_failed_cancelled_or_skipped")
+    need(len(artifacts) == len(required_jobs), "artifact_inventory_missing_or_extra")
+    standards = (23,) if repo == 'ice' and selected == 'day-cpp23-v1' else (20, 23)
     expected = ({("Linux", "", "native"), ("macOS", "", "native")} if repo == "metagen" else
-                {(os, str(cpp), "native") for os in ("Linux", "macOS") for cpp in (20, 23)})
+                {(os, str(cpp), "native") for os in ("Linux", "macOS") for cpp in standards})
     if repo == "ice":
         expected.add(("Linux", "23", "sanitizers"))
     need(Counter(tuple(e["identity"]) for e in evidence) == Counter(expected), "matrix_evidence_inventory_differs")
