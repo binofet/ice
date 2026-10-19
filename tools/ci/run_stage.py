@@ -34,6 +34,8 @@ def signal_child(state, number):
             os.killpg(process.pid, number)
     except ProcessLookupError:
         pass
+    except PermissionError as error:
+        state['cleanup_signal_error'] = str(error)
 
 
 def kill_child(state):
@@ -48,6 +50,8 @@ def kill_child(state):
         state['cleanup_escalated'] = True
     except ProcessLookupError:
         pass
+    except PermissionError as error:
+        state['cleanup_signal_error'] = str(error)
 
 
 def group_exists(state):
@@ -63,6 +67,11 @@ def group_exists(state):
         # Once absence is observed, never signal a possibly reused group ID.
         state['group_closed'] = True
         return False
+    except PermissionError as error:
+        # A restricted process query cannot prove absence. Preserve that
+        # uncertainty without aborting nonzero cancellation evidence.
+        state['cleanup_observation_error'] = str(error)
+        return True
 
 
 def finish_cancellation(state):
@@ -258,6 +267,9 @@ def run_owned(stage, command, output, timeout_seconds, state):
                           cleanup_escalated=state.get('cleanup_escalated', False),
                           group_cleanup_complete=not group_exists(state),
                           process_id=process.pid if process else None)
+            for field in ('cleanup_signal_error', 'cleanup_observation_error'):
+                if field in state:
+                    record[field] = state[field]
         write_json(output / f"{stage}.json", record)
         emit(f"\n{stage}: exit {result}, {record['duration_seconds']:.3f}s\n".encode())
         if observed_signal == state['signal']:

@@ -199,6 +199,8 @@ os.execv('/bin/bash',['/bin/bash','--noprofile','--norc','-e','-o','pipefail',*s
                     self.assertFalse((root/'forbidden').exists(), 'driver started work after cancellation')
                     self.audit(event='result', record=record, fd9_released=True, descendant_eof=True)
                 finally:
+                    if (root/'console').exists():
+                        self.audit(event='console-tail', text=(root/'console').read_bytes()[-4096:].decode(errors='replace'))
                     if child_group is not None:
                         try: os.killpg(child_group, signal.SIGKILL)
                         except ProcessLookupError: pass
