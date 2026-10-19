@@ -202,8 +202,9 @@ os.execv('/bin/bash',['/bin/bash','--noprofile','--norc','-e','-o','pipefail',*s
                     if child_group is not None:
                         try: os.killpg(child_group, signal.SIGKILL)
                         except ProcessLookupError: pass
-                    try: os.killpg(owner.pid, signal.SIGKILL)
-                    except ProcessLookupError: pass
+                    if owner.poll() is None:
+                        try: os.killpg(owner.pid, signal.SIGKILL)
+                        except ProcessLookupError: pass
                     owner.wait(timeout=3)
                     os.close(fifo)
 
