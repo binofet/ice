@@ -121,6 +121,7 @@ os.execv('/bin/bash',['/bin/bash','--noprofile','--norc','-e','-o','pipefail',*s
             os.mkfifo(root/'alive.fifo')
             fifo = os.open(root/'alive.fifo', os.O_RDONLY | os.O_NONBLOCK)
             child_group = None
+            descendant_eof = False
             with (root/'console').open('wb') as console, (root/'lock').open('a+b') as lock:
                 target = [sys.executable, '-B', str(HELPER), '--timeout-seconds', '10',
                           'cancel-fixture', '--', sys.executable, str(root/'child.py'), str(root),
@@ -142,6 +143,8 @@ os.execv('/bin/bash',['/bin/bash','--noprofile','--norc','-e','-o','pipefail',*s
                     child_group = ready['pgid']
                     self.assertEqual(child_group, ready['pid'])
                     self.assertNotEqual(child_group, os.getpgrp())
+                    self.assertEqual(os.getpgid(ready['owner']), owner.pid,
+                                     'helper belongs to the owned entry group')
                     self.audit(event='owned', pids=[owner.pid, ready['owner'], ready['pid'],
                                                    int((root/'descendant').read_text())],
                                groups=[owner.pid, child_group], route='entry-pid',
@@ -183,6 +186,7 @@ os.execv('/bin/bash',['/bin/bash','--noprofile','--norc','-e','-o','pipefail',*s
                         self.assertTrue(closed, 'lock released before descendant cleanup')
                     self.assertTrue(select.select([fifo], [], [], 4)[0])
                     self.assertEqual(os.read(fifo, 1), b'', 'canceled descendant still live')
+                    descendant_eof = True
                     until = time.monotonic()+2
                     while True:
                         try:
@@ -208,6 +212,25 @@ os.execv('/bin/bash',['/bin/bash','--noprofile','--norc','-e','-o','pipefail',*s
                         try: os.killpg(owner.pid, signal.SIGKILL)
                         except ProcessLookupError: pass
                     owner.wait(timeout=3)
+                    if child_group is not None:
+                        if not descendant_eof:
+                            self.assertTrue(select.select([fifo], [], [], 4)[0],
+                                            'teardown descendant did not exit')
+                            self.assertEqual(os.read(fifo, 1), b'', 'teardown descendant still live')
+                        # Bash may already be gone while its helper finalizes
+                        # evidence. fd9 remains held until every such writer
+                        # exits; wait for that observation before rmtree.
+                        until = time.monotonic()+4
+                        while True:
+                            try:
+                                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                                break
+                            except BlockingIOError:
+                                self.assertLess(time.monotonic(), until,
+                                                'teardown helper still holds fd9')
+                                time.sleep(.01)
+                        self.audit(event='teardown', helper_pid=ready['owner'],
+                                   descendant_eof=True, fd9_released=True)
                     os.close(fifo)
 
     def test_bash_exec_entry_pid_keeps_fd9_until_cleanup(self):
