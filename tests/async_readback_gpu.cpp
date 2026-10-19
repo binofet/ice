@@ -272,6 +272,7 @@ void exercise(backend_kind backend, const std::filesystem::path &root,
 } // namespace
 int main(int argc, char **argv) {
 	try {
+		std::cout << std::unitbuf;
 		check(argc == 4,
 		      "Usage: ice_async_readback_gpu_tests metal|gl existing-mesh-shader-dir new-output-dir");
 		backend_kind backend;
