@@ -41,7 +41,12 @@ the installation. Owned workflow jobs supply only their short-lived `GH_TOKEN`; 
 
 The gate resolves the actual default quality workflow ID/path, selects its latest
 `pull_request` run for the current source head and requires every configured job
-to complete successfully. Push runs never substitute for merge-candidate tests.
+to complete successfully. ICE also requires exactly its two named manual-only
+jobs to be completed and skipped during ordinary PR quality runs. Those rows
+supply no quality coverage or artifacts; missing, duplicate, unknown or executed
+auxiliary jobs reject the run. The five quality profiles and five artifacts remain
+mandatory. Other repositories admit no ICE auxiliary rows.
+Push runs never substitute for merge-candidate tests.
 It downloads only the finite current run's actual unexpired artifact IDs, with
 bounded ZIP bytes/expansion/file counts, safe paths/types, and project-only roots.
 Source/summary identity must match the current head/base/run; all matrix jobs must

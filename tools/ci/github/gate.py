@@ -27,7 +27,8 @@ ROOT = "https://api.github.com"
 POLICIES = {
     "ice": {"id": 40782766, "branch": "master", "private": False, "workflow": "engine-quality.yml", "workflow_name": "Engine quality",
             "jobs": [f"{os} / optimized C++{cpp}" for os in ("ubuntu-24.04", "macos-15") for cpp in (20, 23)]
-                    + ["Ubuntu / scoped ASan+UBSan C++23"]},
+                    + ["Ubuntu / scoped ASan+UBSan C++23"],
+            "skipped_jobs": ["Linux / Xvfb readiness diagnostic only", "Refuse invalid manual quality route"]},
     "metagen": {"id": 1421012730, "branch": "main", "private": True, "workflow": "conformance.yml", "workflow_name": "Standalone conformance",
                 "jobs": [f"Metagen conformance ({os})" for os in ("ubuntu-24.04", "macos-15")]},
     "ignition": {"id": 1420999231, "branch": "main", "private": True, "workflow": "quality.yml", "workflow_name": "Ignition quality",
@@ -319,9 +320,11 @@ def quality(api, context):
     need(run.get("head_sha") == context["head"] and run.get("status") == "completed"
          and run.get("conclusion") == "success", "latest_quality_run_not_successful")
     jobs = api.pages(base + f"/actions/runs/{run['id']}/attempts/{run['run_attempt']}/jobs", "jobs")
-    need(Counter(j.get("name") for j in jobs) == Counter(config["jobs"])
-         and all(j.get("status") == "completed" and j.get("conclusion") == "success" for j in jobs),
-         "required_jobs_missing_failed_cancelled_or_skipped")
+    skipped_jobs = config.get("skipped_jobs", [])
+    need(Counter(j.get("name") for j in jobs) == Counter(config["jobs"] + skipped_jobs)
+         and all(j.get("status") == "completed"
+                 and j.get("conclusion") == ("skipped" if j.get("name") in skipped_jobs else "success")
+                 for j in jobs), "required_jobs_missing_failed_cancelled_or_skipped")
     artifacts = api.pages(base + f"/actions/runs/{run['id']}/artifacts", "artifacts", maximum=100)
     if repo != "metagen":
         artifacts = [a for a in artifacts if a.get("name", "").endswith("-" + str(run["run_attempt"]))]

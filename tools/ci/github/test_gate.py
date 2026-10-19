@@ -93,6 +93,9 @@ class FakeAPI:
                       "repository": {"id": config["id"]}, "head_repository": {"id": config["id"]},
                       "run_attempt": 1, "status": "completed", "conclusion": "success"}]
         self.jobs = [{"name": n, "status": "completed", "conclusion": "success"} for n in config["jobs"]]
+        if repo == "ice":
+            self.jobs += [{"name": name, "status": "completed", "conclusion": "skipped"} for name in
+                          ("Linux / Xvfb readiness diagnostic only", "Refuse invalid manual quality route")]
         identities = ([('Linux', '', 'native'), ('macOS', '', 'native')] if repo == "metagen" else
                       [(o, str(c), 'native') for o in ('Linux', 'macOS') for c in (20, 23)])
         if repo == "ice":
@@ -150,6 +153,57 @@ class GateTests(unittest.TestCase):
                 self.assertEqual(result["reviewed-head"]["state"], "success")
                 self.assertEqual(result["source-quality"]["state"], "success", result)
                 self.assertFalse(result["merge_performed"])
+
+    def test_ice_exact_five_quality_and_two_skipped_manual_jobs_accept(self):
+        api = FakeAPI()
+        self.assertEqual(len(api.jobs), 7)
+        self.assertEqual(len(api.artifacts), 5)
+        result = gate.gate(api, "ice", 7)
+        self.assertEqual(result["source-quality"]["state"], "success", result)
+
+    def test_ice_auxiliary_inventory_rejects_missing_duplicate_or_unknown_rows(self):
+        for mutation in (lambda a: a.jobs.pop(),
+                         lambda a: a.jobs.append(deepcopy(a.jobs[-1])),
+                         lambda a: a.jobs.append({"name": "unexpected auxiliary", "status": "completed",
+                                                  "conclusion": "skipped"})):
+            with self.subTest(mutation=mutation):
+                api = FakeAPI()
+                mutation(api)
+                self.assertEqual(gate.gate(api, "ice", 7)["source-quality"]["state"], "failure")
+
+    def test_ice_manual_jobs_must_be_completed_and_skipped(self):
+        for index in (5, 6):
+            for status, conclusion in (("completed", "success"), ("completed", "failure"),
+                                       ("completed", "cancelled"), ("completed", "neutral"),
+                                       ("queued", None), ("in_progress", None)):
+                with self.subTest(index=index, status=status, conclusion=conclusion):
+                    api = FakeAPI()
+                    api.jobs[index].update(status=status, conclusion=conclusion)
+                    self.assertEqual(gate.gate(api, "ice", 7)["source-quality"]["state"], "failure")
+
+    def test_ice_skipped_manual_jobs_cannot_replace_required_profile_or_artifact(self):
+        for mutation in (lambda a: a.jobs[0].update(conclusion="skipped"),
+                         lambda a: a.jobs.pop(0), lambda a: a.artifacts.pop(),
+                         lambda a: a.artifacts.append(deepcopy(a.artifacts[-1]))):
+            with self.subTest(mutation=mutation):
+                api = FakeAPI()
+                mutation(api)
+                self.assertEqual(gate.gate(api, "ice", 7)["source-quality"]["state"], "failure")
+
+    def test_manual_diagnostic_success_never_substitutes_for_quality(self):
+        api = FakeAPI()
+        for job in api.jobs[:5]:
+            job["conclusion"] = "skipped"
+        api.jobs[5]["conclusion"] = "success"
+        self.assertEqual(gate.gate(api, "ice", 7)["source-quality"]["state"], "failure")
+
+    def test_other_repositories_refuse_ice_manual_auxiliary_rows(self):
+        for repo in ("metagen", "ignition"):
+            with self.subTest(repo=repo):
+                api = FakeAPI(repo)
+                api.jobs.append({"name": "Linux / Xvfb readiness diagnostic only", "status": "completed",
+                                 "conclusion": "skipped"})
+                self.assertEqual(gate.gate(api, repo, 7)["source-quality"]["state"], "failure")
 
     def test_gate_contract_stage_is_required_for_every_repository_and_profile(self):
         for repo, profile in (("ice", "native"), ("ice", "sanitizers"),
