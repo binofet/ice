@@ -133,6 +133,19 @@ X11 readiness, GLX success, native quality or an upstream fault's root cause.
 The original red run remains red. Actual readiness/renderer output and separate
 post-run idle evidence still require a separately admitted owned attempt.
 
+The normal Linux `render_checks.py` parent now uses the same bounded Mesa
+descriptor validator and sets the exclusive EGL filename before launching each
+Xvfb stage. Invalid or missing descriptors return 64 before any stage, with a
+refusal reason on stderr; existing finalization treats missing required results
+as failure. Successful validation prints only the descriptor path/hash and
+permits all ten original stages, each with its existing deadline and real exit.
+It does not run the full diagnostic host preflight or infer renderer coverage
+from that printout. Actual GLX output and native results remain required. The
+separate GLES workflow, normal job matrix, source guards and report semantics
+are unchanged. `graphics_commands_invoked` in future diagnostic records describes
+only that preflight phase's own commands, without claiming prior loader or GPU
+initialization was measured.
+
 
 ## Owned executor source contract
 

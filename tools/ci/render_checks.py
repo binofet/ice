@@ -7,6 +7,8 @@ from pathlib import Path
 import subprocess
 import sys
 
+import xvfb_readiness as xvfb
+
 
 def cases(build="build/ci"):
     display = ["xvfb-run", "-a", "-e", "/dev/stderr", "-s", "-screen 0 1280x800x24 -nolisten tcp"]
@@ -28,11 +30,19 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--build", default="build/ci")
     args = parser.parse_args()
+    try:
+        descriptor = xvfb.mesa_descriptor({})
+    except (OSError, ValueError) as error:
+        reason = str(error) if isinstance(error, xvfb.PreflightError) else type(error).__name__
+        print('Mesa EGL descriptor refused before Xvfb: ' + reason, file=sys.stderr)
+        return 64
     environment = dict(os.environ, LANG="C.UTF-8", XMODIFIERS="@im=none",
-                       LIBGL_ALWAYS_SOFTWARE="1", LP_NUM_THREADS=os.environ.get("CI_PARALLEL", "4"))
+                       LIBGL_ALWAYS_SOFTWARE="1", LP_NUM_THREADS=os.environ.get("CI_PARALLEL", "4"),
+                       __EGL_VENDOR_LIBRARY_FILENAMES=str(xvfb.MESA_JSON))
     for name in ("MESA_GL_VERSION_OVERRIDE", "MESA_GLSL_VERSION_OVERRIDE",
                  "MESA_GLES_VERSION_OVERRIDE"):
         environment.pop(name, None)
+    print('EGL vendor descriptor: ' + str(xvfb.MESA_JSON) + ' sha256=' + descriptor['sha256'], flush=True)
     failed = False
     for name, command in cases(args.build):
         result = subprocess.run([sys.executable, str(Path(__file__).with_name("run_stage.py")),

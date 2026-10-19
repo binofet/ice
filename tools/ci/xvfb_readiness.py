@@ -134,20 +134,8 @@ def package_evidence():
         return dict(available=False, error_class=type(error).__name__)
 
 
-def preflight(record, inherited):
-    credentials = dict(uid=os.getuid(), euid=os.geteuid(), gid=os.getgid(), egid=os.getegid())
-    record['credentials'] = credentials
-    require(credentials['uid'] == credentials['euid'] == 984, 'owned-account-mismatch')
-    require(credentials['gid'] == credentials['egid'], 'gid-egid-mismatch')
-    record['inherited_selectors'] = selector_evidence(inherited)
-    require(not any(inherited.get(name) for name in CONFLICTS), 'conflicting-selector')
-    environment = dict(inherited, LANG='C.UTF-8', XMODIFIERS='@im=none',
-                       LIBGL_ALWAYS_SOFTWARE='1', LP_NUM_THREADS='2',
-                       __EGL_VENDOR_LIBRARY_FILENAMES=str(MESA_JSON))
-    for name in OVERRIDES:
-        environment.pop(name, None)
-    record['effective_selectors'] = selector_evidence(environment)
-
+def mesa_descriptor(record):
+    """The same bounded Mesa descriptor check for diagnostic and normal Xvfb."""
     raw, descriptor = observe_file(MESA_JSON, MAX_DESCRIPTOR)
     record['descriptor'] = dict(descriptor, actual_bytes_base64=base64.b64encode(raw).decode('ascii'))
     system_file(descriptor)
@@ -170,6 +158,23 @@ def preflight(record, inherited):
         require(matches, 'mesa-library-path-mismatch')
     record['descriptor'].update(file_format_version=document['file_format_version'],
                                 library_path=library)
+    return record['descriptor']
+
+
+def preflight(record, inherited):
+    credentials = dict(uid=os.getuid(), euid=os.geteuid(), gid=os.getgid(), egid=os.getegid())
+    record['credentials'] = credentials
+    require(credentials['uid'] == credentials['euid'] == 984, 'owned-account-mismatch')
+    require(credentials['gid'] == credentials['egid'], 'gid-egid-mismatch')
+    record['inherited_selectors'] = selector_evidence(inherited)
+    require(not any(inherited.get(name) for name in CONFLICTS), 'conflicting-selector')
+    environment = dict(inherited, LANG='C.UTF-8', XMODIFIERS='@im=none',
+                       LIBGL_ALWAYS_SOFTWARE='1', LP_NUM_THREADS='2',
+                       __EGL_VENDOR_LIBRARY_FILENAMES=str(MESA_JSON))
+    for name in OVERRIDES:
+        environment.pop(name, None)
+    record['effective_selectors'] = selector_evidence(environment)
+    mesa_descriptor(record)
 
     record['files'] = {}
     for name, path in SYSTEM_PATHS.items():

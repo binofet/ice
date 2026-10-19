@@ -17,6 +17,7 @@ import report
 from test_owned_runner import OwnedRunnerTests, OwnedWorkflowTests
 from test_resource_limits import ResourceLimitTests
 from test_xvfb_readiness import XvfbReadinessTests
+from test_render_checks import RenderChecksTests
 import check_paths
 
 
