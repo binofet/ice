@@ -167,6 +167,23 @@ class OwnedRunnerTests(unittest.TestCase):
 
 
 class OwnedWorkflowTests(unittest.TestCase):
+    def workflow_jobs(self, text):
+        section = text.split('\njobs:\n', 1)[1]
+        headers = list(re.finditer(r'^  ([a-z][a-z0-9-]*):\n', section, re.MULTILINE))
+        names = [match.group(1) for match in headers]
+        self.assertEqual(len(names), len(set(names)), 'Duplicate job owner')
+        return {match.group(1): section[match.end():headers[index + 1].start()
+                if index + 1 < len(headers) else len(section)]
+                for index, match in enumerate(headers)}
+
+    def job_condition(self, job):
+        match = re.search(r'^    if: ([^\n]+)\n', job, re.MULTILINE)
+        self.assertIsNotNone(match, 'An owned job requires explicit routing')
+        value = match.group(1)
+        if value == '>-':
+            value = re.match(r'(?:      [^\n]*\n)+', job[match.end():]).group(0)
+        return ' '.join(value.split())
+
     def test_current_control_and_signal_sources_equal_maintained_templates(self):
         root = Path(__file__).resolve().parents[2]
         repo = 'ice' if (root / '.github/workflows/engine-quality.yml').is_file() else 'ignition'
@@ -190,10 +207,19 @@ class OwnedWorkflowTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[2]
         engine = (root / '.github/workflows/engine-quality.yml').is_file()
         paths = [('.github/workflows/engine-quality.yml' if engine else '.github/workflows/quality.yml',
-                  2 if engine else 1), ('.github/workflows/family-gate.yml', 1),
+                  3 if engine else 1), ('.github/workflows/family-gate.yml', 1),
                  ('tools/ci/github/templates/family-gate.yml', 1)]
         for path, expected in paths:
             text = (root / path).read_text()
+            if engine and path == '.github/workflows/engine-quality.yml':
+                jobs = self.workflow_jobs(text)
+                self.assertEqual(set(jobs), {'native', 'sanitizers', 'xvfb-readiness',
+                                             'reject-invalid-manual-route'})
+                for owner in ('native', 'sanitizers', 'xvfb-readiness'):
+                    with self.subTest(checkout_owner=owner):
+                        self.assertEqual(jobs[owner].count('uses: actions/checkout@'), 1)
+                self.assertNotIn('uses: actions/checkout@', jobs['reject-invalid-manual-route'])
+                self.assertIn('ref: ${{ github.sha }}', jobs['xvfb-readiness'])
             blocks = re.findall(r'^        uses: (actions/checkout@[a-f0-9]{40})[^\n]*\n'
                                 r'        with:\n((?:          [^\n]*\n)+)', text, re.MULTILINE)
             self.assertEqual(len(blocks), expected)
@@ -220,14 +246,61 @@ class OwnedWorkflowTests(unittest.TestCase):
         self.assertIn('source "$CI_VENV/bin/activate"', text)
         self.assertIn('/opt/homebrew/bin/python3.12', text)
         self.assertIn('cpp: [20, 23]', text)
-        shells = [line.strip() for line in text.splitlines() if line.strip().startswith('shell:')]
-        self.assertEqual(shells, ['shell: /usr/local/libexec/ice-family-native-ci/owned-shell {0}']
-                         * (2 if repo == 'ice' else 1))
+        expected_shell = 'shell: /usr/local/libexec/ice-family-native-ci/owned-shell {0}'
+        if repo == 'ice':
+            jobs = self.workflow_jobs(text)
+            self.assertEqual(set(jobs), {'native', 'sanitizers', 'xvfb-readiness',
+                                         'reject-invalid-manual-route'})
+            for owner, block in jobs.items():
+                with self.subTest(source_owner=owner):
+                    shells = [line.strip() for line in block.splitlines()
+                              if line.strip().startswith('shell:')]
+                    self.assertEqual(shells, [expected_shell])
+            for owner in ('native', 'sanitizers'):
+                self.assertIn('source "$CI_VENV/bin/activate"', jobs[owner])
+                self.assertIn('tools/ci/test_evidence.py', jobs[owner])
+        else:
+            shells = [line.strip() for line in text.splitlines() if line.strip().startswith('shell:')]
+            self.assertEqual(shells, [expected_shell])
         self.assertNotIn('sudo ', text)
         self.assertNotIn('apt-get', text)
         self.assertNotIn('rustup toolchain install', text)
         self.assertNotIn('actions/setup-python', text)
         self.assertNotIn('--parallel 4', text)
+
+
+    def test_ice_manual_diagnostic_route_is_exact_and_cannot_replace_normal_quality(self):
+        root = Path(__file__).resolve().parents[2]
+        path = root / '.github/workflows/engine-quality.yml'
+        if not path.is_file():
+            return  # Ignition has no ICE diagnostic route; original ownership checks still apply.
+        jobs = self.workflow_jobs(path.read_text())
+        fixed = "'refs/heads/codex/xvfb-readiness-20261019'"
+        normal = "(inputs.diagnostic == 'none' && inputs.expected_head == '' && github.ref != " + fixed + ")"
+        actual_diagnostic = ("github.actor == 'binofet' && github.run_attempt == 1 && "
+            "inputs.diagnostic == 'xvfb-readiness-v1' && inputs.expected_head == github.sha && github.ref == " + fixed)
+        repository = ("github.repository == 'binofet/ice' && github.event.repository.id == 40782766 && "
+            "github.event.repository.fork == false && github.event_name == 'workflow_dispatch'")
+        expected_diagnostic = (repository + " && github.actor == 'binofet' && github.run_attempt == 1 && "
+            "github.ref == " + fixed + " && inputs.diagnostic == 'xvfb-readiness-v1' && inputs.expected_head == github.sha")
+        expected_refusal = repository + " && !(" + normal + " || (" + actual_diagnostic + "))"
+        original_quality = ("github.repository == 'binofet/ice' && (github.event_name != 'pull_request' || "
+            "github.event.pull_request.head.repo.full_name == github.repository)")
+        for owner in ('native', 'sanitizers'):
+            self.assertEqual(self.job_condition(jobs[owner]), original_quality +
+                " && (github.event_name != 'workflow_dispatch' || " + normal + ")")
+        self.assertEqual(self.job_condition(jobs['xvfb-readiness']), expected_diagnostic)
+        self.assertEqual(self.job_condition(jobs['reject-invalid-manual-route']), expected_refusal)
+        refusal = jobs['reject-invalid-manual-route']
+        self.assertIn('exit 64', refusal)
+        for forbidden in ('actions/checkout@', 'run_stage.py', 'xvfb_readiness.py', 'cmake', 'glxinfo'):
+            self.assertNotIn(forbidden, refusal)
+        diagnostic = jobs['xvfb-readiness']
+        self.assertIn('os.getuid() == os.geteuid() == 984', diagnostic)
+        self.assertIn('native_quality_qualified=False', diagnostic)
+        self.assertIn('tools/ci/xvfb_readiness.py', diagnostic)
+        self.assertNotIn('tools/ci/report.py summary', diagnostic)
+        self.assertNotIn('tools/ci/report.py publication', diagnostic)
 
 
 if __name__ == '__main__':
