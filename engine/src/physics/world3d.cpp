@@ -849,16 +849,16 @@ world3d::capture_collider(body_id body, collider_geometry3d_limits limits) const
 	auto resolved = state_->resolve(body);
 	if (!resolved)
 		return ice::unexpected(resolved.error());
-	const auto &entry = state_->slots[*resolved];
+	const auto &entry  = state_->slots[*resolved];
 	const auto &bodies = state_->system.GetBodyInterface();
-	JPH::RVec3 position;
-	JPH::Quat rotation;
+	JPH::RVec3  position;
+	JPH::Quat   rotation;
 	bodies.GetPositionAndRotation(entry.native, position, rotation);
 	collider_geometry3d result;
 	result.position = portable(position);
 	result.rotation = portable(rotation);
-	result.motion = entry.motion;
-	result.sensor = bodies.IsSensor(entry.native);
+	result.motion   = entry.motion;
+	result.sensor   = bodies.IsSensor(entry.native);
 	if (entry.character_proxy) {
 		result.shape = collider_unavailable3d{collider_unsupported3d::character_proxy};
 		return result;
@@ -869,7 +869,7 @@ world3d::capture_collider(body_id body, collider_geometry3d_limits limits) const
 	switch (shape->GetSubType()) {
 	case JPH::EShapeSubType::Box: {
 		const auto &box = static_cast<const JPH::BoxShape &>(*shape);
-		result.shape = collider_box3d{portable(box.GetHalfExtent()), box.GetConvexRadius()};
+		result.shape    = collider_box3d{portable(box.GetHalfExtent()), box.GetConvexRadius()};
 		return result;
 	}
 	case JPH::EShapeSubType::Sphere:
@@ -893,13 +893,13 @@ world3d::capture_collider(body_id body, collider_geometry3d_limits limits) const
 	}
 	// Two bounded passes avoid an unbounded stats walk, speculative maximum-size allocation,
 	// vector growth past the payload budget, or an incomplete surface reported as complete.
-	constexpr int chunk = JPH::Shape::cGetTrianglesMinTrianglesRequested;
+	constexpr int                      chunk = JPH::Shape::cGetTrianglesMinTrianglesRequested;
 	std::array<JPH::Float3, chunk * 3> vertices;
 	const auto maximum = std::min(limits.triangles, limits.bytes / (3 * sizeof(math::vec3)));
 	JPH::Shape::GetTrianglesContext context;
-	auto start = [&] {
-		shape->GetTrianglesStart(context, JPH::AABox::sBiggest(), shape->GetCenterOfMass(),
-		                         JPH::Quat::sIdentity(), JPH::Vec3::sReplicate(1));
+	auto                            start = [&] {
+        shape->GetTrianglesStart(context, JPH::AABox::sBiggest(), shape->GetCenterOfMass(),
+		                                                    JPH::Quat::sIdentity(), JPH::Vec3::sReplicate(1));
 	};
 	start();
 	std::size_t count = 0;
@@ -927,7 +927,7 @@ world3d::capture_collider(body_id body, collider_geometry3d_limits limits) const
 			if (found < 0 || found > chunk || std::size_t(found) > count - written)
 				return ice::unexpected(diagnostic{"Native collider changed during readback"});
 			for (int i = 0; i < found * 3; ++i) {
-				const auto &v = vertices[std::size_t(i)];
+				const auto      &v = vertices[std::size_t(i)];
 				const math::vec3 point{v.x, v.y, v.z};
 				if (!finite(point))
 					return ice::unexpected(diagnostic{"Invalid cooked collider vertex"});

@@ -32,11 +32,12 @@ struct collider_unavailable3d {
 /// Owned actual native geometry and accepted rigid pose. No native/cook/body owner is retained.
 /// This is a current owner-thread readback, not permission, occupancy or an event observation.
 struct collider_geometry3d {
-	math::vec3 position{0};
-	math::quat rotation{1, 0, 0, 0};
+	math::vec3  position{0};
+	math::quat  rotation{1, 0, 0, 0};
 	motion_type motion = motion_type::static_body;
-	bool sensor = false;
-	std::variant<collider_unavailable3d, collider_box3d, collider_sphere3d,
-	             collider_capsule3d, collider_triangles3d> shape;
+	bool        sensor = false;
+	std::variant<collider_unavailable3d, collider_box3d, collider_sphere3d, collider_capsule3d,
+	             collider_triangles3d>
+	    shape;
 };
 } // namespace ice::physics
