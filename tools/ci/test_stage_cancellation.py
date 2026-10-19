@@ -121,6 +121,7 @@ os.execv('/bin/bash',['/bin/bash','--noprofile','--norc','-e','-o','pipefail',*s
             os.mkfifo(root/'alive.fifo')
             fifo = os.open(root/'alive.fifo', os.O_RDONLY | os.O_NONBLOCK)
             child_group = None
+            descendant_eof = False
             with (root/'console').open('wb') as console, (root/'lock').open('a+b') as lock:
                 target = [sys.executable, '-B', str(HELPER), '--timeout-seconds', '10',
                           'cancel-fixture', '--', sys.executable, str(root/'child.py'), str(root),
@@ -185,6 +186,7 @@ os.execv('/bin/bash',['/bin/bash','--noprofile','--norc','-e','-o','pipefail',*s
                         self.assertTrue(closed, 'lock released before descendant cleanup')
                     self.assertTrue(select.select([fifo], [], [], 4)[0])
                     self.assertEqual(os.read(fifo, 1), b'', 'canceled descendant still live')
+                    descendant_eof = True
                     until = time.monotonic()+2
                     while True:
                         try:
@@ -211,9 +213,10 @@ os.execv('/bin/bash',['/bin/bash','--noprofile','--norc','-e','-o','pipefail',*s
                         except ProcessLookupError: pass
                     owner.wait(timeout=3)
                     if child_group is not None:
-                        self.assertTrue(select.select([fifo], [], [], 4)[0],
-                                        'teardown descendant did not exit')
-                        self.assertEqual(os.read(fifo, 1), b'', 'teardown descendant still live')
+                        if not descendant_eof:
+                            self.assertTrue(select.select([fifo], [], [], 4)[0],
+                                            'teardown descendant did not exit')
+                            self.assertEqual(os.read(fifo, 1), b'', 'teardown descendant still live')
                         # Bash may already be gone while its helper finalizes
                         # evidence. fd9 remains held until every such writer
                         # exits; wait for that observation before rmtree.
