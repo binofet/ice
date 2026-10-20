@@ -88,6 +88,7 @@ jobs:
           submodules: false
 
       - name: Identify exact tested source, head and base
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
         run: |
           "$CI_BOOTSTRAP_PYTHON" tools/ci/report.py init --profile native
 
@@ -145,6 +146,7 @@ jobs:
           exec python3 tools/ci/run_stage.py metagen-build -- cmake --build build/metagen-ci --parallel "$CI_PARALLEL"
 
       - name: Discover optional consumer CTests
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
         if: ${{ !cancelled() && steps.metagen_build.outcome == 'success' }}
         run: |
           source "$CI_VENV/bin/activate"
@@ -196,6 +198,7 @@ jobs:
           exec python3 tools/ci/run_stage.py build -- cmake --build build/ci --parallel "$CI_PARALLEL"
 
       - name: Discover actual CPU test inventory
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           source "$CI_VENV/bin/activate"
@@ -268,6 +271,7 @@ jobs:
             --parallel "$CI_PARALLEL" --target ice_gles_tests ice_acquisition_lease_tests ice_public_headers
 
       - name: Discover exact EGL GLES and lease inventory
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
         if: ${{ !cancelled() && runner.os == 'Linux' && steps.gles_build.outcome == 'success' }}
         run: |
           source "$CI_VENV/bin/activate"
@@ -286,6 +290,7 @@ jobs:
             --output-junit "$CI_EVIDENCE_DIR/gles.xml"
 
       - name: Finalize exact-source, inventory, per-case timings and coverage report
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
         if: ${{ always() && steps.checkout.outcome == 'success' }}
         run: |
           "$CI_BOOTSTRAP_PYTHON" tools/ci/report.py summary
@@ -301,6 +306,7 @@ jobs:
           retention-days: 7
 
       - name: Verify provider upload receipt and finalization
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
         if: ${{ always() && steps.checkout.outcome == 'success' }}
         run: |
           "$CI_BOOTSTRAP_PYTHON" tools/ci/report.py publication \
@@ -354,6 +360,7 @@ jobs:
           submodules: false
 
       - name: Identify exact tested source, head and base
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
         run: |
           "$CI_BOOTSTRAP_PYTHON" tools/ci/report.py init --profile sanitizers
 
@@ -398,6 +405,7 @@ jobs:
             ice_android_speech_tests
 
       - name: Discover exact sanitizer test inventory
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           source "$CI_VENV/bin/activate"
@@ -414,6 +422,7 @@ jobs:
             --output-junit "$CI_EVIDENCE_DIR/cpu.xml"
 
       - name: Finalize scoped sanitizer evidence
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
         if: ${{ always() && steps.checkout.outcome == 'success' }}
         run: |
           "$CI_BOOTSTRAP_PYTHON" tools/ci/report.py summary
@@ -429,6 +438,7 @@ jobs:
           retention-days: 7
 
       - name: Verify provider upload receipt and finalization
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
         if: ${{ always() && steps.checkout.outcome == 'success' }}
         run: |
           "$CI_BOOTSTRAP_PYTHON" tools/ci/report.py publication \

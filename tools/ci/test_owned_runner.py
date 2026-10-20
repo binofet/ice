@@ -300,7 +300,8 @@ class OwnedWorkflowTests(unittest.TestCase):
                                          'reject-invalid-manual-route'})
             for owner, block in jobs.items():
                 with self.subTest(source_owner=owner):
-                    shells = [line.strip() for line in block.splitlines()
+                    defaults = block.split('    steps:\n', 1)[0]
+                    shells = [line.strip() for line in defaults.splitlines()
                               if line.strip().startswith('shell:')]
                     self.assertEqual(shells, [expected_shell])
             for owner in ('native', 'sanitizers'):
@@ -320,6 +321,66 @@ class OwnedWorkflowTests(unittest.TestCase):
         self.assertNotIn('rustup toolchain install', text)
         self.assertNotIn('actions/setup-python', text)
         self.assertNotIn('--parallel 4', text)
+
+    def test_ice_only_fixed_metadata_commands_bypass_the_cpu_mutex(self):
+        root = Path(__file__).resolve().parents[2]
+        path = root / '.github/workflows/engine-quality.yml'
+        if not path.is_file():
+            self.skipTest('ICE metadata steps')
+        jobs = self.workflow_jobs(path.read_text())
+        report = '"$CI_BOOTSTRAP_PYTHON" tools/ci/report.py '
+        activate = 'source "$CI_VENV/bin/activate" '
+        discovery = activate + 'exec python3 tools/ci/run_stage.py '
+        publication = (report + "publication --artifact-id '${{ steps.upload.outputs.artifact-id }}' "
+                       "--artifact-url '${{ steps.upload.outputs.artifact-url }}' "
+                       "--outcome '${{ steps.upload.outcome }}'")
+        allowed = {
+            'native': {
+                'Identify exact tested source, head and base': report + 'init --profile native',
+                'Discover optional consumer CTests': discovery +
+                    'metagen-discovery -- ctest --test-dir build/metagen-ci --show-only=json-v1',
+                'Discover actual CPU test inventory': discovery +
+                    'cpu-discovery -- ctest --test-dir build/ci --show-only=json-v1',
+                'Discover exact EGL GLES and lease inventory': discovery +
+                    "gles-discovery -- ctest --test-dir build/gles-ci --show-only=json-v1 "
+                    "-R '^ice_(gles|acquisition_lease)$'",
+                'Finalize exact-source, inventory, per-case timings and coverage report':
+                    report + 'summary',
+                'Verify provider upload receipt and finalization': publication,
+            },
+            'sanitizers': {
+                'Identify exact tested source, head and base': report + 'init --profile sanitizers',
+                'Discover exact sanitizer test inventory': discovery +
+                    'cpu-discovery -- ctest --test-dir build/sanitizers --show-only=json-v1 '
+                    '-R "$CI_SANITIZER_TESTS"',
+                'Finalize scoped sanitizer evidence': report + 'summary',
+                'Verify provider upload receipt and finalization': publication,
+            },
+        }
+        shell = 'shell: /bin/bash --noprofile --norc -e -o pipefail {0}'
+        for owner, job in jobs.items():
+            expected = allowed.get(owner, {})
+            headers = list(re.finditer(r'^      - name: ([^\n]+)\n', job, re.MULTILINE))
+            seen = set()
+            for index, header in enumerate(headers):
+                name = header.group(1)
+                step = job[header.end():headers[index + 1].start()
+                           if index + 1 < len(headers) else len(job)]
+                overrides = [line.strip() for line in step.splitlines()
+                             if line.strip().startswith('shell:')]
+                with self.subTest(owner=owner, step=name):
+                    if name not in expected:
+                        self.assertEqual(overrides, [], 'Execution must inherit the owned CPU mutex')
+                        continue
+                    self.assertEqual(overrides, [shell])
+                    script = step.split('        run: |\n', 1)[1]
+                    normalized = ' '.join(script.replace('\\\n', ' ').split())
+                    self.assertEqual(normalized, expected[name], 'Only the fixed metadata command may bypass')
+                    seen.add(name)
+            self.assertEqual(seen, set(expected))
+            if expected:
+                minutes = 60 if owner == 'native' else 30
+                self.assertIn(f'    timeout-minutes: {minutes}\n', job)
 
 
     def test_ice_manual_diagnostic_route_is_exact_and_cannot_replace_normal_quality(self):
