@@ -5,6 +5,7 @@
 #include "ice/platform/host.h"
 #include "ice/render/acquisition_lease.h"
 #include "ice/render/gl/egl.h"
+#include "ice/render/readback.h"
 #include "ice/render/shader_snapshot.h"
 #include "ice/render/types.h"
 #include <memory>
@@ -228,6 +229,12 @@ public:
 	/// Joint palette sizing, animation and skinning shader math remain caller policy.
 	ice::expected<std::unique_ptr<mesh>, diagnostic>
 	create_mesh(const skinned_mesh_data &description);
+	/// Encode a separate RGBA8 offscreen frame, then read it asynchronously. Dimensions1..4096.
+	/// Limits bound all admitted transfers and extracted pixel payloads for this device; byte
+	/// charges conservatively include color/depth/staging. Busy submits nothing. All calls stay
+	/// on the render thread. No GPU wait or silent synchronous fallback on missing capabilities.
+	ice::expected<readback_submission, diagnostic>
+	render_offscreen_async(const frame_batch &batch, int width, int height, readback_limits limits);
 	/// Synchronously capture an ordered indexed/procedural batch as top-row-first RGBA8.
 	/// Dimensions are in [1,4096]. The whole batch is validated before touching its target.
 	ice::expected<image, diagnostic> render_offscreen(const frame_batch &batch, int width,

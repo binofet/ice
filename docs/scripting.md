@@ -190,8 +190,9 @@ failure is reported where possible; allocating a diagnostic can itself fail unde
 process-wide exhaustion, so this API does not promise `noexcept`.
 
 The instruction hook runs for every Lua VM instruction, including top-level
-execution. It does not measure the parser, garbage collector, C library functions
-or elapsed time. Source/heap caps bound their inputs; this is not a hard real-time
+execution. The bounded `table.remove` replacement additionally charges its raw indexed
+work to that same counter. Other native C library work, parser, garbage collection
+and elapsed time are not measured. Source/heap caps bound their inputs; this is not a hard real-time
 deadline. Host applications that need such a deadline require a stronger isolation
 or scheduling design. No cross-platform bit-for-bit floating-point determinism is
 promised. The VM's fixed string-hash seed is not an adversarial hash-collision defense.
@@ -204,9 +205,26 @@ The module opens base, math, string, table and UTF-8 libraries only. It removes:
   `getmetatable` and `setmetatable`.
 - String bytecode dumping, pattern matching (`find`, `match`, `gmatch`,
   `gsub`) and binary packing/unpacking.
-- `table.move`, `insert`, `remove` and `sort`. Sparse table boundaries can drive
-  very large native loops without proportional allocation or bytecode hook calls;
+- `table.move`, `insert` and `sort`. These native loops are not enabled;
   scripts can express these algorithms with instruction-budgeted Lua loops.
+
+The available table helpers are `concat`, `create`, `pack`, `unpack` and the bounded
+`remove`. `table.remove(sequence[, position])` accepts a plain Lua table, returns the
+removed value and shifts later indexed entries down. It retains Lua 5.5's ordinary
+index rules: omitted/nil position uses the current raw border, removing from an empty
+sequence returns nil, and one past the border is a valid nil removal. The empty
+sequence's default index 0 also behaves like upstream. Non-sequence/sparse table
+borders remain Lua borders; this helper does not invent a length for holes.
+
+Before its indexed work, `remove` reserves 3 instruction units for raw length, result
+lookup and final clearing, plus 2 per relocated entry, from the current top-level or
+call budget. It refuses unaffordable work before shifting, including an enormous
+sparse border that occupies little memory. There is no separate small sequence-size
+cap. Index arithmetic and the budget comparison are overflow-safe. Raw access cannot
+invoke metatable callbacks. Lua allocation failures still use the normal heap budget
+and protected-call boundary; any execution failure permanently faults that VM, so
+recovery requires fresh ownership. This does not make the parser, garbage collector,
+all other library helpers or host callbacks instruction-bounded or real-time.
 
 `tostring` accepts only scalar values, avoiding table/function pointer formatting.
 `math.random` uses Lua's original PRNG, including real values in `[0,1)`, integer

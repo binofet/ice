@@ -6,6 +6,21 @@ frames. Link `ice::input` and include `ice/input/actions.h`; the module is also 
 does not poll an OS queue, change pointer capture, enable text input or start a worker.
 All reducer operations belong on one UI/host thread.
 
+The Mac producer derives left/right Shift, Control, Option and Command transitions from
+the device-specific masks in that same `NSEvent`, including after native input cancellation
+has cleared held-key history. A release on one side stays a release while the other side
+keeps the combined modifier flag set. Caps Lock retains its complete physical pulse for
+each toggle. An aggregate-only positive modifier sample, or a contradiction between its
+sided and combined flags, cannot identify an authoritative transition and cancels native
+input. Synthetic adapters must provide consistent sided flags; an aggregate modifier flag
+alone does not grant a physical press. Focus and owner guards apply before this validation.
+
+The offscreen `ice_platform_modifiers_macos` CPU regression invokes the compiled producer
+methods with real AppKit `NSEvent` objects, an in-memory window owner and a test key-window
+gate. It creates no `NSApplication` or `NSWindow`, pumps no OS event queue, and exercises
+the existing reducer through emitted native events. It qualifies producer logic and leaves
+physical keyboard delivery, desktop focus and capture acceptance to a separate runtime test.
+
 Consume the application's existing desktop event stream once and route each event to
 the reducer for its window. Touch, XR and gamepad adapters can instead submit typed
 virtual samples. Native window ownership and cursor behavior are described in

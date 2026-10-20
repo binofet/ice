@@ -1,5 +1,6 @@
 #include "ice/core/sha256.h"
 #include "ice/data/json.h"
+#include "ice/render/readback.h"
 // Compile supported public APIs together as an external consumer.
 #include "ice/animation/scene_animation.h"
 #ifdef ICE_HAS_AUDIO
@@ -23,12 +24,14 @@
 #include "ice/core/expected.h"
 #include "ice/core/utf8.h"
 #include "ice/data/document.h"
+#include "ice/input/action_router.h"
 #include "ice/input/actions.h"
 #include "ice/input/companion.h"
 #include "ice/input/companion_room.h"
 #include "ice/io/resource_uri.h"
 #include "ice/math/types.h"
 #include "ice/meta/schema.h"
+#include "ice/motion/pose.h"
 #ifdef ICE_HAS_PHYSICS_2D
 #include "ice/physics/world2d.h"
 #endif

@@ -9,19 +9,23 @@
 #include <X11/keysym.h>
 #include <algorithm>
 #include <array>
+#include <cerrno>
+#include <chrono>
 #include <clocale>
 #include <cstdio>
 #include <cstring>
 #include <cwchar>
 #include <map>
+#include <poll.h>
 
 namespace ice::platform::detail {
 namespace {
 class x11_window;
 struct connection {
-	Display                       *display      = nullptr;
-	Atom                           close        = 0;
-	Atom                           protocols    = 0;
+	Display                       *display   = nullptr;
+	Atom                           close     = 0;
+	Atom                           protocols = 0;
+	Atom                           clipboard = 0, targets = 0, utf8_string = 0, incremental = 0;
 	XIM                            input_method = nullptr;
 	std::map<Window, x11_window *> windows;
 	std::array<physical_key, 256>  keys{};
@@ -30,6 +34,64 @@ struct connection {
 			XCloseIM(input_method);
 		if (display)
 			XCloseDisplay(display);
+	}
+};
+// X11 requestors can disappear between a SelectionRequest and our reply. Trap
+// errors only around clipboard protocol requests, on the documented UI thread;
+// do not make a stale peer window fatal or change the embedding app's handler.
+class clipboard_errors {
+public:
+	explicit clipboard_errors(Display *display) : display_(display) {
+		XSync(display_, False);
+		first_    = NextRequest(display_);
+		previous_ = XSetErrorHandler(handle);
+		active_   = this;
+	}
+	~clipboard_errors() {
+		finish();
+		active_ = nullptr;
+		XSetErrorHandler(previous_);
+	}
+	bool finish() {
+		XSync(display_, False);
+		return !failed_;
+	}
+
+private:
+	static int handle(Display *display, XErrorEvent *event) {
+		if (active_ && display == active_->display_ && event->serial >= active_->first_) {
+			active_->failed_ = true;
+			return 0;
+		}
+		return active_ && active_->previous_ ? active_->previous_(display, event) : 0;
+	}
+	Display                        *display_;
+	unsigned long                   first_    = 0;
+	bool                            failed_   = false;
+	XErrorHandler                   previous_ = nullptr;
+	static inline clipboard_errors *active_   = nullptr;
+};
+struct clipboard_requestor {
+	Display *display = nullptr;
+	Window   window  = 0;
+	~clipboard_requestor() {
+		if (display) {
+			if (window) {
+				// The selection owner knows this requestor ID and may already have
+				// destroyed it. Teardown must contain that BadWindow as well.
+				clipboard_errors errors(display);
+				XDestroyWindow(display, window);
+				errors.finish();
+			}
+			XCloseDisplay(display);
+		}
+	}
+};
+struct clipboard_property {
+	unsigned char *bytes = nullptr;
+	~clipboard_property() {
+		if (bytes)
+			XFree(bytes);
 	}
 };
 void load_physical_keys(connection &owner) {
@@ -212,6 +274,16 @@ public:
 		return relative_pointer_kind::warp;
 	}
 	void event(const XEvent &event) {
+		if (event.type == SelectionRequest) {
+			serve_clipboard(event.xselectionrequest);
+			return;
+		}
+		if (event.type == SelectionClear &&
+		    event.xselectionclear.selection == connection_->clipboard) {
+			if (XGetSelectionOwner(connection_->display, connection_->clipboard) != native_)
+				clipboard_.clear();
+			return;
+		}
 		if (event.type == ClientMessage && event.xclient.format == 32 &&
 		    event.xclient.message_type == connection_->protocols &&
 		    Atom(event.xclient.data.l[0]) == connection_->close)
@@ -312,6 +384,135 @@ public:
 	}
 
 private:
+	ice::expected<std::string, window_diagnostic>
+	read_native_clipboard_text(std::size_t maximum_bytes) override {
+		const auto owner = XGetSelectionOwner(connection_->display, connection_->clipboard);
+		if (owner == None)
+			return std::string{};
+		if (const auto local = connection_->windows.find(owner);
+		    local != connection_->windows.end()) {
+			if (local->second->clipboard_.size() > maximum_bytes)
+				return ice::unexpected(
+				    window_diagnostic{"X11 clipboard text exceeds the byte limit"});
+			return local->second->clipboard_;
+		}
+		// A private connection avoids consuming/reentering the main keyboard, IME,
+		// lifecycle and window queues while an external owner answers the request.
+		clipboard_requestor request;
+		request.display = XOpenDisplay(DisplayString(connection_->display));
+		if (!request.display)
+			return ice::unexpected(window_diagnostic{"X11 clipboard connection failed"});
+		clipboard_errors errors(request.display);
+		request.window = XCreateSimpleWindow(request.display, DefaultRootWindow(request.display), 0,
+		                                     0, 1, 1, 0, 0, 0);
+		const auto property = XInternAtom(request.display, "_ICE_CLIPBOARD_TEXT", False);
+		if (!request.window || !errors.finish())
+			return ice::unexpected(window_diagnostic{"X11 clipboard request window failed"});
+		XConvertSelection(request.display, connection_->clipboard, connection_->utf8_string,
+		                  property, request.window, CurrentTime);
+		XFlush(request.display);
+		const auto deadline  = std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
+		unsigned   processed = 0;
+		while (std::chrono::steady_clock::now() < deadline) {
+			while (XPending(request.display)) {
+				if (std::chrono::steady_clock::now() >= deadline)
+					break;
+				if (++processed > 256)
+					return ice::unexpected(window_diagnostic{"X11 clipboard event limit exceeded"});
+				XEvent event{};
+				XNextEvent(request.display, &event);
+				if (event.type != SelectionNotify || event.xselection.requestor != request.window ||
+				    event.xselection.selection != connection_->clipboard ||
+				    event.xselection.target != connection_->utf8_string)
+					continue;
+				if (event.xselection.property == None)
+					return std::string{};
+				if (event.xselection.property != property)
+					return ice::unexpected(
+					    window_diagnostic{"X11 clipboard returned an unexpected property"});
+				Atom               type   = None;
+				int                format = 0;
+				unsigned long      items = 0, remaining = 0;
+				clipboard_property data;
+				// XGetWindowProperty measures its length in four-byte units. Read at
+				// most one unit beyond the caller limit and reject all unread tails.
+				const auto status = XGetWindowProperty(
+				    request.display, request.window, property, 0, long(maximum_bytes / 4 + 1), True,
+				    connection_->utf8_string, &type, &format, &items, &remaining, &data.bytes);
+				if (status != Success || !errors.finish())
+					return ice::unexpected(window_diagnostic{"X11 clipboard property read failed"});
+				if (type == connection_->incremental)
+					return ice::unexpected(
+					    window_diagnostic{"X11 incremental clipboard transfers are unsupported"});
+				if (type != connection_->utf8_string || format != 8 || remaining ||
+				    items > maximum_bytes)
+					return ice::unexpected(window_diagnostic{
+					    "X11 clipboard text has an unsupported format or exceeds the byte limit"});
+				return items ? std::string(reinterpret_cast<const char *>(data.bytes), items)
+				             : std::string{};
+			}
+			const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+			                           deadline - std::chrono::steady_clock::now())
+			                           .count();
+			if (remaining <= 0)
+				break;
+			pollfd    ready{ConnectionNumber(request.display), POLLIN, 0};
+			const int result = ::poll(&ready, 1, int(remaining));
+			if ((result < 0 && errno != EINTR) || (ready.revents & (POLLERR | POLLHUP | POLLNVAL)))
+				return ice::unexpected(
+				    window_diagnostic{"X11 clipboard connection was interrupted"});
+		}
+		return ice::unexpected(
+		    window_diagnostic{"X11 clipboard owner did not respond within 500 ms"});
+	}
+	ice::expected<void, window_diagnostic>
+	write_native_clipboard_text(std::string_view text) override {
+		// This profile serves direct properties only. Do not accept a write that
+		// cannot fit the server's request budget and later fail to deliver it.
+		const auto extended = XExtendedMaxRequestSize(connection_->display);
+		const auto units    = extended ? extended : XMaxRequestSize(connection_->display);
+		if (units <= 64 || text.size() > std::size_t(units - 64) * 4)
+			return ice::unexpected(
+			    window_diagnostic{"X11 clipboard text exceeds the direct-transfer server limit"});
+		std::string      prepared(text);
+		clipboard_errors errors(connection_->display);
+		XSetSelectionOwner(connection_->display, connection_->clipboard, native_, CurrentTime);
+		if (XGetSelectionOwner(connection_->display, connection_->clipboard) != native_ ||
+		    !errors.finish())
+			return ice::unexpected(window_diagnostic{"X11 clipboard ownership failed"});
+		clipboard_.swap(prepared);
+		return {};
+	}
+	void serve_clipboard(const XSelectionRequestEvent &request) {
+		XEvent reply{};
+		reply.xselection.type      = SelectionNotify;
+		reply.xselection.display   = request.display;
+		reply.xselection.requestor = request.requestor;
+		reply.xselection.selection = request.selection;
+		reply.xselection.target    = request.target;
+		reply.xselection.time      = request.time;
+		reply.xselection.property  = None;
+		clipboard_errors errors(connection_->display);
+		const auto       property = request.property == None ? request.target : request.property;
+		if (request.owner == native_ && request.selection == connection_->clipboard &&
+		    XGetSelectionOwner(connection_->display, connection_->clipboard) == native_) {
+			if (request.target == connection_->targets) {
+				const std::array<Atom, 2> targets{connection_->targets, connection_->utf8_string};
+				XChangeProperty(
+				    connection_->display, request.requestor, property, XA_ATOM, 32, PropModeReplace,
+				    reinterpret_cast<const unsigned char *>(targets.data()), int(targets.size()));
+				reply.xselection.property = property;
+			} else if (request.target == connection_->utf8_string) {
+				XChangeProperty(connection_->display, request.requestor, property,
+				                connection_->utf8_string, 8, PropModeReplace,
+				                reinterpret_cast<const unsigned char *>(clipboard_.data()),
+				                int(clipboard_.size()));
+				reply.xselection.property = property;
+			}
+		}
+		XSendEvent(connection_->display, request.requestor, False, 0, &reply);
+		errors.finish();
+	}
 	void cancel_native_physical_input() override {
 		pressed_.fill(false);
 		pointer_valid_ = false;
@@ -652,6 +853,7 @@ private:
 	bool                  candidate_warning_ = false;
 	key_modifiers         modifiers_         = 0;
 	std::string           preedit_;
+	std::string           clipboard_;
 	std::array<bool, 256> pressed_{};
 	bool                  relative_ = false, pointer_valid_ = false, warp_pending_ = false;
 	int    warp_x_ = 0, warp_y_ = 0, last_x_ = 0, last_y_ = 0, anchor_x_ = 0, anchor_y_ = 0;
@@ -668,8 +870,12 @@ create_desktop_window(const desktop_window_options &options) {
 		shared->display = XOpenDisplay(nullptr);
 		if (!shared->display)
 			return ice::unexpected(window_diagnostic{"Cannot connect to the X11 display"});
-		shared->close     = XInternAtom(shared->display, "WM_DELETE_WINDOW", False);
-		shared->protocols = XInternAtom(shared->display, "WM_PROTOCOLS", False);
+		shared->close       = XInternAtom(shared->display, "WM_DELETE_WINDOW", False);
+		shared->protocols   = XInternAtom(shared->display, "WM_PROTOCOLS", False);
+		shared->clipboard   = XInternAtom(shared->display, "CLIPBOARD", False);
+		shared->targets     = XInternAtom(shared->display, "TARGETS", False);
+		shared->utf8_string = XInternAtom(shared->display, "UTF8_STRING", False);
+		shared->incremental = XInternAtom(shared->display, "INCR", False);
 		// Only character classification/conversion follows the user's locale. Numeric
 		// parsing/formatting retains its existing locale. XIM binds this CTYPE locale.
 		const char *locale = std::setlocale(LC_CTYPE, nullptr);

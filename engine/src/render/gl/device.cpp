@@ -1,6 +1,7 @@
 #include "ice/render/gl/device.h"
 #include "../batch_validation.h"
 #include "../lease_state.h"
+#include "../readback_state.h"
 #include "api.h"
 #include "ice/core/utf8.h"
 #include <algorithm>
@@ -10,17 +11,22 @@
 #include <utility>
 namespace ice::render::gl {
 namespace detail {
+struct gl_readback;
 struct device_state {
-	std::shared_ptr<native_context> context;
-	functions                       api;
-	bool                            embedded = false;
-	int                             major = 0, minor = 0;
-	GLuint                          vao = 0, uniforms = 0;
-	std::size_t                     uniform_limit = 0;
-	std::string                     error;
-	std::set<GLuint>                borrowed_colors;
-	GLsync                          pending = nullptr;
-	void                            wait_pending() {
+	std::shared_ptr<ice::render::detail::readback_accounting> readback_budget =
+	    std::make_shared<ice::render::detail::readback_accounting>();
+	std::vector<std::shared_ptr<gl_readback>> readbacks;
+	void                                      retire_readbacks();
+	std::shared_ptr<native_context>           context;
+	functions                                 api;
+	bool                                      embedded = false;
+	int                                       major = 0, minor = 0;
+	GLuint                                    vao = 0, uniforms = 0;
+	std::size_t                               uniform_limit = 0;
+	std::string                               error;
+	std::set<GLuint>                          borrowed_colors;
+	GLsync                                    pending = nullptr;
+	void                                      wait_pending() {
         if (pending) {
             api.WaitSync(pending, 0, GL_TIMEOUT_IGNORED);
             api.DeleteSync(pending);
@@ -32,17 +38,7 @@ struct device_state {
 		api.Flush();
 		return pending != nullptr;
 	}
-	~device_state() {
-		if (context && context->make_current()) {
-			wait_pending();
-			if (api.Finish)
-				api.Finish();
-			if (vao && api.DeleteVertexArrays)
-				api.DeleteVertexArrays(1, &vao);
-			if (uniforms && api.DeleteBuffers)
-				api.DeleteBuffers(1, &uniforms);
-		}
-	}
+	~device_state();
 };
 } // namespace detail
 struct pipeline::implementation {
@@ -990,6 +986,229 @@ ice::expected<void, diagnostic> presentation_surface::wait_idle() {
 	return {};
 }
 
+namespace detail {
+struct gl_readback {
+	std::weak_ptr<device_state>                                state;
+	std::shared_ptr<ice::render::detail::readback_reservation> reservation;
+	GLuint      color = 0, depth = 0, framebuffer = 0, pack = 0;
+	GLsync      fence = nullptr;
+	int         width = 0, height = 0;
+	bool        done = false, discarded = false;
+	std::string error;
+	void        cleanup(device_state &owner) {
+        if (!owner.context->make_current())
+            return; // Context teardown ultimately owns lost objects.
+        auto &api = owner.api;
+        if (fence) {
+            api.DeleteSync(fence);
+            fence = nullptr;
+        }
+        if (framebuffer) {
+            api.DeleteFramebuffers(1, &framebuffer);
+            framebuffer = 0;
+        }
+        if (color) {
+            api.DeleteTextures(1, &color);
+            color = 0;
+        }
+        if (depth) {
+            api.DeleteTextures(1, &depth);
+            depth = 0;
+        }
+        if (pack) {
+            api.DeleteBuffers(1, &pack);
+            pack = 0;
+        }
+	}
+	~gl_readback() {
+		if (auto owner = state.lock())
+			cleanup(*owner);
+	}
+	void poll_fence(device_state &owner) {
+		if (done || !fence)
+			return;
+		const auto status = owner.api.ClientWaitSync(fence, 0, 0);
+		if (status == GL_ALREADY_SIGNALED || status == GL_CONDITION_SATISFIED)
+			done = true;
+		else if (status != GL_TIMEOUT_EXPIRED)
+			error = "OpenGL asynchronous fence poll failed";
+	}
+};
+void device_state::retire_readbacks() {
+	// Called only with the owned root context current. Retain failed/unsignalled transfers;
+	// no timeout or cancelled ticket licenses deletion/re-admission of pending GPU storage.
+	for (auto &transfer : readbacks)
+		transfer->poll_fence(*this);
+	std::erase_if(readbacks, [](const auto &transfer) { return transfer->done; });
+}
+device_state::~device_state() {
+	if (context && context->make_current()) {
+		wait_pending();
+		if (api.Finish)
+			api.Finish(); // Existing device teardown drain, never live ticket polling.
+		for (auto &transfer : readbacks)
+			transfer->cleanup(*this);
+		readbacks.clear();
+		if (vao && api.DeleteVertexArrays)
+			api.DeleteVertexArrays(1, &vao);
+		if (uniforms && api.DeleteBuffers)
+			api.DeleteBuffers(1, &uniforms);
+	}
+}
+} // namespace detail
+namespace {
+class gl_readback_operation final : public ice::render::detail::readback_operation {
+	std::shared_ptr<detail::device_state> state_;
+	std::shared_ptr<detail::gl_readback>  transfer_;
+	bool                                  consumed_ = false;
+
+public:
+	gl_readback_operation(std::shared_ptr<detail::device_state> state,
+	                      std::shared_ptr<detail::gl_readback>  transfer)
+	    : state_(std::move(state)), transfer_(std::move(transfer)) {}
+	~gl_readback_operation() override { transfer_->discarded = true; }
+	ice::expected<readback_status, diagnostic> poll() override {
+		if (consumed_)
+			return readback_status::consumed;
+		if (!state_->context->make_current())
+			return failure("OpenGL readback context unavailable");
+		state_->retire_readbacks();
+		if (!transfer_->error.empty())
+			return failure(transfer_->error);
+		if (!transfer_->done)
+			return readback_status::pending;
+		if (transfer_->discarded)
+			return readback_status::cancelled;
+		return readback_status::ready;
+	}
+	ice::expected<readback_pixels, diagnostic> take() override {
+		const auto status = poll();
+		if (!status)
+			return ice::unexpected(status.error());
+		if (*status != readback_status::ready)
+			return failure("Readback pixels are not ready or already consumed");
+		readback_pixels result;
+		result.width      = transfer_->width;
+		result.height     = transfer_->height;
+		result.row_stride = std::size_t(result.width) * 4;
+		result.layout     = readback_layout::rgba8;
+		result.origin     = readback_origin::bottom_left;
+		result.bytes.resize(result.row_stride * std::size_t(result.height));
+		auto &api      = state_->api;
+		GLint previous = 0;
+		api.GetIntegerv(GL_PIXEL_PACK_BUFFER_BINDING, &previous);
+		api.BindBuffer(GL_PIXEL_PACK_BUFFER, transfer_->pack);
+		const void *mapped = api.MapBufferRange(
+		    GL_PIXEL_PACK_BUFFER, 0, static_cast<GLsizeiptr>(result.bytes.size()), GL_MAP_READ_BIT);
+		if (!mapped) {
+			api.BindBuffer(GL_PIXEL_PACK_BUFFER, GLuint(previous));
+			transfer_->error = "OpenGL ready readback buffer mapping failed";
+			return failure(transfer_->error);
+		}
+		std::memcpy(result.bytes.data(), mapped, result.bytes.size());
+		const auto intact = api.UnmapBuffer(GL_PIXEL_PACK_BUFFER);
+		api.BindBuffer(GL_PIXEL_PACK_BUFFER, GLuint(previous));
+		if (intact != GL_TRUE) {
+			transfer_->error = "OpenGL readback buffer contents invalidated";
+			return failure(transfer_->error);
+		}
+		if (auto error = check(*state_); !error.empty()) {
+			transfer_->error = std::move(error);
+			return failure(transfer_->error);
+		}
+		ice::render::detail::readback_access::retain(result, std::move(transfer_->reservation));
+		transfer_->cleanup(*state_);
+		consumed_ = true;
+		return result;
+	}
+	void cancel() noexcept override { transfer_->discarded = true; }
+};
+} // namespace
+ice::expected<readback_submission, diagnostic>
+device::render_offscreen_async(const frame_batch &batch, int width, int height,
+                               readback_limits limits) {
+	if (width < 1 || height < 1 || width > 4096 || height > 4096)
+		return failure("Invalid asynchronous capture dimensions");
+	auto valid = detail::batch_access::validate(state_, batch);
+	if (!valid)
+		return ice::unexpected(valid.error());
+	if (!state_->context->make_current())
+		return failure("Cannot activate OpenGL readback context");
+	auto &api = state_->api;
+	if (!api.ClientWaitSync || !api.MapBufferRange || !api.UnmapBuffer)
+		return failure("OpenGL asynchronous PBO/fence readback capabilities unavailable");
+	state_->retire_readbacks();
+	const auto bytes = std::size_t(width) * std::size_t(height) * 4;
+	auto       reservation =
+	    ice::render::detail::reserve_readback(state_->readback_budget, limits, bytes * 4);
+	if (!reservation)
+		return readback_submission{};
+	auto transfer         = std::make_shared<detail::gl_readback>();
+	transfer->state       = state_;
+	transfer->reservation = std::move(reservation);
+	transfer->width       = width;
+	transfer->height      = height;
+	// Every allocation needed by the owning retirement list occurs before GPU submission.
+	state_->readbacks.reserve(state_->readbacks.size() + 1);
+	readback_submission result{frame_status::submitted,
+	                           ice::render::detail::readback_access::ticket(
+	                               std::make_unique<gl_readback_operation>(state_, transfer))};
+	state_->wait_pending(); // Server-side queue ordering only, no CPU fence wait.
+	api.GenTextures(1, &transfer->color);
+	api.BindTexture(GL_TEXTURE_2D, transfer->color);
+	api.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE,
+	               nullptr);
+	api.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	api.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	api.GenTextures(1, &transfer->depth);
+	api.BindTexture(GL_TEXTURE_2D, transfer->depth);
+	api.TexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, width, height, 0, GL_DEPTH_COMPONENT,
+	               GL_FLOAT, nullptr);
+	api.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	api.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	api.GenFramebuffers(1, &transfer->framebuffer);
+	api.BindFramebuffer(GL_FRAMEBUFFER, transfer->framebuffer);
+	api.FramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, transfer->color,
+	                         0);
+	api.FramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, transfer->depth,
+	                         0);
+	if (api.CheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+		api.BindFramebuffer(GL_FRAMEBUFFER, 0);
+		return failure("OpenGL asynchronous capture framebuffer incomplete");
+	}
+	detail::batch_access::encode(*state_, batch, state_->vao, state_->uniforms, width, height);
+	GLint previous = 0, alignment = 0, row_length = 0, skip_rows = 0, skip_pixels = 0;
+	api.GetIntegerv(GL_PIXEL_PACK_BUFFER_BINDING, &previous);
+	api.GetIntegerv(GL_PACK_ALIGNMENT, &alignment);
+	api.GetIntegerv(GL_PACK_ROW_LENGTH, &row_length);
+	api.GetIntegerv(GL_PACK_SKIP_ROWS, &skip_rows);
+	api.GetIntegerv(GL_PACK_SKIP_PIXELS, &skip_pixels);
+	api.GenBuffers(1, &transfer->pack);
+	api.BindBuffer(GL_PIXEL_PACK_BUFFER, transfer->pack);
+	api.BufferData(GL_PIXEL_PACK_BUFFER, static_cast<GLsizeiptr>(bytes), nullptr, GL_STREAM_READ);
+	api.PixelStorei(GL_PACK_ALIGNMENT, 1);
+	api.PixelStorei(GL_PACK_ROW_LENGTH, 0);
+	api.PixelStorei(GL_PACK_SKIP_ROWS, 0);
+	api.PixelStorei(GL_PACK_SKIP_PIXELS, 0);
+	api.ReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+	transfer->fence = api.FenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+	api.Flush();
+	api.BindBuffer(GL_PIXEL_PACK_BUFFER, GLuint(previous));
+	api.PixelStorei(GL_PACK_ALIGNMENT, alignment);
+	api.PixelStorei(GL_PACK_ROW_LENGTH, row_length);
+	api.PixelStorei(GL_PACK_SKIP_ROWS, skip_rows);
+	api.PixelStorei(GL_PACK_SKIP_PIXELS, skip_pixels);
+	api.BindFramebuffer(GL_FRAMEBUFFER, 0);
+	// Even a transfer with an error must retain its GPU storage until a fence or device drain.
+	state_->readbacks.push_back(transfer);
+	if (!transfer->fence)
+		transfer->error = "OpenGL asynchronous readback fence creation failed";
+	else
+		transfer->error = check(*state_);
+	if (!transfer->error.empty())
+		return failure(transfer->error);
+	return result;
+}
 ice::expected<image, diagnostic> device::render_offscreen(const pipeline &pipeline, int width,
                                                           int                        height,
                                                           std::span<const std::byte> uniforms,

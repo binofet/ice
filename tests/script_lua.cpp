@@ -60,7 +60,7 @@ function libraries(input)
   assert(string.dump == nil and type(string.format) == 'function' and string.find == nil)
   assert(string.match == nil and string.gmatch == nil and string.gsub == nil)
   assert(string.pack == nil and type(math.random) == 'function' and type(math.randomseed) == 'function')
-  assert(table.move == nil and table.insert == nil and table.remove == nil and table.sort == nil)
+  assert(table.move == nil and table.insert == nil and type(table.remove) == 'function' and table.sort == nil)
   return { value = tostring(input.value), length = #table.concat({'a','b'}) }
 end
 function spin(input) while true do end end
@@ -190,6 +190,112 @@ end
 	auto format_allocation = format_memory->call("allocate", {});
 	CHECK(!format_allocation && format_allocation.error().code == error_code::memory_limit &&
 	      format_memory->faulted() && format_memory->memory_bytes() <= 64 * 1024);
+
+	const std::string remove_source = R"lua(
+function normal(input)
+  local t = {'a','b','c','d','e'}
+  assert(table.remove(t,3) == 'c' and table.concat(t) == 'abde')
+  assert(table.remove(t,1) == 'a' and table.concat(t) == 'bde')
+  assert(table.remove(t,#t) == 'e' and table.concat(t) == 'bd')
+  assert(table.remove(t) == 'd' and table.remove(t,nil) == 'b' and #t == 0)
+  assert(table.remove(t) == nil and table.remove(t,1) == nil and table.remove(t,0) == nil)
+  t[0] = 'zero'
+  assert(table.remove(t) == 'zero' and t[0] == nil)
+  t = {'a','b'}
+  assert(table.remove(t,3) == nil and table.concat(t) == 'ab')
+  assert(table.remove(t,'2') == 'b' and table.remove(t,1.0,'ignored') == 'a')
+  local value = {}
+  t = {false,value,17}
+  assert(table.remove(t,2) == value and t[2] == 17)
+  assert(table.remove(t,1) == false and t[1] == 17)
+  local particles = {{life=0},{life=2},{life=0},{life=4}}
+  for i=#particles,1,-1 do
+    if particles[i].life == 0 then table.remove(particles,i) end
+  end
+  return {count=#particles,first=particles[1].life,last=particles[2].life}
+end
+function remove(input) return {value=table.remove({'a','b','c'},input.position)} end
+function bad_table(input) table.remove('not a table'); return {} end
+local function sparse()
+  -- The pinned Lua 5.5 hash-border search follows this fixed VM hash seed.
+  -- A real maxinteger border is represented by at most 64 entries, not a large heap.
+  local t = table.create(0,128)
+  t[1] = true
+  local index,bits = 2,0x494345
+  while true do
+    t[index] = true
+    if index == math.maxinteger then break end
+    if index <= math.maxinteger//2-1 then index=index*2+(bits&1); bits=bits>>1
+    else index=math.maxinteger end
+  end
+  assert(#t == math.maxinteger)
+  return t
+end
+function huge(input)
+  table.remove(sparse(),1)
+  return {escaped=true}
+end
+function huge_last(input)
+  assert(table.remove(sparse()) == true)
+  return {removed=true}
+end
+function repeated(input)
+  local t={} for i=1,200 do t[i]=i end
+  for i=1,200 do table.remove(t,1) end
+  return {count=#t}
+end
+function memory(input)
+  local retained = {}
+  while true do
+    local t = {string.rep('x',4096),string.rep('y',4096),string.rep('z',4096)}
+    retained[#retained+1] = table.remove(t,2)
+  end
+end
+)lua";
+	auto              removing      = prepare(remove_source);
+	CHECK(removing);
+	auto removed = removing->call("normal", {});
+	CHECK(removed && std::get<std::int64_t>(removed->at("count")) == 2 &&
+	      std::get<std::int64_t>(removed->at("first")) == 2 &&
+	      std::get<std::int64_t>(removed->at("last")) == 4);
+	for (const auto &position :
+	     {ice::meta::value{std::int64_t(-1)}, ice::meta::value{std::int64_t(0)},
+	      ice::meta::value{std::int64_t(5)},
+	      ice::meta::value{std::numeric_limits<std::int64_t>::min()},
+	      ice::meta::value{std::numeric_limits<std::int64_t>::max()}, ice::meta::value{1.5},
+	      ice::meta::value{true}, ice::meta::value{std::string("invalid")}}) {
+		auto candidate = prepare(remove_source);
+		CHECK(candidate);
+		auto rejected = candidate->call("remove", {{"position", position}});
+		CHECK(!rejected && rejected.error().code == error_code::runtime && candidate->faulted());
+	}
+	auto wrong_remove = prepare(remove_source);
+	CHECK(wrong_remove);
+	CHECK(wrong_remove->call("bad_table", {}).error().code == error_code::runtime);
+	auto sparse_last = prepare(remove_source, {64 * 1024, 10000, 256 * 1024});
+	CHECK(sparse_last);
+	auto last_removed = sparse_last->call("huge_last", {});
+	CHECK(last_removed && std::get<bool>(last_removed->at("removed")));
+	auto startup_remove = prepare(remove_source + "\nhuge({})", {64 * 1024, 10000, 256 * 1024});
+	CHECK(!startup_remove && startup_remove.error().code == error_code::instruction_limit &&
+	      startup_remove.error().message.find("table.remove") != std::string::npos);
+	for (const auto *entry : {"huge", "repeated"}) {
+		auto limited = prepare(remove_source, {64 * 1024, 10000, 256 * 1024});
+		CHECK(limited);
+		auto rejected = limited->call(entry, {});
+		CHECK(!rejected && rejected.error().code == error_code::instruction_limit &&
+		      limited->faulted());
+		CHECK(rejected.error().message.find("table.remove") != std::string::npos);
+		CHECK(limited->memory_bytes() <= 64 * 1024);
+	}
+	auto remove_memory = prepare(remove_source, {64 * 1024, 1000000, 256 * 1024});
+	CHECK(remove_memory);
+	auto memory_rejected = remove_memory->call("memory", {});
+	CHECK(!memory_rejected && memory_rejected.error().code == error_code::memory_limit &&
+	      remove_memory->faulted() && remove_memory->memory_bytes() <= 64 * 1024);
+	CHECK(remove_memory->call("normal", {}).error().code == error_code::faulted);
+	auto remove_replacement = prepare(remove_source);
+	CHECK(remove_replacement && remove_replacement->call("normal", {}));
 
 	// Host validation does not enter Lua or fault/mutate the existing VM.
 	for (const auto &name : {"", "a.b", "1function", "has space"}) {
