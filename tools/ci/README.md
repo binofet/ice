@@ -203,16 +203,27 @@ same selectors. No hosted fallback exists. Source job guards exclude fork heads;
 these guards/labels are not an isolation boundary against modified untrusted
 workflow code. Nova owns provider approval, repository/UID isolation and host trust.
 
-Candidate source run steps use `/usr/local/libexec/ice-family-native-ci/owned-shell {0}`.
+Candidate build, test and quality steps use `/usr/local/libexec/ice-family-native-ci/owned-shell {0}`.
 It inherits the environment and serializes run children with a 1200-second lock wait;
 it is not a security sandbox or CPU quota and does not coordinate human build/GPU
 use. Compile worker budgets are Linux2/Mac10, including the Rust proof's nested
 build through `CMAKE_BUILD_PARALLEL_LEVEL`. CTest and API workers remain two.
-Native CI starts still need a separately admitted resource budget from Root;
-this source configuration allocates nothing. The nightly API audit receives
+Automatic author-owned jobs follow the existing shared runner limits;
+this source configuration changes no host allocation. The nightly API audit receives
 `--workers "$CI_API_PARALLEL"` explicitly; its default outside
 that invocation remains four workers. Direct Rust proof compilation passes
 `-Ccodegen-units=1` on its actual compiler command.
+
+Only fixed source-identification, CTest `--show-only=json-v1` inventory, report-summary
+and upload-receipt commands override that default with plain Bash. They retain
+the same dedicated source-runner UID, workspace, permissions and source/evidence
+checks; the wrapper only adds a CPU mutex and never changes execution identity.
+They are not control-account jobs. This avoids spending the job deadline waiting
+to record already completed work: one Linux job spent 3180 seconds waiting for
+the mutex and only 418 seconds executing its measured stages. A regression
+allowlist checks the complete command of every override and keeps all actual
+builds, tests and quality checks under the mutex. Job timeouts remain unchanged.
+
 Trusted gate and review-signal control jobs instead use
 `/bin/bash --noprofile --norc -e -o pipefail {0}`. Control accounts intentionally
 have no shared CPU-lock access and must not invoke the candidate wrapper.
