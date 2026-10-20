@@ -1,5 +1,6 @@
 include(../cmake/ICEData.cmake)
 include(../cmake/ICEMath.cmake)
+include(../cmake/ICEProfiling.cmake)
 
 # CPU ingestion/animation/camera do not create a device or require native presentation.
 add_library(ICEAssetRuntime STATIC
@@ -10,7 +11,7 @@ add_library(ICEAssetRuntime STATIC
     src/render/camera.cpp
     src/render/scene_camera.cpp)
 add_library(ice::assets ALIAS ICEAssetRuntime)
-target_link_libraries(ICEAssetRuntime PUBLIC ice::math ice::uri ice::expected)
+target_link_libraries(ICEAssetRuntime PUBLIC ice::math ice::uri ice::expected ice::profiling)
 target_include_directories(ICEAssetRuntime PUBLIC include)
 target_include_directories(ICEAssetRuntime SYSTEM PRIVATE 3rdparty)
 ice_strict_target(ICEAssetRuntime)

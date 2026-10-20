@@ -1,5 +1,6 @@
 #include "ice/script/lua_program.h"
 #include "ice/core/utf8.h"
+#include "ice/profiling/profile.h"
 extern "C" {
 #include <lauxlib.h>
 #include <lua.h>
@@ -81,15 +82,18 @@ void *allocate(void *context, void *pointer, std::size_t old_lua_size, std::size
 	if (!new_size) {
 		std::free(previous);
 		budget->used -= old_size;
+		ICE_PROFILE_LUA_RESIZE(old_size, 0, profiling::resize_outcome::committed);
 		return nullptr;
 	}
 	if (new_size > std::numeric_limits<std::size_t>::max() - sizeof(allocation_header)) {
 		budget->denied = true;
+		ICE_PROFILE_LUA_RESIZE(old_size, new_size, profiling::resize_outcome::quota_denied);
 		return nullptr;
 	}
 	new_size += sizeof(allocation_header);
 	if (new_size > old_size && new_size - old_size > budget->limit - budget->used) {
 		budget->denied = true;
+		ICE_PROFILE_LUA_RESIZE(old_size, new_size, profiling::resize_outcome::quota_denied);
 		return nullptr;
 	}
 	auto *result = static_cast<allocation_header *>(std::realloc(previous, new_size));
@@ -97,13 +101,17 @@ void *allocate(void *context, void *pointer, std::size_t old_lua_size, std::size
 		// Lua requires shrinking allocations to succeed. Retain/account the larger
 		// original block if the host realloc cannot shrink it; later frees use this
 		// header rather than Lua's now-smaller logical size.
-		if (new_size <= old_size)
+		if (new_size <= old_size) {
+			ICE_PROFILE_LUA_RESIZE(old_size, old_size, profiling::resize_outcome::retained_shrink);
 			return pointer;
+		}
 		budget->denied = true;
+		ICE_PROFILE_LUA_RESIZE(old_size, new_size, profiling::resize_outcome::allocator_denied);
 		return nullptr;
 	}
 	result->bytes = new_size;
 	budget->used  = budget->used - old_size + new_size;
+	ICE_PROFILE_LUA_RESIZE(old_size, new_size, profiling::resize_outcome::committed);
 	return result + 1;
 }
 struct instruction_budget {
@@ -470,8 +478,18 @@ std::size_t input_references(const scalar_record &record, input_field *fields) {
 // returns to the C-compatible trampoline, which may subsequently longjmp.
 void execute_host(call_context *context, std::size_t host_index, const output_field *fields,
                   std::size_t count) noexcept {
+	ICE_PROFILE_ZONE(host_zone, "Lua.HostInvoke");
+	ICE_PROFILE_TEXT(host_zone, context->hosts[host_index].name);
 	try {
-		auto input  = copy_record(fields, count);
+		auto input = copy_record(fields, count);
+#if ICE_PROFILING_ENABLED
+		if (const auto command = input.find("command"); command != input.end())
+			if (const auto *text = std::get_if<std::string>(&command->second))
+				ICE_PROFILE_TEXT(host_zone, *text);
+		if (const auto target = input.find("target"); target != input.end())
+			if (const auto *text = std::get_if<std::string>(&target->second))
+				ICE_PROFILE_TEXT(host_zone, *text);
+#endif
 		auto output = context->hosts[host_index].invoke(input);
 		if (!output) {
 			context->host_failed  = true;
@@ -619,6 +637,10 @@ struct lua_program::implementation {
 	std::string   uri;
 	lua_limits    limits;
 	bool          faulted = false;
+#if ICE_PROFILING_ENABLED
+	std::uint64_t profile_id        = profiling::next_program_id();
+	bool          profile_announced = false;
+#endif
 	~implementation() {
 		if (vm)
 			lua_close(vm);
@@ -644,6 +666,7 @@ lua_program &lua_program::operator=(lua_program &&other) noexcept = default;
 ice::expected<lua_program, diagnostic>
 lua_program::prepare(const ice::io::resource_resolver &resolver, const std::string &uri,
                      lua_limits limits) {
+	ICE_PROFILE_ZONE(prepare_zone, "Lua.Prepare");
 	if (limits.memory_bytes < 64 * 1024 || limits.memory_bytes > 1024 * 1024 * 1024 ||
 	    !limits.instructions || limits.instructions > 1000000000 || !limits.source_bytes ||
 	    limits.source_bytes > 1024 * 1024 || limits.host_calls > 1000000)
@@ -660,6 +683,11 @@ lua_program::prepare(const ice::io::resource_resolver &resolver, const std::stri
 		if (state->uri.size() > 2048)
 			return ice::unexpected(
 			    failure(error_code::source, uri, "Canonical Lua URI exceeds 2048 bytes"));
+		ICE_PROFILE_VALUE(prepare_zone, state->profile_id);
+		ICE_PROFILE_TEXT(prepare_zone, state->uri);
+#if ICE_PROFILING_ENABLED
+		state->profile_announced = ICE_PROFILE_PROGRAM(state->profile_id, state->uri);
+#endif
 		state->limits = limits;
 		std::vector<unsigned char> bytes;
 		if (!resolver.read(state->uri, bytes, error))
@@ -695,6 +723,16 @@ lua_program::prepare(const ice::io::resource_resolver &resolver, const std::stri
 ice::expected<scalar_record, diagnostic> lua_program::call(std::string_view               function,
                                                            const scalar_record           &input,
                                                            std::span<const host_function> hosts) {
+	ICE_PROFILE_ZONE(call_zone, "Lua.Call");
+	ICE_PROFILE_TEXT(call_zone, function);
+#if ICE_PROFILING_ENABLED
+	if (state_) {
+		ICE_PROFILE_VALUE(call_zone, state_->profile_id);
+		if (!state_->profile_announced)
+			state_->profile_announced =
+			    profiling::describe_program(state_->profile_id, state_->uri);
+	}
+#endif
 	if (!state_ || state_->faulted)
 		return ice::unexpected(
 		    failure(error_code::faulted, source_uri(), "Lua instance requires replacement"));
