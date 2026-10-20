@@ -2,6 +2,7 @@ include_guard(GLOBAL)
 include(FetchContent)
 include("${CMAKE_CURRENT_LIST_DIR}/ICEMeta.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/ICEUri.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/ICEProfiling.cmake")
 
 # Lua is compiled from its official, immutable source archive. A deliberate local
 # override supports offline builds; it bypasses archive verification, not version checks.
@@ -54,7 +55,7 @@ endif()
 get_filename_component(ICE_SCRIPT_ROOT "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
 add_library(ICEScriptLua STATIC "${ICE_SCRIPT_ROOT}/engine/src/script/lua_program.cpp")
 add_library(ice::script_lua ALIAS ICEScriptLua)
-target_link_libraries(ICEScriptLua PUBLIC ice::meta ice::uri PRIVATE ICELuaVendor)
+target_link_libraries(ICEScriptLua PUBLIC ice::meta ice::uri ice::profiling PRIVATE ICELuaVendor)
 target_include_directories(ICEScriptLua PUBLIC "${ICE_SCRIPT_ROOT}/engine/include")
 target_compile_features(ICEScriptLua PUBLIC cxx_std_${ICE_CXX_STANDARD})
 set_target_properties(ICEScriptLua PROPERTIES POSITION_INDEPENDENT_CODE ON
