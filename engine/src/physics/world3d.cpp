@@ -353,10 +353,10 @@ struct prepared_pose_batch::implementation {
 	std::vector<std::size_t> wake_lock_indices, dirty_characters;
 	diagnostic               rollback_error{"Static pose batch was rolled back"};
 };
-prepared_pose_batch::prepared_pose_batch()                                           = default;
-prepared_pose_batch::~prepared_pose_batch()                                          = default;
-prepared_pose_batch::prepared_pose_batch(prepared_pose_batch &&) noexcept            = default;
-prepared_pose_batch &prepared_pose_batch::operator=(prepared_pose_batch &&) noexcept = default;
+prepared_pose_batch::prepared_pose_batch()                                                = default;
+prepared_pose_batch::~prepared_pose_batch()                                               = default;
+prepared_pose_batch::prepared_pose_batch(prepared_pose_batch &&other) noexcept            = default;
+prepared_pose_batch &prepared_pose_batch::operator=(prepared_pose_batch &&other) noexcept = default;
 std::span<const body3d_pose_update> prepared_pose_batch::poses() const noexcept {
 	return state_ ? std::span<const body3d_pose_update>(state_->previews)
 	              : std::span<const body3d_pose_update>{};

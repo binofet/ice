@@ -1,9 +1,9 @@
 #include "readback_state.h"
 namespace ice::render {
-readback_ticket::readback_ticket()                                       = default;
-readback_ticket::~readback_ticket()                                      = default;
-readback_ticket::readback_ticket(readback_ticket &&) noexcept            = default;
-readback_ticket &readback_ticket::operator=(readback_ticket &&) noexcept = default;
+readback_ticket::readback_ticket()                                            = default;
+readback_ticket::~readback_ticket()                                           = default;
+readback_ticket::readback_ticket(readback_ticket &&other) noexcept            = default;
+readback_ticket &readback_ticket::operator=(readback_ticket &&other) noexcept = default;
 readback_ticket::readback_ticket(std::unique_ptr<detail::readback_operation> operation)
     : operation_(std::move(operation)) {}
 readback_ticket::operator bool() const noexcept { return bool(operation_); }

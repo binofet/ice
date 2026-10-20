@@ -8,6 +8,7 @@
 namespace ice::motion {
 /// A rigid transform; no scale, projection, velocity, or transform authority is implied.
 struct rigid_pose {
+	/// Translation in the host-declared parent space, using that space's distance unit.
 	math::vec3 position{0};
 	/// Local-to-parent rotation. Validated results have unit length and a canonical sign.
 	math::quat orientation{1, 0, 0, 0};
@@ -26,10 +27,13 @@ struct sample_tag {
 
 /// A staged candidate value. Publishing it or applying a physics target is a host decision.
 struct pose_sample {
+	/// Candidate rigid transform in the coordinate space identified by tag.
 	rigid_pose pose;
+	/// Host-assigned coordinate-space, clock and exact-frame identity of this candidate.
 	sample_tag tag;
 };
 
+/// Rejection category for pose validation, tagged blending or geometric transform operations.
 enum class error_code {
 	invalid_position,
 	invalid_orientation,
@@ -38,8 +42,11 @@ enum class error_code {
 	sample_mismatch,
 	overflow
 };
+/// Owned portable failure detail; no invalid pose or fabricated sample accompanies it.
 struct diagnostic {
-	error_code  code;
+	/// Machine-readable reason the requested pose operation could not produce a valid result.
+	error_code code;
+	/// Human-readable explanation owned independently of input pose storage.
 	std::string message;
 };
 

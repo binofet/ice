@@ -15,13 +15,18 @@ enum class action_clock { simulation, presentation };
 /// cannot authenticate labels or validate an external controller registry. {0,0} is unowned;
 /// every owned lifetime requires nonzero identity and generation.
 struct action_owner {
-	std::uint64_t identity = 0, generation = 0;
+	/// Host registry identity of the participant/controller; zero denotes no owner.
+	std::uint64_t identity = 0;
+	/// Lifetime generation of that identity; a reused identity must not inherit an old lease.
+	std::uint64_t generation                             = 0;
 	bool          operator==(const action_owner &) const = default;
 };
 /// Immutable semantic action-to-channel mapping. Every declared action has exactly one route;
 /// channels are derived from these bindings and all start unowned. No event/context bindings.
 struct action_channel_binding {
-	action_id         action  = 0;
+	/// Declared semantic action routed by this binding; each action appears exactly once.
+	action_id action = 0;
+	/// Nonzero destination channel shared by actions belonging to the same consumer.
 	action_channel_id channel = 0;
 };
 /// Exact configured storage profile, derived from validated declarations. The upstream reducer
@@ -29,30 +34,48 @@ struct action_channel_binding {
 /// values and at most that many retiring-owner cancellation values, with one internal cache.
 /// Callers independently own any older snapshots they retain; there is no internal history.
 struct action_router_profile {
-	action_clock clock   = action_clock::simulation;
-	std::size_t  actions = 0, channels = 0;
+	/// Clock domain accepted by this router; publications must name the same domain.
+	action_clock clock = action_clock::simulation;
+	/// Number of retained semantic action declarations.
+	std::size_t actions = 0;
+	/// Number of distinct channels derived from the complete routing declarations.
+	std::size_t channels = 0;
 };
 /// Owned immutable channel sample. Unowned/newly handed-off channels are neutral. A retiring
 /// owner receives one neutral cancellation sample; released is set only for previously
 /// delivered down buttons. No queued press or delta is forwarded to its replacement.
 struct routed_action_channel {
+	/// Semantic destination shared by these routed values.
 	action_channel_id channel = 0;
-	action_owner      owner;
+	/// Lifetime receiving this sample; the zero owner receives only neutral values.
+	action_owner owner;
 	/// Router-local channel lease epoch, initially zero; increases on an actual owner change.
-	std::uint64_t             lease     = 0;
-	bool                      cancelled = false;
+	std::uint64_t lease = 0;
+	/// Source cancellation, generation change or handoff occurred at this publication boundary.
+	bool cancelled = false;
+	/// Values for this channel in the retained action-declaration order.
 	std::vector<action_value> values;
-	const action_value       *find(action_id id) const;
+	/// Borrow an action's value from this immutable sample, or null if absent from this channel.
+	const action_value *find(action_id id) const;
 };
 /// One shared immutable publication for all consumers of one clock tick. Reading this packet
 /// does not consume it. The host dispatches each producer once by this clock/tick identity;
 /// repeated per-producer/per-eye reads are observation, not another edge delivery.
 struct routed_action_frame {
-	action_clock                       clock = action_clock::simulation;
-	std::uint64_t                      tick = 0, generation = 0;
-	input_context                      context = input_context::terminal;
-	double                             seconds = 0;
-	std::vector<routed_action_channel> channels, retirements;
+	/// Clock domain of this publication, independent of render-eye or consumer count.
+	action_clock clock = action_clock::simulation;
+	/// Accepted upstream tick; repeated reads do not deliver another action edge.
+	std::uint64_t tick = 0;
+	/// Upstream reducer generation used to identify context/lifecycle changes.
+	std::uint64_t generation = 0;
+	/// Input context of the accepted upstream frame.
+	input_context context = input_context::terminal;
+	/// Accepted upstream integration duration; the router does not integrate rates again.
+	double seconds = 0;
+	/// Current channel samples, including neutral samples for channels without an owner.
+	std::vector<routed_action_channel> channels;
+	/// One cancellation sample for each replaced owned lease, separate from its successor.
+	std::vector<routed_action_channel> retirements;
 	/// Return only the exact currently owning lifetime, in the matching clock domain. Unowned,
 	/// wrong-generation or wrong-clock reads return null. Retirements are explicitly separate.
 	const routed_action_channel *find(action_channel_id channel, action_owner owner,
@@ -61,15 +84,23 @@ struct routed_action_frame {
 /// Compare-and-stage one ownership change. The epoch guards the active channel lease rather
 /// than a scene revision. desired={0,0} explicitly revokes a lease.
 struct action_channel_handoff {
-	action_channel_id channel        = 0;
-	std::uint64_t     expected_lease = 0;
-	action_owner      desired;
+	/// Known destination channel whose owner is to change at the next accepted new tick.
+	action_channel_id channel = 0;
+	/// Active lease epoch observed before staging; a mismatch rejects the transaction.
+	std::uint64_t expected_lease = 0;
+	/// New owning lifetime, or the zero owner to revoke the channel.
+	action_owner desired;
 };
+/// Snapshot of one active ownership lease; this conveys no external registry authority.
 struct action_channel_lease {
-	action_owner  owner;
+	/// Current owning lifetime; zero means that the channel is unowned.
+	action_owner owner;
+	/// Router-local epoch incremented only when this channel's owner actually changes.
 	std::uint64_t epoch = 0;
 };
+/// Accepted publication and whether the host must dispatch it as a new clock tick.
 struct action_route_result {
+	/// Shared immutable packet; an exact repeat returns the previously published packet.
 	std::shared_ptr<const routed_action_frame> frame;
 	/// False for an exact repeated publication: same pointer/identity, no handoff, cancellation
 	/// or edge is dispatched again. Consumers must not execute again when advanced is false.
@@ -85,11 +116,15 @@ public:
 	static ice::expected<action_router, action_diagnostic>
 	create(std::vector<action_descriptor> declarations, std::vector<action_channel_binding> routes,
 	       action_clock clock);
+	/// Release router-owned staging/cache; independently retained immutable frames remain valid.
 	~action_router();
+	/// Transfer routing state and leave the source without an active router implementation.
 	action_router(action_router &&other) noexcept;
+	/// Replace this router's state by moving ownership from another router.
 	action_router &operator=(action_router &&other) noexcept;
-	action_router(const action_router &)                   = delete;
-	action_router        &operator=(const action_router &) = delete;
+	action_router(const action_router &)            = delete;
+	action_router &operator=(const action_router &) = delete;
+	/// Return the validated storage/clock profile, or an empty profile after a move.
 	action_router_profile profile() const noexcept;
 	/// Observe the active lease; pending staging never changes this sample. Unknown channels
 	/// return nullopt. This contains no action values or execution/presentation policy.

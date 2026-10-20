@@ -73,11 +73,18 @@ struct lua_limits {
 /// Owned inventory of a fresh sandbox before user source runs. Member values are Lua
 /// type names; removed/guarded names are qualified except for base globals.
 struct lua_environment_description {
-	std::string version, release;
+	/// Fresh VM's runtime _VERSION string, checked against the linked Lua version.
+	std::string version;
+	/// Full pinned Lua release label from the compiled vendor headers.
+	std::string release;
+	/// Host-call availability contract; entry_call_only excludes top-level chunk execution.
 	std::string host_scope = "entry_call_only";
+	/// Visible library/global name to member-name/type-name inventory after sandbox initialization.
 	std::map<std::string, std::map<std::string, std::string, std::less<>>, std::less<>> libraries;
-	std::vector<std::string>                                                            removed;
-	std::map<std::string, std::string, std::less<>>                                     guarded;
+	/// Omitted globals or qualified library members, rather than functions granted to user code.
+	std::vector<std::string> removed;
+	/// Qualified member name to the enforced native resource/budget contract description.
+	std::map<std::string, std::string, std::less<>> guarded;
 };
 /// Inspect the same initialization used by prepare, without source, URI access or host calls.
 /// Uses a temporary bounded VM; no borrowed Lua strings or native handles escape.
