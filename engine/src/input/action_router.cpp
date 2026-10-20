@@ -72,13 +72,13 @@ const action_value *routed_action_channel::find(action_id id) const {
 			return &value;
 	return nullptr;
 }
-const routed_action_channel *routed_action_frame::find(action_channel_id id, action_owner owner,
-                                                       action_clock requested) const {
-	if (requested != clock || !owned(owner))
+const routed_action_channel *
+routed_action_frame::find(action_channel_id channel, action_owner owner, action_clock clock) const {
+	if (clock != this->clock || !owned(owner))
 		return nullptr;
-	for (const auto &channel : channels)
-		if (channel.channel == id && channel.owner == owner)
-			return &channel;
+	for (const auto &sample : channels)
+		if (sample.channel == channel && sample.owner == owner)
+			return &sample;
 	return nullptr;
 }
 action_router::action_router(std::unique_ptr<implementation> state) : state_(std::move(state)) {}
@@ -88,9 +88,9 @@ action_router &action_router::operator=(action_router &&other) noexcept = defaul
 
 ice::expected<action_router, action_diagnostic>
 action_router::create(std::vector<action_descriptor>      declarations,
-                      std::vector<action_channel_binding> bindings, action_clock clock) {
+                      std::vector<action_channel_binding> routes, action_clock clock) {
 	if (!valid(clock) || declarations.empty() || declarations.size() > maximum_actions ||
-	    bindings.size() != declarations.size())
+	    routes.size() != declarations.size())
 		return ice::unexpected(reject("Invalid action routing clock/profile size"));
 	std::map<action_id, std::size_t> ids;
 	std::set<std::string>            names;
@@ -105,7 +105,7 @@ action_router::create(std::vector<action_descriptor>      declarations,
 	}
 	std::set<action_channel_id> channels;
 	std::set<action_id>         routed;
-	for (const auto &binding : bindings)
+	for (const auto &binding : routes)
 		if (!binding.channel || !ids.contains(binding.action) ||
 		    !routed.insert(binding.action).second)
 			return ice::unexpected(reject("Unknown, duplicate or unowned semantic action route"));
@@ -119,7 +119,7 @@ action_router::create(std::vector<action_descriptor>      declarations,
 	state->channels.reserve(channels.size());
 	for (auto id : channels)
 		state->channels.push_back({id, {}, 0, 0});
-	for (const auto &binding : bindings) {
+	for (const auto &binding : routes) {
 		const auto index                      = state->index(binding.channel);
 		state->routes[ids.at(binding.action)] = index;
 		++state->channels[index].count;
@@ -129,10 +129,10 @@ action_router::create(std::vector<action_descriptor>      declarations,
 action_router_profile action_router::profile() const noexcept {
 	return state_ ? state_->profile : action_router_profile{};
 }
-std::optional<action_channel_lease> action_router::lease(action_channel_id id) const {
+std::optional<action_channel_lease> action_router::lease(action_channel_id channel) const {
 	if (!state_)
 		return std::nullopt;
-	const auto index = state_->index(id);
+	const auto index = state_->index(channel);
 	if (index == state_->channels.size())
 		return std::nullopt;
 	return action_channel_lease{state_->channels[index].owner, state_->channels[index].lease};

@@ -156,8 +156,11 @@ struct ray_hit3d {
 };
 /// One static nonsensor body's requested rigid pose; no shape/motion/player change is implied.
 struct body3d_pose_update {
-	body_id    body;
+	/// Existing static nonsensor body whose lifetime must match the preparation world.
+	body_id body;
+	/// Requested body-origin position in world meters.
 	math::vec3 position{0};
+	/// Requested local-to-world rigid rotation, validated during preparation.
 	math::quat rotation{1, 0, 0, 0};
 };
 /// Owner-thread prepared static-body poses. Preparation never changes the world. Preview poses
@@ -165,12 +168,17 @@ struct body3d_pose_update {
 /// Moving/discarding a plan is inert; its preview span expires on move, apply or destruction.
 class prepared_pose_batch {
 public:
+	/// Create an empty plan that has no prepared poses or authority to apply a batch.
 	prepared_pose_batch();
+	/// Discard an unapplied plan without changing any body in the world.
 	~prepared_pose_batch();
-	prepared_pose_batch(prepared_pose_batch &&) noexcept;
-	prepared_pose_batch &operator=(prepared_pose_batch &&) noexcept;
-	prepared_pose_batch(const prepared_pose_batch &)                           = delete;
-	prepared_pose_batch                &operator=(const prepared_pose_batch &) = delete;
+	/// Transfer the prepared plan; previously borrowed preview spans expire.
+	prepared_pose_batch(prepared_pose_batch &&other) noexcept;
+	/// Discard this unapplied plan and take ownership of the source plan.
+	prepared_pose_batch &operator=(prepared_pose_batch &&other) noexcept;
+	prepared_pose_batch(const prepared_pose_batch &)            = delete;
+	prepared_pose_batch &operator=(const prepared_pose_batch &) = delete;
+	/// Borrow accepted body-origin targets until move/apply/destruction; empty for an empty plan.
 	std::span<const body3d_pose_update> poses() const noexcept;
 
 private:
