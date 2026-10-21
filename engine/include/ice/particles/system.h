@@ -64,9 +64,9 @@ public:
 	/// Retire CPU state; all previously captured frames remain independently owned.
 	~system() override;
 	/// Transfer the complete backend lifetime and handles; the source becomes unavailable.
-	system(system &&) noexcept;
+	system(system &&other) noexcept;
 	/// Retire this backend and transfer the source lifetime; previous handles become stale.
-	system &operator=(system &&) noexcept;
+	system &operator=(system &&other) noexcept;
 	/// A mutable simulation has one owner.
 	system(const system &) = delete;
 	/// Do not duplicate a backend lifetime or its handles.
