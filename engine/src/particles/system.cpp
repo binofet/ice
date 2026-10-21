@@ -219,9 +219,9 @@ struct system::implementation {
 };
 
 system::system(std::unique_ptr<implementation> state) noexcept : state_(std::move(state)) {}
-system::~system()                                                       = default;
-system::system(system &&) noexcept                                      = default;
-system                           &system::operator=(system &&) noexcept = default;
+system::~system()                                                            = default;
+system::system(system &&other) noexcept                                      = default;
+system                           &system::operator=(system &&other) noexcept = default;
 ice::expected<system, diagnostic> system::create(limits budget) noexcept {
 	if (budget.emitters == 0 || budget.emitters > 256 || budget.particles == 0 ||
 	    budget.particles > 65536)
