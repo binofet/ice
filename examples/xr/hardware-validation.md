@@ -148,9 +148,8 @@ Their latest metadata session is `xr-10770-1792110639986`, build
 are actual acoustic PCM/retention results. Short clips 8/9 yielded only non-speech
 labels from the developer-hosted recognizer, so those did not prove intelligibility.
 The distinct retained recording `10770-10` was then explicitly retrieved for the
-requested local transcription. Whisper `tiny.en` recognized exactly:
-
-> Ignition, let there be light and drop a blue teapot.
+requested local transcription. Whisper `tiny.en` recognized an intelligible short
+spoken command; the exact transcript is retained in the maintainer record.
 
 The recognizer was independently checked against a known speech sample. This proves
 intelligible user speech through the Quest capture/WAV path, followed by an explicit

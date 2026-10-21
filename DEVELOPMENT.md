@@ -2,8 +2,8 @@
 
 ICE keeps its existing `master` default branch. The cleanup baseline was merged at
 `249485d`; renderer/native milestones pass through reviewed feature branches such as
-`feature/render-parity` before merging. Metagen and Ignition use `main`. No branch
-rename is needed.
+`feature/render-parity` before merging. Each dependency retains its own default
+branch; no branch rename is needed.
 
 ## Default and feature branches
 
@@ -16,14 +16,13 @@ Before merging a milestone, check ancestry and reconcile any independent changes
 Preserve commit history; do not force-rewrite the default to manufacture a clean merge. Branch
 protections/release automation are follow-up configuration, not already enabled policy.
 
-## Three repositories and explicit dependency commits
+## SDK and consumer dependency commits
 
 - Metagen owns the generic SDK, portable profile examples and independent conformance CI.
 - ICE owns reusable runtime/platform/render/data APIs, native integration and tests.
-- Private Ignition owns the application experience, scenes and agent orchestration.
 
-ICE pins Metagen at `tools/metagen`. Ignition pins ICE at `deps/ice`. Git records exact
-commits, not automatically floating branches. Work on named branches inside submodules;
+ICE pins Metagen at `tools/metagen`. Git records exact commits, not automatically
+floating branches. Work on named branches inside submodules;
 commit/push a child before committing the parent's pointer. Review generated-cache and
 behavior changes in that parent update. A normal ICE build uses checked-in consumer
 caches and does not require private Metagen source; source regeneration is explicit.
@@ -40,18 +39,12 @@ python3 tools/metagenintegration/check.py --cached-only
 Do not blindly run recursive `update --remote`: it may select a branch unrelated to the
 consumer's validated baseline. Explicitly select the intended child commit and record it.
 
-## Linux agent workspace
+## Linux development
 
-Spacegoo has a persistent checkout at `~/dev/ice` on
-`feature/linux-validation`. Linux agents work and run builds
-directly there. Exchange reviewed commits through Git and preserve each host's local
-branches; review diffs before pushing. Avoid repeated temporary source copies as the
-normal development workflow. The ignored `build/linux-tools/README.md` records the
-native dependency setup and Xvfb/GPU commands; it does not depend on `/tmp` tools.
-Private Ignition has a separate persistent checkout at `~/dev/ignition`. Reviewed
-commits can travel as ordinary Git packs over the owner's existing SSH connection
-into its non-checked-out `mac-reviewed` ref, then fast-forward its validation branch.
-This needs neither loose source copies nor GitHub credentials installed on the host.
+Use a persistent checkout and exchange reviewed commits through Git. Preserve local
+branches and review the diff before pushing. Keep host-specific setup and access
+instructions in the maintainer's own workspace; public build instructions belong
+with the relevant engine tests.
 
 ## Versions
 
@@ -77,7 +70,7 @@ The retained games need ports onto the new renderer and engine-level physics API
 Validation of this source checkpoint:
 
 - macOS: C++20 and C++23 each pass 14 CTest cases and the two-window native smoke.
-- Linux/spacegoo: C++23 and C++20 with ASan/UBSan each pass 14 tests and the X11
+- Linux: C++23 and C++20 with ASan/UBSan each pass 14 tests and the X11
   two-window smoke under Xvfb. The source copy contains no private Metagen checkout.
 - Windows: the complete root project compiles and links with MinGW in both modes;
   no Windows runtime/device validation is available.
@@ -104,15 +97,11 @@ Validation recorded so far:
 - Mac: both native backend suites and eight Metal/OpenGL handoffs pass; the same
   logical window and CPU simulation state survive. Failed preparation preserves the
   working pipeline. Borrowed Metal layers reject overlapping common/native renderer
-  owners and allow reattachment after retirement. The Ignition consumer also switches
-  its actual boot shader.
-- Linux/spacegoo: Mesa core-profile tests, OpenGL device replacements and the external
-  Ignition executable run under Xvfb. This is software-GPU validation.
+  owners and allow reattachment after retirement.
+- Linux: Mesa core-profile tests and OpenGL device replacements run under Xvfb.
+  This is software-GPU validation.
 - Windows: C++20/23 OpenGL and switching executables cross-compile/link with MinGW;
   runtime graphics, DPI and fullscreen remain unverified.
-- Ignition's deterministic Metal/OpenGL boot captures at 1280x800 differ by at most
-  3/255 per RGB channel on this Mac. This covers one procedural shader, not future
-  materials or cross-driver precision in general.
 - Quest: native arm64 OpenXR/GLES probes build/sign in C++20/23, and both have run
   on Quest 3. Recorded stereo/head/controller input and menu/remove-rewear lifecycle
   checks include a wireless C++20 installation. An origin-change anchoring defect was
@@ -127,8 +116,8 @@ Validation recorded so far:
   See [MOBILE.md](MOBILE.md) for the hardware checkpoint and opt-in diagnostics.
 
 The renderer checkpoint is committed and published. Native text and sampled-image
-work builds on that baseline. Ignition pins each published engine checkpoint after
-validation; an explicit local checkout override remains available for joint work.
+work builds on that baseline. Consumers adopt tested engine commits through their
+own reviewed dependency updates.
 A first submitted frame log measures submission, not physical display
 latency or a cold-start benchmark.
 
@@ -137,7 +126,6 @@ latency or a cold-start benchmark.
 The next engine slice adds per-window committed/preedit UTF-8 and interpreted editing,
 with native AppKit/IMM/XIM adapters and bounded cancellation-aware queues. It also adds
 RGBA8 sampled images to both Metal and modern GL, using fresh storage for safe updates.
-Ignition consumes these through its procedural display shader and native font canvases.
 
 Validation of these published commits:
 
@@ -145,16 +133,13 @@ Validation of these published commits:
   Metal/OpenGL replacements pass, including orientation, updates, ownership, invalid
   bindings and continued rendering. Format, public API documentation and targeted
   analyzer checks pass.
-- Linux/spacegoo: C++20/23 each pass 15 tests, native X11 input and two-window
+- Linux: C++20/23 each pass 15 tests, native X11 input and two-window
   lifecycle fixtures, sampled-image tests and eight OpenGL device replacements under
   Xvfb/Mesa. The built-in XIM accepts the exercised commits/edit commands; these
   automated events do not prove interactive candidate selection in a full IME.
 - Windows: complete C++20/23 projects compile/link with MinGW, including the native
   IMM adapter and texture/replacement targets. No Windows runtime is available.
 - The iOS simulator companion rebuilds against the shared renderer changes.
-- Ignition `24d6419` pins `ddfa73e` and consumes native input and sampled images for
-  its Unicode terminal and procedural combustion opening. Both application tests pass
-  in C++20/23 on Mac; native Metal/OpenGL replacements retain its session.
 
 Native IME interaction is a separate validation scope. The final AppKit native fixture
 passes when launched through its application bundle: native key routing, UTF-8
@@ -179,19 +164,14 @@ Renderer replacement reconstructs a new holder from retained source and image da
 Mac C++20/23 strict builds, public headers, CPU snapshot/hash/budget cases and actual
 Metal/GL replacement/undo/failure GPU cases pass. The API audit covers 586 declarations
 with no missing documentation or argument issues, and the targeted analyzer scope
-passes. Ignition consumes the owner through `shader reload` / `shader undo`, retains
-authored variants per backend and keeps its window/session through device replacement.
-Compilation/probing remains synchronous on the UI/render thread; asynchronous jobs
-and a shared agent/session command service remain subsequent work.
+passes. Preparation and probing are synchronous in the calling thread; hosts choose
+their own scheduling and command integration.
 
-Spacegoo C++20/23 each pass all 16 CPU tests, native X11 input, sampled-image GPU
+Linux C++20/23 each pass all 16 CPU tests, native X11 input, sampled-image GPU
 checks, eight device replacements and the transactional pipeline GPU suite. Complete
 Windows projects cross-link in both modes; runtime validation remains unavailable.
-Ignition `97973f3` also passes both native Linux application tests and shader-command
-runs. Native keys in one live window exercise a broken shader file, retained revision,
-successful repair and undo to the original hash. Its Windows applications/tests
-cross-link in both modes. The shared Metal companion rebuilds for iOS simulator;
-fresh graphics-free C++20/23 builds each pass seven CPU tests.
+The shared Metal companion rebuilds for iOS simulator; fresh graphics-free C++20/23
+builds each pass seven CPU tests.
 
 ## Recursive data ownership across standard libraries
 

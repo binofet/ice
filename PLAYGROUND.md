@@ -177,114 +177,36 @@ use local IPC. We do need enough schema, reference, serialization, and lifecycle
 semantics to make a small set of mutations safe. Start with one runnable experiment,
 then grow the supported operations from demonstrated needs.
 
-## Ignition as an external application
+## Independent host applications
 
-Ignition becomes the primary interactive development application in a separate private
-repository outside ICE. Retain importer/animation and runtime proofs as focused tests;
-the obsolete EngineTest application is removed. ICE owns reusable
-platform, rendering, data, language and command APIs; Ignition owns its experience,
-prompts, scenes, agent orchestration and product assets. Begin with an explicit local
-ICE checkout dependency, then pin tested revisions as the consumer boundary settles.
-Metagen's later public release remains its own milestone.
+Applications compose reusable engine modules and own their product behavior, assets
+and command policy. Engine examples and conformance tests should demonstrate the
+public module contracts without requiring an application checkout.
 
-Desktop, iOS/Android and VR/AR are first-class host profiles. The shared session and
-command model must support independent controller, simulation and presentation endpoints,
-including an optional watch remote client. XR needs tracked views/poses, actions, spatial
-UI and session/frame lifecycle rather than a single flat window assumption. Quest 3 is
-the first XR hardware target; its standalone stereo/controller probe now runs on hardware.
-The detailed Ignition experience and implementation plan live in its private repository.
+## Current contracts and follow-on work
 
-Support both standalone XR and XR rendered by a more powerful desktop computer, with
-a wired headset connection as an explicit future host profile. The desktop OpenXR
-runtime owns device transport/composition; ICE supplies tracked views, actions and
-rendered frames through that runtime. Keep scene/session authority independent of
-where rendering runs so the same experience can use either host. Negotiate capabilities,
-latency/frame budgets and reconnect behavior explicitly. Wireless PC-driven XR can
-follow the wired proof. This is planned work after the current standalone Quest slice;
-ADB over Wi-Fi is only a development connection and does not implement PC rendering.
+The independently owned Metagen SDK is pinned as an ICE submodule. Native adapters
+and generated consumer caches live in ICE. The rich data model supports owned
+records/references, bounded preparation and revision-checked publication; native
+JSON has strict Unicode, exact integer handling and resource budgets. The optional
+`ice::commands`, `ice::script_lua`, physics and semantic-input modules expose separate
+headless contracts. See [commands](docs/commands.md), [scripting](docs/scripting.md),
+[physics](docs/physics.md), [input actions](docs/input-actions.md) and
+[Metagen integration](tools/metagenintegration/README.md) for supported behavior.
 
-## Current checkpoint and next implementation order
+Preserve tested C++20/23 behavior, explicit resource ownership and backend parity
+as those modules evolve. Prepare changes before activation, reject stale identities
+and keep failures from replacing working state. Optional modules must remain useful
+without a window, device or unrelated runtime. Physical device behavior and new
+backend capabilities require their own evidence.
 
-The independently owned Metagen SDK is pinned as an ICE submodule. ICE keeps native
-adapters and generated consumer caches. Rich native graphs support enums, nested records,
-inline/local/external references, opt-in data inheritance and explicit container merge
-operations, with bounded preparation, revision checks, undo and generation handles.
-C# and Python source providers, JSON/XML/codecs and Rust consumers are demonstrated in
-Metagen; native runtime XML/compression codecs and typed materialization remain separate work.
-Native JSON now reads/writes the existing owned data tree, with strict Unicode, exact
-64-bit integers, duplicate-key rejection and shared resource budgets. The generic
-command/session boundary is implemented in `ice::commands`; its descriptors reuse
-the existing scalar Metagen consumer. Ignition uses it for transactional scene edits,
-guarded local MCP commands and one-shot Lua authoring scripts. Optional Box2D/Jolt
-modules provide owned body identities, fixed ticks, queries and contact events. Jolt
-also owns grounded capsule motors with queued jumping, slopes, stairs and protected
-collision proxies. `ice::input` supplies semantic actions, source contributions and
-explicit context/tick frames. Ignition connects these to developer navigation and an
-attached desktop player camera, with disposable play checkpoints and authoring undo.
-Persistent tick/event gameplay scripts, general component attachment, durable history
-and collaborative authority remain later slices. See [commands](docs/commands.md),
-[scripting](docs/scripting.md), [physics](docs/physics.md),
-[input actions](docs/input-actions.md) and `tools/metagenintegration/README.md` for
-the exact supported contracts.
+Future engine examples should exercise one bounded public contract at a time.
+Language/runtime bindings, component composition and networking remain explicit
+profiles rather than implicit features of a metadata declaration. The
+[networking metadata example](tools/networkmetadata/README.md) proves codec/policy
+generation; it does not implement a replicated room.
 
-The cleanup retains CPU math, URI, glTF/animation, host/input, companion and data modules.
-Native AppKit/Win32/X11 windows no longer own graphics contexts. EngineTest, disposable
-prototype games, old platform/device APIs and unused historical dependencies are removed.
-Airhockey and SkeeBall source/art/physics snapshots remain in `examples`; they are not
-build targets until ported. Native iOS/Android/watchOS probes remain independent examples.
-
-1. Preserve the delivered C++20/23 core, Metal/OpenGL, typed commands, Lua authoring,
-   semantic input and grounded-character contracts. Keep native GPU and cross-platform
-   gates before advancing tested dependency pins. Windows currently has cross-link
-   coverage rather than observed runtime behavior.
-2. Make scene state queryable per object, support bounded inspection/replanning, and
-   expose complete authoring operations. Route model camera intents through the separate
-   view service; report confirmed effects rather than treating an inspection as an edit.
-3. Prove one Mac-authoritative room rendered on Mac, iPad and Quest, initially using the
-   prebundled asset catalog. Define stable identities, published snapshots, asset hashes,
-   late join/reconnect and participant-local views. The iPad needs an Ignition Metal
-   client; Quest needs shared rendering into acquired OpenXR eye images. Current probes
-   are separate proofs, and companion/browser transport is not generic scene replication.
-4. Build reusable entity/component recipes, persistent tick/event scripts and durable
-   prototype catalogs. Keep simulation/player motion separate from authoring revisions;
-   add named cameras and RTS rigs through the existing view/input contracts.
-5. Extend shared rendering to UV/material inputs and animated/skinned glTF on both
-   backends. Preserve those resources through renderer replacement; add Vulkan and D3D12
-   as capabilities and test hardware allow. The first shared room need not wait for this.
-6. Port Airhockey/SkeeBall onto shared rendering and physics. Restore mobile/browser
-   interaction before SkeeBall tuning. Watch clients, PC-rendered XR, AR interaction and
-   casting remain future host profiles; no physical Watch deployment is claimed.
-7. Continue docs/MCP-only exploratory agents. Record reproducible failures and evidence;
-   a successful invocation alone does not establish correct gameplay, physics or rendering.
-
-Ignition's private design records the teapot/bunny conversation as a planned acceptance
-scenario. It requires contextual scene selection, PBR chrome/environment lighting, fur,
-deformable bodies, instanced construction, bounded automatic spawning, first-person input
-and rigged physics ragdolls. These capabilities are not implemented by this cleanup.
-A static bunny asset does not supply skeleton/joints/limits or skin weights automatically.
-Authored operations should be inspectable and undoable in authoring mode. Play disables
-undo, including paused play, and stop restores the authored checkpoint; runtime undo
-remains a separate problem.
-
-## Live sound authoring and collaborative rooms
-
-Two additional acceptance scenarios drive reusable engine work:
-
-- Record the user's own laser/banana-shotgun sound effects, preview/edit them, then
-  bind them to firing events while the game continues. This needs microphone capture,
-  bounded recording, audio assets with stable URIs/provenance, event bindings, mixing
-  and spatial playback, plus prepared audio replacement at a safe runtime boundary.
-- Invite friends into the sandbox and let humans and their scoped agents jointly
-  generate scripts, assets and game behavior inside a running VR session. This needs
-  shared identities, authoritative simulation, revisioned transactions, concurrent-edit
-  conflict handling, snapshots/deltas for late join and capability-aware asset delivery.
-
-Both use the same session/command model as the terminal and MCP clients. Prepare code,
-media and renderer variants away from the frame loop, then activate coherent changes;
-failure keeps the last working version. Preserve state and generation-checked references
-across reloads. Session roles/capabilities govern who may edit, run scripts or invite
-others; an owner can grant ongoing authoring access so normal collaboration stays fast.
-Publishing a room and sharing recorded assets are explicit operations. Per-client
-interpreter/resource budgets and local/desktop-rendered XR profiles remain part of
-this design. These scenarios are planned; the current XR probe has no multiplayer,
-microphone capture, audio runtime or live script service.
+Airhockey and SkeeBall remain source/art/physics examples awaiting ports onto the
+modern renderer. Keep their provenance and focused gameplay checks while replacing
+retired APIs. Mobile/browser and XR probes retain their own supported build and
+hardware records; a successful host build does not establish device acceptance.

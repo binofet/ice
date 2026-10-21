@@ -1,8 +1,8 @@
 # Gameplay objects and composition
 
-This is the agreed direction, not a claim that the first Ignition scene is already a
-general component runtime. That prototype currently owns primitive recipes, physics
-bodies, tint and per-caller selection. The next reusable layer belongs in ICE.
+This describes proposed engine contracts. It does not claim that ICE already
+implements a general component runtime; current module capabilities are documented
+separately.
 
 An entity supplies stable identity and a collection of features. Transform, renderable,
 material, rigid body, trigger, script and weapon are independently attachable components.
@@ -43,23 +43,14 @@ edits have authoring receipts; simulation has ticks and events. Checkpoint undo 
 defined snapshot, including an explicit script-state policy. It does not reverse arbitrary
 file/network activity or the past behavior of another runtime.
 
-## Acceptance cases
+## Conformance cases for a future component runtime
 
-“Add a script to that teapot that increases specular and emissive effects as the player
-approaches” resolves the caller's selection to a stable entity. Add a behavior component
-with player reference, near/far distances and material ranges. The script consumes the
-queried distance and returns clamped material updates for that instance. Removing the
-behavior restores the declared base material policy. A missing player or retired teapot
-produces a diagnostic instead of calling a dangling binding.
+Prove identity and ownership independently of an application command vocabulary:
+add/remove a component, reject unmet dependencies, retire a referenced owner and
+replace a script while queued work still holds the old generation. Invalid prepared
+edits must preserve the previous published state.
 
-“When the player steps on this box, spawn a hotdog bazooka that shoots giant bouncy
-hotdogs” adds a trigger and behavior to the selected box. Filter player identity, debounce
-the enter event, and spawn a URI-backed weapon recipe with owner, projectile recipe,
-velocity, restitution, lifetime and bounded firing rate. Imported hotdog art supplies no
-weapon logic by itself. Spawned entities use the same inspectable creation operations as
-the terminal and MCP clients. Tests need enter/exit/re-entry, removal during dispatch,
-script failure, projectile limits and renderer replacement while the weapon remains live.
-
-The intended natural-language layer generates these explicit recipes and behaviors. The
-engine executes discoverable typed operations; matching one canned sentence is not proof
-that the full scenario works.
+Script tests should exercise bounded inputs/outputs, callback failure, resource
+limits and removal during dispatch. Rendering tests should retain owned data across
+device replacement without reviving retired callbacks. Passing a language example
+does not establish a complete entity/component system or application integration.

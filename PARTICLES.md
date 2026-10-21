@@ -14,9 +14,8 @@ can omit it. No GPU implementation or compute capability is claimed by these con
 
 `ice/particles/system.h` is the explicit CPU implementation. Its `advance()` and
 owned `capture()` are implementation-specific conveniences, outside `emitter_control`.
-The Ignition adapter must use the shared command/schema/Lua discovery route for the
-controls, rather than exposing a separate model-only effect path. Engine delivery
-alone does not establish app registration, visual acceptance or a consumer pin update.
+Hosts own command registration and presentation. Engine delivery alone does not
+establish an application integration, visual acceptance or a consumer dependency update.
 
 ## Ownership and work limits
 
@@ -87,11 +86,10 @@ allocation failure and a 512-particle workload under an allocation-denial guard.
 It is one observed CTest executable with eight scenario groups, not eight independently
 measured unit-test invocations. Ordinary root CTest registers the same proof.
 
-## Named follow-on: compute-driven fire and smoke
+## Future compute implementations
 
-Joel wants realistic smoke/fire which actually require GPU compute, not a CPU
-particle effect labeled as a fluid simulation. That is a separate rendering milestone
-after this first native/audio/network/device slice. Preserve the shared gameplay
+A compute-driven fluid simulation is a separate rendering capability from this CPU
+particle implementation. Preserve the shared gameplay
 controls, owner generations and lifecycle; backend implementations own GPU simulation
 and presentation state. Do not require a CPU particle snapshot or synchronous GPU
 readback for each tick. An explicit unsupported/CPU mode must remain distinguishable
@@ -103,7 +101,7 @@ dispatch, storage-buffer/image or 3D-field barrier contract. Existing target-rea
 and queue-drain fences are not a compute simulation API. Backend/API names alone
 do not prove support on desktop, Quest or iPad.
 
-Concrete prerequisites for Cinder/Forge's later bounded design:
+Prerequisites for a compute implementation:
 
 - Query actual backend compute, storage-buffer, 3D sampled/storage image/format,
   workgroup and resource-limit capabilities. Report unsupported paths explicitly.

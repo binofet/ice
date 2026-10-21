@@ -53,7 +53,7 @@ int main(int argc, char **argv) {
 		auto output  = playback_device::create(options);
 		CHECK(output);
 		const speech_request request{"native-proof:1",
-		                             "An Ignition reply is prepared without opening the speakers.",
+		                             "A reply is prepared without opening the speakers.",
 		                             selected->id, 1};
 		auto                 handle = speech->start(request);
 		CHECK(handle);

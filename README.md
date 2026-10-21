@@ -77,9 +77,8 @@ encoding/decoding through `ice/data/json.h`, alongside the experimental MDB1 for
 
 [Airhockey and SkeeBall](EXAMPLES.md) remain source/art/physics examples awaiting a
 port onto the modern renderer. They are not targets in this checkpoint. Native
-[iOS/Android/watchOS probes](MOBILE.md) remain independently buildable. Ignition is a
-separate private application repository; its boot and interactive scene studies drive
-the shared renderer and physics modules. The independently built [Quest OpenXR probe](examples/xr/README.md)
+[iOS/Android/watchOS probes](MOBILE.md) remain independently buildable.
+The independently built [Quest OpenXR probe](examples/xr/README.md)
 now runs on Quest 3 with tracked stereo views, controller input and verified Wi-Fi
 debug access. Its [hardware record](examples/xr/hardware-validation.md) distinguishes
 observed behavior from the remaining device/lifecycle tests.
