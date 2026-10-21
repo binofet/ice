@@ -14,6 +14,7 @@ import unittest
 if os.name != 'nt':
     import fcntl
 
+FIXTURE_STARTUP_SECONDS = 15
 HELPER = Path(__file__).with_name('run_stage.py')
 CHILD = r'''
 import json, os, pathlib, signal, subprocess, sys, time
@@ -106,13 +107,14 @@ class StageCancellationTests(unittest.TestCase):
         previous = signal.signal(signal.SIGTERM, interrupted)
         self.addCleanup(signal.signal, signal.SIGTERM, previous)
 
-    def bash_fixture(self, number, rendered=False, exec_entry=True, late=False):
-        launcher = """import fcntl,os,sys
+    def bash_fixture(self, number, rendered=False, exec_entry=True, late=False, startup_delay=0):
+        launcher = """import fcntl,os,sys,time
 fd=os.open(sys.argv[1],os.O_CREAT|os.O_RDWR,0o600)
 os.dup2(fd,9,inheritable=True)
 if fd!=9: os.close(fd)
 fcntl.flock(9,fcntl.LOCK_EX)
-os.execv('/bin/bash',['/bin/bash','--noprofile','--norc','-e','-o','pipefail',*sys.argv[2:]])
+time.sleep(float(sys.argv[2]))
+os.execv('/bin/bash',['/bin/bash','--noprofile','--norc','-e','-o','pipefail',*sys.argv[3:]])
 """
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -131,14 +133,20 @@ os.execv('/bin/bash',['/bin/bash','--noprofile','--norc','-e','-o','pipefail',*s
                               'late', *target[3:]]
                 if rendered:
                     target = [sys.executable, '-B', '-c', RENDER_DRIVER, str(HELPER.parent), str(root)]
-                argv = [sys.executable, '-B', '-c', launcher, str(root/'lock'), str(root/'entry.sh'), *target]
+                argv = [sys.executable, '-B', '-c', launcher, str(root/'lock'), str(startup_delay),
+                        str(root/'entry.sh'), *target]
                 owner = subprocess.Popen(argv, env=dict(os.environ, CI_EVIDENCE_DIR=str(root)),
                                          stdout=console, stderr=subprocess.STDOUT, start_new_session=True)
                 try:
-                    until = time.monotonic()+5
+                    # Several Python/entry processes must start before this marker.
+                    # Startup allowance is separate from the cancellation bounds below.
+                    until = time.monotonic()+FIXTURE_STARTUP_SECONDS
                     while not (root/'ready').exists() and owner.poll() is None and time.monotonic()<until:
                         time.sleep(.01)
-                    self.assertTrue((root/'ready').exists())
+                    self.assertTrue((root/'ready').exists(),
+                                    f'fixture startup did not reach readiness within {FIXTURE_STARTUP_SECONDS}s; '
+                                    f'entry_exit={owner.poll()}; console_tail:\n' +
+                                    (root/'console').read_text(errors='replace')[-4096:])
                     ready = json.loads((root/'ready').read_text())
                     child_group = ready['pgid']
                     self.assertEqual(child_group, ready['pid'])
@@ -246,6 +254,13 @@ os.execv('/bin/bash',['/bin/bash','--noprofile','--norc','-e','-o','pipefail',*s
         for number in (signal.SIGTERM, signal.SIGINT):
             with self.subTest(number=number):
                 self.bash_fixture(number, rendered=True)
+
+    def test_render_entry_waits_for_slow_startup_before_cancellation(self):
+        self.bash_fixture(signal.SIGINT, rendered=True, startup_delay=5.2)
+
+    def test_entry_startup_failure_keeps_owned_console_diagnostics(self):
+        with self.assertRaisesRegex(AssertionError, r'(?s)entry_exit=1; console_tail:.*sleep length'):
+            self.bash_fixture(signal.SIGTERM, startup_delay=-1)
 
     def test_nonexec_bash_entry_pid_does_not_deliver_to_helper(self):
         self.bash_fixture(signal.SIGTERM, exec_entry=False)
