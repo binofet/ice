@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[2]
 PREFIX = Path('/opt/ice-family-ci/toolchains/native-20261018-v1')
 PACKAGES = {'clang-format': '18.1.8', 'clang-tidy': '18.1.8',
             'ninja': '1.13.0', 'libclang': '18.1.1'}
-REQUIREMENTS = {'ice': 'tools/quality/requirements.txt', 'ignition': 'tools/ci/requirements.txt'}
+REQUIREMENTS = {'ice': 'tools/quality/requirements.txt'}
 
 
 def require(condition, message):
@@ -95,6 +95,7 @@ def standards_plan(source):
 
 
 def source_scope(repo):
+    require(repo in REQUIREMENTS, 'Unsupported source repository')
     require(os.environ.get('GITHUB_REPOSITORY') == 'binofet/' + repo, 'Unexpected source repository')
     require(Path(os.environ.get('GITHUB_WORKSPACE', '')).resolve() == ROOT, 'Unexpected source workspace')
     event = os.environ.get('GITHUB_EVENT_NAME')
@@ -134,8 +135,6 @@ def toolchain(repo, profile, observed):
                 path = shutil.which(name)
                 require(path is not None, 'Missing preprovisioned software-render tool: ' + name)
                 commands[name] = {'executable': str(Path(path).resolve())}
-            if repo == 'ignition':
-                commands['pkg-config'] = probe(['pkg-config', '--version'])
     else:
         commands['xcode'] = probe(['xcodebuild', '-version'])
         commands['sdk'] = probe(['xcrun', '--sdk', 'macosx', '--show-sdk-version'])
@@ -160,8 +159,6 @@ def validate_commands(commands, repo, profile, observed):
         required |= {'gcc-13', 'g++-13'}
         if profile == 'native':
             required |= {'clang++-18', 'xvfb-run', 'Xvfb', 'xauth', 'glxinfo'}
-            if repo == 'ignition':
-                required.add('pkg-config')
     else:
         required |= {'xcode', 'sdk', 'compiler'}
     if repo == 'ice' and profile == 'native':

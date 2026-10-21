@@ -1,14 +1,13 @@
-# Trusted family review and CI gates
+# Trusted ICE review and CI gates
 
 This is independently authored source adapted from the reviewed Cosmotomata
 control/review pattern. No Cosmotomata code, repository identity, policy, pin,
 credential or runner is reused. Nothing in this directory registers a runner,
 changes settings, performs a merge or authorizes a release.
 
-The fixed repositories are `binofet/ice`40782766/master/public,
-`binofet/metagen`1421012730/main/private and
-`binofet/ignition`1420999231/main/private. Automatic integration accepts only
-open, non-draft, same-repository, non-fork PRs into their fixed default branches.
+The fixed repository is `binofet/ice`40782766/master/public.
+Automatic integration accepts only open, non-draft, same-repository, non-fork PRs
+into its fixed default branch. Unknown repository policies are rejected.
 Root configures native auto-merge/protections separately after proving capabilities.
 
 ## Bootstrap a real native review
@@ -44,8 +43,9 @@ The gate resolves the actual default quality workflow ID/path, selects its lates
 to complete successfully. ICE also requires exactly its two named manual-only
 jobs to be completed and skipped during ordinary PR quality runs. Those rows
 supply no quality coverage or artifacts; missing, duplicate, unknown or executed
-auxiliary jobs reject the run. The five quality profiles and five artifacts remain
-mandatory. Other repositories admit no ICE auxiliary rows.
+auxiliary jobs reject the run. Day runs require three C++23 profiles and artifacts;
+nightly runs require all five C++20/23 and scoped sanitizer profiles and artifacts.
+The current standards plan binds the exact job and artifact inventory.
 Push runs never substitute for merge-candidate tests.
 It downloads only the finite current run's actual unexpired artifact IDs, with
 bounded ZIP bytes/expansion/file counts, safe paths/types, and project-only roots.
@@ -64,10 +64,10 @@ integration and enforce exact-head/current-base checks at merge; status publicat
 cannot atomically lock a future review edit or target update. This script never
 calls a merge endpoint.
 
-Generate repository-specific workflows with `gate.py templates --repo metagen
+Generate ICE workflows with `gate.py templates --repo ice
 --output NEW_DIRECTORY`. The new directory receives only that fixed repository
 name, default branch and quality-workflow triggers; existing output is refused.
-Copy the reviewed controller and generated files into that repository through its
+Copy the reviewed controller and generated files through the repository's
 reviewed source change. Templates alone do not install or enable automation.
 
 `templates/family-gate.yml` is an owned Linux control-role, trusted-default-branch controller template;

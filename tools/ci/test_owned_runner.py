@@ -32,8 +32,6 @@ class OwnedRunnerTests(unittest.TestCase):
             if profile == 'native':
                 output.update({'clang++-18': 'Ubuntu clang version 18.1.8', 'xvfb-run': '',
                                'Xvfb': '', 'xauth': '', 'glxinfo': ''})
-                if repo == 'ignition':
-                    output['pkg-config'] = '1.8.1'
         else:
             output.update(xcode='Xcode 26.3\nBuild version fixture', sdk='26.2', compiler='Apple clang')
         if repo == 'ice' and profile == 'native':
@@ -60,7 +58,7 @@ class OwnedRunnerTests(unittest.TestCase):
 
     def test_missing_or_wrong_native_tool_version_fails_without_install_or_fallback(self):
         for repo, system, profile in [('ice', 'Linux', 'native'), ('ice', 'Linux', 'sanitizers'),
-                                      ('ignition', 'Linux', 'native'), ('ice', 'Darwin', 'native')]:
+                                      ('ice', 'Darwin', 'native')]:
             observed = self.observed(system); commands = self.commands(repo, system, profile)
             owned.validate_commands(commands, repo, profile, observed)
             for name in ('cmake', 'git'):
@@ -87,6 +85,10 @@ class OwnedRunnerTests(unittest.TestCase):
                     owned.source_scope('ice')
                 event.write_text(json.dumps({'pull_request': {'head': {'repo': {'full_name': 'binofet/ice'}}}}))
                 owned.source_scope('ice')
+                os.environ['GITHUB_REPOSITORY'] = 'binofet/other'
+                with self.assertRaisesRegex(ValueError, 'Unsupported source repository'):
+                    owned.source_scope('other')
+                os.environ['GITHUB_REPOSITORY'] = 'binofet/ice'
                 os.environ['GITHUB_WORKSPACE'] = str(root / 'other')
                 with self.assertRaisesRegex(ValueError, 'workspace'):
                     owned.source_scope('ice')
@@ -104,7 +106,7 @@ class OwnedRunnerTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             owned.quality_plan('ice', 'schedule', payload, 'refs/heads/feature')
         with self.assertRaises(ValueError):
-            owned.quality_plan('ignition', 'schedule', payload, 'refs/heads/master')
+            owned.quality_plan('other', 'schedule', payload, 'refs/heads/master')
         payload['inputs'] = dict(quality_plan='nightly', diagnostic='none', expected_head='a'*40)
         self.assertEqual(owned.quality_plan('ice', 'workflow_dispatch', payload, 'refs/heads/master', 'a'*40), 'nightly')
         for key, value in [('quality_plan', 'other'), ('quality_plan', None), ('diagnostic', 'xvfb-readiness-v1'),
@@ -136,7 +138,7 @@ class OwnedRunnerTests(unittest.TestCase):
                 owned.standards_plan(dict(standards_plan=mode, quality_plan=quality, cpp=cpp, profile=profile))
 
     def test_fresh_project_venv_pip_is_explicit_pinned_and_ignores_personal_pip_configuration(self):
-        for repo in ('ice', 'ignition'):
+        for repo in ('ice',):
             with self.subTest(repo=repo), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory).resolve(); venv = root / 'build/ci-tools/venv'; output = root / 'build/ci-evidence'
                 output.mkdir(parents=True); (output / 'source.json').write_text('{"source":"fixture"}\n')
@@ -193,7 +195,7 @@ class OwnedRunnerTests(unittest.TestCase):
                                lambda d: d['packages'].update(ninja='unapproved'),
                                lambda d: d['commands'].pop('glxinfo'),
                                lambda d: d['commands']['clang++-18'].update(output='clang version 19.0.0'),
-                               lambda d: d.update(repository='binofet/ignition')):
+                               lambda d: d.update(repository='binofet/other')):
                     broken = copy.deepcopy(metadata); mutate(broken)
                     (output / 'toolchain.json').write_text(json.dumps(broken))
                     self.assertTrue(owned.evidence_issues(output, source))
@@ -231,7 +233,7 @@ class OwnedWorkflowTests(unittest.TestCase):
 
     def test_current_control_and_signal_sources_equal_maintained_templates(self):
         root = Path(__file__).resolve().parents[2]
-        repo = 'ice' if (root / '.github/workflows/engine-quality.yml').is_file() else 'ignition'
+        repo = 'ice'
         spec = importlib.util.spec_from_file_location('owned_workflow_gate_fixture', root / 'tools/ci/github/gate.py')
         gate = importlib.util.module_from_spec(spec); spec.loader.exec_module(gate)
         with tempfile.TemporaryDirectory() as directory:
@@ -280,9 +282,7 @@ class OwnedWorkflowTests(unittest.TestCase):
     def test_source_workflow_has_no_installer_or_hosted_fallback_and_activates_project_tools(self):
         root = Path(__file__).resolve().parents[2]
         path = root / '.github/workflows/engine-quality.yml'
-        repo = 'ice' if path.is_file() else 'ignition'
-        if repo == 'ignition':
-            path = root / '.github/workflows/quality.yml'
+        repo = 'ice'
         text = path.read_text()
         self.assertIn("github.event.pull_request.head.repo.full_name == github.repository", text)
         self.assertIn('runner: [self-hosted, Linux, X64, ' + repo + '.cpu]', text)
@@ -386,8 +386,6 @@ class OwnedWorkflowTests(unittest.TestCase):
     def test_ice_manual_diagnostic_route_is_exact_and_cannot_replace_normal_quality(self):
         root = Path(__file__).resolve().parents[2]
         path = root / '.github/workflows/engine-quality.yml'
-        if not path.is_file():
-            return  # Ignition has no ICE diagnostic route; original ownership checks still apply.
         jobs = self.workflow_jobs(path.read_text())
         fixed = "'refs/heads/codex/xvfb-readiness-20261019'"
         normal = "(inputs.quality_plan == 'day' && inputs.diagnostic == 'none' && inputs.expected_head == '' && github.ref != " + fixed + ")"
