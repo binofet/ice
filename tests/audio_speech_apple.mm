@@ -52,10 +52,9 @@ int main(int argc, char **argv) {
 		options.hrtf = hrtf_policy::disabled;
 		auto output  = playback_device::create(options);
 		CHECK(output);
-		const speech_request request{"native-proof:1",
-		                             "A reply is prepared without opening the speakers.",
-		                             selected->id, 1};
-		auto                 handle = speech->start(request);
+		const speech_request request{
+		    "native-proof:1", "A reply is prepared without opening the speakers.", selected->id, 1};
+		auto handle = speech->start(request);
 		CHECK(handle);
 		std::optional<voice_handle> voice;
 		speech_status               final;
