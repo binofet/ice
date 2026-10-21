@@ -30,6 +30,10 @@
 #include "ice/input/companion_room.h"
 #include "ice/io/resource_uri.h"
 #include "ice/math/types.h"
+#ifdef ICE_HAS_PARTICLES
+#include "ice/particles/control.h"
+#include "ice/particles/system.h"
+#endif
 #include "ice/meta/schema.h"
 #include "ice/motion/pose.h"
 #ifdef ICE_HAS_PHYSICS_2D
