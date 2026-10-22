@@ -139,9 +139,8 @@ CI_EVIDENCE_DIR=build/ci-evidence/local-probe \
   python3 tools/ci/run_stage.py --timeout-seconds 120 probe -- cmake --version
 ```
 
-The generic helpers do not merge branches or change provider settings.
-`spacegoo/`, when configured, is a separate deployment lane with its own intake
-authorization and job ownership; it must not reuse another project's runner.
+The helpers do not merge branches or change provider settings. Host operations
+tooling is maintained separately from this repository's native CI source.
 
 ### ICE Xvfb diagnostic preflight
 
@@ -243,8 +242,7 @@ summary/publication use the declared bootstrap Python so early failures can repo
 `toolchain.json` binds actual tool paths/versions, package/requirements pins and
 runtime facts to the exact source fingerprint. Missing, mismatched or incomplete
 owned evidence rejects reporting. Linux native profiles retain software Mesa/Xvfb
-GL and surfaceless EGL/GLES; Ignition Quest stages are native EGL/GLES adapter
-execution, not Android NDK cross-compilation. Mac retains Metal/OpenGL compilation
+GL and surfaceless EGL/GLES. Mac retains Metal/OpenGL compilation
 and CPU tests; no native Metal/window rendering claim is added. Dependencies must
 be provisioned separately; a missing tool fails rather than installing or weakening
 coverage. Python tests simulate tools/packages, never install them or compile.
