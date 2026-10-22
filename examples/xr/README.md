@@ -68,7 +68,6 @@ the renderer owns only its local FBO/depth attachments. The same waited acquisit
 lease is expired before native release. Availability checks never release
 an image after a timeout: ownership is retained and the same image is retried in
 later paced frames. No external art is downloaded.
-The candlelit typewriter/ribbon-microphone scene belongs to a later Ignition slice.
 
 A future desktop OpenXR host will support a PC-rendered, tethered headset profile,
 followed by a wireless streaming profile. Those run rendering on the PC and use

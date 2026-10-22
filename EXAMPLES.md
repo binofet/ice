@@ -12,8 +12,8 @@ but rebuilding this checkpoint does not produce new game executables.
 
 ## Port sequence
 
-1. Prove the modern renderer with native surfaces, shaders, resize and resource lifetime
-   tests in the external Ignition application.
+1. Validate the modern renderer with the native surface, shader, resize and resource
+   lifetime suites before porting a game.
 2. Add optional engine-level physics integrations with explicit worlds, body/joint
    handles, shape ownership, stepping and debug visualization. Games consume those
    APIs instead of carrying a private engine integration each.
@@ -23,8 +23,8 @@ but rebuilding this checkpoint does not produce new game executables.
 4. Port SkeeBall meshes/materials, score/menu layout and companion/browser party input.
    Tune physics after the mobile interaction and engine integration are usable.
 
-Use these games to exercise the same engine paths as Ignition. No requirement preserves
-legacy APIs or the exact embedded physics library versions. Retain asset provenance and
+Use these games to exercise the shared engine modules. No requirement preserves legacy
+APIs or the exact embedded physics library versions. Retain asset provenance and
 check distribution rights before publishing a game.
 
 ## Other examples
