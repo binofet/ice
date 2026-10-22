@@ -50,8 +50,7 @@ def evidence(repo="ice", os="Linux", cpp="20", profile="native", quality_plan=No
               "run_url": f"https://github.com/binofet/{repo}/actions/runs/123", "run_attempt": "1",
               "source_validated": True, "source_issues": [], "identity_verified": True,
               "identity_problems": []}
-    if repo != "metagen":
-        source.update(cpp=cpp, profile=profile)
+    source.update(cpp=cpp, profile=profile)
     if standards is not ...:
         source['standards_plan'] = standards
     if quality_plan is not None:
@@ -62,28 +61,13 @@ def evidence(repo="ice", os="Linux", cpp="20", profile="native", quality_plan=No
     names, suites = gate.stage_plan(repo, source)
     summary = {"source": source, "report_incomplete": False, "issues": [], "problems": [],
                "stages": {name: {"exit_code": 0, "duration_seconds": .1} for name in names}, "suites": {}}
-    prefix = "ci-evidence/" if repo == "metagen" else ""
+    prefix = ""
     files = {}
     xml = '<testsuite><testcase name="real-case" classname="CPU" time=".01"/></testsuite>'
-    if repo == "metagen":
-        summary["python"] = {"methods": {"tests": 1, "failures": 0, "errors": 0, "skipped": 0},
-                             "subtests": {"tests": 0, "failures": 0, "errors": 0, "skipped": 0},
-                             "fixtures": {"tests": 0, "failures": 0, "errors": 0, "skipped": 0},
-                             "source_id": gate.sha(json.dumps(source).encode()),
-                             "discovered_methods": 1, "executed_methods": 1}
-        files[prefix + "python-methods.xml"] = xml
-        files[prefix + "python-subtests.xml"] = "<testsuite/>"
-        files[prefix + "python-fixtures.xml"] = "<testsuite/>"
-        files[prefix + "executables.xml"] = '<testsuite>' + ''.join(
-            '<testcase name="proof' + str(i) + '" time=".1"/>' for i in range(3)) + '</testsuite>'
-        summary["executable_counts"] = {"tests": 3, "failures": 0, "errors": 0, "skipped": 0}
-        files["proof/generated.json"] = "{}"
-        files[prefix + "generated-artifacts.json"] = json.dumps([
-            {"path": "build/proof/generated.json", "bytes": 2, "sha256": gate.sha(b"{}") }])
     for name in suites:
         summary["suites"][name] = {"counts": {"tests": 1, "passed": 1, "failed": 0, "error": 0, "skipped": 0}, "inventory_matches": True,
                                    "cases": [{"name": "real-case"}]}
-        file = "gpu.xml" if name == "native" and repo == "ignition" else name + ".xml"
+        file = name + ".xml"
         files[file] = xml
     files[prefix + "source.json"] = json.dumps(source)
     files[prefix + "summary.json"] = json.dumps(summary)
@@ -107,8 +91,7 @@ class FakeAPI:
             self.jobs += [{"name": name, "status": "completed", "conclusion": "skipped"} for name in
                           ("Linux / Xvfb readiness diagnostic only", "Refuse invalid manual quality route")]
         cpp_values = (23,) if repo == 'ice' and standards == 'day-cpp23-v1' else (20, 23)
-        identities = ([('Linux', '', 'native'), ('macOS', '', 'native')] if repo == "metagen" else
-                      [(o, str(c), 'native') for o in ('Linux', 'macOS') for c in cpp_values])
+        identities = [(o, str(c), 'native') for o in ('Linux', 'macOS') for c in cpp_values]
         if repo == "ice":
             identities.append(('Linux', '23', 'sanitizers'))
         quality = 'day' if standards == 'day-cpp23-v1' else 'nightly' if standards == 'nightly-cpp20-23-v1' else None
@@ -273,7 +256,7 @@ class GateTests(unittest.TestCase):
                 run['event']=event
             self.assertEqual(gate.gate(api, 'ice', 7)['source-quality']['state'], 'failure')
 
-    def test_all_three_fixed_repositories_accept_realistic_complete_evidence(self):
+    def test_fixed_repository_accepts_realistic_complete_evidence(self):
         for repo in gate.POLICIES:
             with self.subTest(repo=repo):
                 result = gate.gate(FakeAPI(repo), repo, 7)
@@ -324,20 +307,18 @@ class GateTests(unittest.TestCase):
         api.jobs[5]["conclusion"] = "success"
         self.assertEqual(gate.gate(api, "ice", 7)["source-quality"]["state"], "failure")
 
-    def test_other_repositories_refuse_ice_manual_auxiliary_rows(self):
-        for repo in ("metagen", "ignition"):
-            with self.subTest(repo=repo):
-                api = FakeAPI(repo)
-                api.jobs.append({"name": "Linux / Xvfb readiness diagnostic only", "status": "completed",
-                                 "conclusion": "skipped"})
-                self.assertEqual(gate.gate(api, repo, 7)["source-quality"]["state"], "failure")
+    def test_foreign_repository_policy_is_never_admitted(self):
+        for repo in ("other", "someone/ice", "binofet/other"):
+            with self.subTest(repo=repo), self.assertRaisesRegex(ValueError, "unknown_repository"):
+                gate.gate(FakeAPI(), repo, 7)
+            with self.subTest(artifact_repo=repo), self.assertRaisesRegex(ValueError, "unknown_repository"):
+                gate.zip_files(zipped({}), repo)
 
     def test_gate_contract_stage_is_required_for_every_repository_and_profile(self):
-        for repo, profile in (("ice", "native"), ("ice", "sanitizers"),
-                              ("metagen", "native"), ("ignition", "native")):
+        for repo, profile in (("ice", "native"), ("ice", "sanitizers")):
             with self.subTest(repo=repo, profile=profile):
                 files = evidence(repo, profile=profile)
-                prefix = "ci-evidence/" if repo == "metagen" else ""
+                prefix = ""
                 summary = json.loads(files[prefix + "summary.json"])
                 del summary["stages"]["gate-contract"]
                 files[prefix + "summary.json"] = json.dumps(summary)
@@ -509,9 +490,9 @@ class GateTests(unittest.TestCase):
 
     def test_provider_fixture_digest_survives_a_wall_clock_change(self):
         with patch("zipfile.time.localtime", return_value=(2020, 1, 1, 0, 0, 0, 2, 1, -1)):
-            api = FakeAPI("metagen")
+            api = FakeAPI()
         with patch("zipfile.time.localtime", return_value=(2030, 1, 1, 0, 0, 0, 1, 1, -1)):
-            result = gate.gate(api, "metagen", 7)
+            result = gate.gate(api, "ice", 7)
         self.assertEqual(result["source-quality"]["state"], "success", result)
 
     def test_review_body_cli_preserves_the_authenticated_body_exactly(self):

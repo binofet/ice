@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Trusted family GitHub gates. No PR checkout/import, shell, merge or release capability.
+"""Trusted ICE GitHub gates. No PR checkout/import, shell, merge or release capability.
 
 Independently authored using the reviewed Cosmotomata control/review pattern;
 no Cosmotomata code, identities, policies, pins or credentials are copied.
@@ -28,11 +28,7 @@ POLICIES = {
     "ice": {"id": 40782766, "branch": "master", "private": False, "workflow": "engine-quality.yml", "workflow_name": "Engine quality",
             "jobs": [f"{os} / optimized C++{cpp}" for os in ("ubuntu-24.04", "macos-15") for cpp in (20, 23)]
                     + ["Ubuntu / scoped ASan+UBSan C++23"],
-            "skipped_jobs": ["Linux / Xvfb readiness diagnostic only", "Refuse invalid manual quality route"]},
-    "metagen": {"id": 1421012730, "branch": "main", "private": True, "workflow": "conformance.yml", "workflow_name": "Standalone conformance",
-                "jobs": [f"Metagen conformance ({os})" for os in ("ubuntu-24.04", "macos-15")]},
-    "ignition": {"id": 1420999231, "branch": "main", "private": True, "workflow": "quality.yml", "workflow_name": "Ignition quality",
-                 "jobs": [f"{os} / optimized C++{cpp}" for os in ("ubuntu-24.04", "macos-15") for cpp in (20, 23)]}}
+            "skipped_jobs": ["Linux / Xvfb readiness diagnostic only", "Refuse invalid manual quality route"]}}
 MARKER = "<!-- ice-family-native-review-v1\n"
 OID = re.compile(r"[0-9a-f]{40}\Z")
 HASH = re.compile(r"[0-9a-f]{64}\Z")
@@ -120,6 +116,7 @@ def native_review(rows, context):
 
 
 def zip_files(raw, repo):
+    policy(repo)
     need(len(raw) <= MAX_ZIP, "artifact_download_too_large")
     files, total = {}, 0
     with zipfile.ZipFile(io.BytesIO(raw)) as archive:
@@ -135,12 +132,8 @@ def zip_files(raw, repo):
             limit = MAX_FILE + 4096 if path.suffix.lower() == ".log" else MAX_FILE
             need(name not in files and entry.file_size <= limit and not entry.flag_bits & 1,
                  "duplicate_encrypted_or_large_artifact_member")
-            if repo == "metagen":
-                need(path.parts[0] in {"ci-evidence", "proof", "data-lab"}, "unexpected_metagen_artifact_root")
-            else:
-                need(len(path.parts) == 1 or path.parts[0] == "images", "unexpected_artifact_directory")
-            need(path.suffix.lower() in {".json", ".xml", ".md", ".log", ".ppm", ".png", ".h", ".cpp", ".rs", ".mdb", ".mcp"}
-                 or (repo == "metagen" and path.parts[0] == "proof" and path.suffix.lower() in {".txt", ".ini"}),
+            need(len(path.parts) == 1 or path.parts[0] == "images", "unexpected_artifact_directory")
+            need(path.suffix.lower() in {".json", ".xml", ".md", ".log", ".ppm", ".png", ".h", ".cpp", ".rs", ".mdb", ".mcp"},
                  "unexpected_artifact_type")
             total += entry.file_size
             need(total <= MAX_ZIP, "artifact_expansion_too_large")
@@ -184,11 +177,9 @@ def profile_jobs(repo, selected="legacy"):
 
 
 def stage_plan(repo, source):
+    policy(repo)
     common = {"evidence", "gate-contract", "dependencies", "configure", "build", "cpu-discovery", "cpu"}
     suites = {"cpu"}
-    if repo == "metagen":
-        return {"helper-tests", "gate-contract", "dependencies", "core", "formats", "rust-toolchain", "rust",
-                "csharp-smoke", "csharp-core", "rust-consumer"}, set()
     native = source.get("profile", "native") != "sanitizers"
     linux = source["runner_os"] == "Linux"
     if repo == "ice":
@@ -219,24 +210,18 @@ def stage_plan(repo, source):
         if source.get("quality_plan") != "day":
             common |= {"api", "lint"}
         suites.add("metagen")
-    if repo == "ignition":
-        common.add("ice")
     if linux and native:
         common |= {"gles-configure", "gles-build", "gles-discovery", "gles"}
         suites |= {"gles", "native"}
         if repo == "ice":
             common |= {"gpu-environment", "native-x11", "native-window", "gpu-gl", "gpu-switch",
                        "gpu-reload", "gpu-mesh", "gpu-textured", "gpu-skinned", "gpu-hdr"}
-        else:
-            common |= {"gpu-environment", "gpu-labels", "gpu-detached", "gpu-scene", "gpu-model",
-                       "gpu-post", "gpu-splash", "quest-configure", "quest-build", "quest-discovery", "quest"}
-            suites.add("quest")
     return common, suites
 
 
 def artifact_evidence(raw, repo, context, run):
     files = zip_files(raw, repo)
-    prefix = "ci-evidence/" if repo == "metagen" else ""
+    prefix = ""
     source = decode(files[prefix + "source.json"])
     summary = decode(files[prefix + "summary.json"])
     need(summary.get("source") == source and source.get("event") == "pull_request"
@@ -245,16 +230,10 @@ def artifact_evidence(raw, repo, context, run):
          and OID.fullmatch(source.get("tested_commit", ""))
          and source.get("run_url") == f"https://github.com/binofet/{repo}/actions/runs/{run['id']}",
          "artifact_source_summary_run_mismatch")
-    if repo != "metagen":
-        need(source.get("run_attempt") == str(run["run_attempt"]), "artifact_attempt_mismatch")
-    if repo == "metagen":
-        need(source.get("identity_verified") is True and source.get("identity_problems") == []
-             and summary.get("problems") == [], "metagen_evidence_incomplete")
-        primary = "python-methods.xml"
-    else:
-        need(source.get("source_validated") is True and source.get("source_issues") == []
-             and summary.get("report_incomplete") is False and summary.get("issues") == [], "evidence_incomplete")
-        primary = "cpu.xml"
+    need(source.get("run_attempt") == str(run["run_attempt"]), "artifact_attempt_mismatch")
+    need(source.get("source_validated") is True and source.get("source_issues") == []
+         and summary.get("report_incomplete") is False and summary.get("issues") == [], "evidence_incomplete")
+    primary = "cpu.xml"
     required, required_suites = stage_plan(repo, source)
     stages = summary.get("stages")
     need(isinstance(stages, dict) and required <= stages.keys(), "required_stage_evidence_missing")
@@ -267,44 +246,17 @@ def artifact_evidence(raw, repo, context, run):
     need(primary_cases, "zero_primary_tests")
     for name, content in files.items():
         if name.startswith(prefix) and name.endswith(".xml"):
-            cases(content, measured=name == prefix + primary or repo != "metagen")
-    if repo != "metagen":
-        suites = summary.get("suites")
-        need(isinstance(suites, dict) and set(suites) == required_suites, "suite_summary_inventory_differs")
-        for name, suite in suites.items():
-            xml = "gpu.xml" if name == "native" and repo == "ignition" else name + ".xml"
-            actual = cases(files[prefix + xml])
-            need(actual and suite.get("counts") == {"tests": len(actual), "passed": len(actual),
-                 "failed": 0, "error": 0, "skipped": 0}, "suite_count_mismatch")
-            if name != "native":
-                need(suite.get("inventory_matches") is True
-                     and Counter(c.get("name") for c in actual) == Counter(c["name"] for c in suite["cases"]),
-                     "suite_inventory_mismatch")
-    else:
-        methods = summary.get("python", {}).get("methods", {})
-        need(methods == {"tests": len(primary_cases), "failures": 0, "errors": 0, "skipped": 0}
-             and summary["python"].get("discovered_methods") == len(primary_cases)
-             and summary["python"].get("executed_methods") == len(primary_cases), "python_method_inventory_mismatch")
-        need(summary["python"].get("source_id") == sha(files[prefix + "source.json"]), "python_source_identity_mismatch")
-        for group in ("methods", "subtests", "fixtures"):
-            actual = cases(files[prefix + "python-" + group + ".xml"], measured=group == "methods")
-            need(summary["python"].get(group) == {"tests": len(actual), "failures": 0, "errors": 0, "skipped": 0},
-                 "python_observed_counts_mismatch")
-        executable = cases(files[prefix + "executables.xml"])
-        need(len(executable) == 3 and summary.get("executable_counts") == {
-            "tests": 3, "failures": 0, "errors": 0, "skipped": 0}, "executable_counts_mismatch")
-        inventory = decode(files[prefix + "generated-artifacts.json"])
-        need(isinstance(inventory, list) and 0 < len(inventory) <= 256, "generated_inventory_missing")
-        expected = set()
-        for row in inventory:
-            name = row.get("path", "")
-            need(name.startswith(("build/proof/", "build/data-lab/")), "generated_path_outside_project")
-            name = name.removeprefix("build/")
-            need(name not in expected and name in files and row.get("bytes") == len(files[name])
-                 and row.get("sha256") == sha(files[name]), "generated_file_hash_or_size_differs")
-            expected.add(name)
-        need(expected == {name for name in files if name.startswith(("proof/", "data-lab/"))},
-             "generated_file_inventory_differs")
+            cases(content)
+    suites = summary.get("suites")
+    need(isinstance(suites, dict) and set(suites) == required_suites, "suite_summary_inventory_differs")
+    for name, suite in suites.items():
+        actual = cases(files[prefix + name + ".xml"])
+        need(actual and suite.get("counts") == {"tests": len(actual), "passed": len(actual),
+             "failed": 0, "error": 0, "skipped": 0}, "suite_count_mismatch")
+        if name != "native":
+            need(suite.get("inventory_matches") is True
+                 and Counter(c.get("name") for c in actual) == Counter(c["name"] for c in suite["cases"]),
+                 "suite_inventory_mismatch")
     identity = (source["runner_os"], str(source.get("cpp", "")), source.get("profile", "native"))
     return {"identity": identity, "candidate": source["tested_commit"], "primary_tests": len(primary_cases),
             "standards_plan": standards_plan(source) if repo == "ice" else "legacy",
@@ -377,9 +329,8 @@ def quality(api, context):
                  and j.get('conclusion') == ('skipped' if j.get('name') in skipped_jobs else 'success')
                  for j in jobs), 'required_jobs_missing_failed_cancelled_or_skipped')
     artifacts = api.pages(base + f"/actions/runs/{run['id']}/artifacts", "artifacts", maximum=100)
-    if repo != "metagen":
-        artifacts = [a for a in artifacts if a.get("name", "").endswith("-" + str(run["run_attempt"]))]
-    need(len(artifacts) in ({3, 5} if repo == "ice" else {len(config["jobs"])}),
+    artifacts = [a for a in artifacts if a.get("name", "").endswith("-" + str(run["run_attempt"]))]
+    need(len(artifacts) in {3, 5},
          "artifact_inventory_missing_or_extra")
     evidence = []
     for artifact in artifacts:
@@ -404,8 +355,7 @@ def quality(api, context):
          "required_jobs_missing_failed_cancelled_or_skipped")
     need(len(artifacts) == len(required_jobs), "artifact_inventory_missing_or_extra")
     standards = (23,) if repo == 'ice' and selected == 'day-cpp23-v1' else (20, 23)
-    expected = ({("Linux", "", "native"), ("macOS", "", "native")} if repo == "metagen" else
-                {(os, str(cpp), "native") for os in ("Linux", "macOS") for cpp in standards})
+    expected = {(os, str(cpp), "native") for os in ("Linux", "macOS") for cpp in standards}
     if repo == "ice":
         expected.add(("Linux", "23", "sanitizers"))
     need(Counter(tuple(e["identity"]) for e in evidence) == Counter(expected), "matrix_evidence_inventory_differs")
