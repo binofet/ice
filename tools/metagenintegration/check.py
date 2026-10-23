@@ -7,6 +7,8 @@ from pathlib import Path
 import subprocess
 import sys
 
+from consumer_generators import check_or_update
+
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 CACHE = HERE / 'generated'
@@ -67,6 +69,7 @@ def main():
     if args.csharp_json:
         command += ['--csharp-json', str(args.csharp_json.resolve())]
     subprocess.run(command, check=True)
+    check_or_update(source, args.output.resolve(), CACHE, args.update)
     if args.update:
         MANIFEST.write_text(json.dumps({'repository': 'https://github.com/binofet/metagen',
                                        'commit': commit, 'files': digest_files()}, indent=2) + '\n')

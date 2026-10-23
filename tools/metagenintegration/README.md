@@ -62,3 +62,12 @@ byte with the generated reference views. MDB1 remains an experimental authored t
 format; it is not a cooked, optimal native layout. Native JSON/XML/codecs, arbitrary typed
 object materialization, gameplay/GPU resource activation and a shared command service are
 separate consumers. See the Metagen submodule's README/DATA_MODEL for the portable profile.
+
+## Native adapter ownership
+
+`generators/native_schema.py` and `consumer_generators.py` own the scalar/RTTR and
+graph-fingerprint outputs for this engine. The SDK supplies normalized schema/data
+views and portable caches; the explicit source check then generates and compares
+all three native outputs here. Cached-only builds remain independent of SDK source
+access. The existing native cache bytes and SDK pin are unchanged by this ownership
+move; adopting a new SDK revision is a separate reviewed dependency update.
