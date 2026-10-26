@@ -16,7 +16,7 @@ namespace detail {
 struct batch_access;
 } // namespace detail
 /// Explicit backend selection. Availability depends on the host/build; failures are diagnostics.
-enum class backend_kind { metal, opengl, opengles };
+enum class backend_kind { metal, opengl, opengles, vulkan };
 /// A backend-specific URI library and its explicit vertex/fragment entry names.
 /// Authored shader packages may retain one variant per backend; no implicit source translation
 /// occurs.
