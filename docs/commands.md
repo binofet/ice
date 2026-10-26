@@ -98,6 +98,12 @@ strings are valid NUL-free UTF-8; floating point output must be finite. Outputs
 retain signed/unsigned 64-bit integers exactly; adapters must not silently round
 them through a JavaScript number.
 
+Output fields provide ordered iteration, named access, node transfers and independent value copies.
+Output moves and swaps transfer owned storage without allocating, including on standard libraries whose map move
+constructor allocates a sentinel. An empty or moved-from output is a usable empty value. Construct
+all fields before committing a host mutation; a prepared handler result can then move through the
+service and into its receipt without allocating. Copying or inserting fields can still allocate.
+
 Transport codecs and application-defined output semantics are separate concerns.
 There are no pointers, shared host objects or arbitrary nested data in this first
 profile. Metagen tags such as `command.choices` describe application policy;
