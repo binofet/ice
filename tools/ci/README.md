@@ -253,3 +253,40 @@ migration-branch workflow is separately privileged YAML; checkout of default
 `gate.py` alone does not authorize its steps. `refresh --publish` retains its bulk
 open-PR scope. Bootstrap/dispatch trust, current native review/head/base/artifacts,
 protected statuses and default selector activation remain independent review gates.
+
+
+### Native Windows qualification
+
+The separate manual `windows-qualification.yml` workflow runs only for the fixed
+repository owner, attempt one, and an explicitly matching `expected_head` on `master`.
+It uses the repository-scoped `spacegoo-windows-ice-cpu-001` runner with
+`[self-hosted, Windows, X64, spacegoo.windows.ice.qualify]`. This is a separate
+qualification workflow with its own non-cancelling concurrency group. It does not
+add a skipped row to the Engine quality job inventory, change the Linux/Mac day,
+nightly, sanitizer or Xvfb routes, or admit Windows through their POSIX helper. It
+is not a required quality-check substitute.
+
+Before enrollment, the host owner must qualify the isolated runner account and
+the complete administrator-protected tool tree at
+`C:\ProgramData\ICE-Family-CI\toolchains\windows-native-20261026-v1`.
+The job expects `python-3.14.8/python.exe`, `cmake-4.2.3/bin/{cmake,ctest}.exe`
+and `ninja-1.13.2/ninja.exe` there. The separate host qualification must verify
+file identities, all descendant ACLs/reparse boundaries and that the job account
+cannot alter tools or inspect the interactive account. Existing compatible VS
+Build Tools 18.11, MSVC 19.51.36260/toolset 14.51.36231 and SDK 10.0.26100.0 are
+selected through Microsoft's installed `vswhere` and developer environment.
+This workflow does not install, repair, register, elevate or change host ACLs.
+
+The job records the actual source/tree and observed tools, compiles native
+Win32/OpenGL C++23 targets with four workers, then discovers and runs the actual
+`cpu`-labelled CTests with two workers and measured JUnit. This is a CPU-labelled
+subset, not a claim that every test ran. Logs and inventory remain attached even
+on failure. No interactive window, GPU, input or hardware acceptance is implied.
+Promoting Windows to ordinary day/nightly coverage requires successful host and
+job qualification followed by a separately reviewed routing change.
+
+Qualification binds the exact dispatch snapshot and checkout, rather than
+claiming a fresh remote-default-head observation at job start or completion.
+Git long-path support and LF checkout are process-local before checkout; no
+registry/global Git setting changes. A missing/modified tracked file fails
+preflight even when Git checkout itself returned zero.
