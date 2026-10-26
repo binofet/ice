@@ -22,10 +22,10 @@ value normalize_scalar(kind type, const value &input) {
 	double number;
 	if (auto real = std::get_if<double>(&input.data))
 		number = *real;
-	else if (auto integer = std::get_if<std::int64_t>(&input.data))
-		number = static_cast<double>(*integer);
-	else if (auto integer = std::get_if<std::uint64_t>(&input.data))
-		number = static_cast<double>(*integer);
+	else if (auto signed_value = std::get_if<std::int64_t>(&input.data))
+		number = static_cast<double>(*signed_value);
+	else if (auto unsigned_value = std::get_if<std::uint64_t>(&input.data))
+		number = static_cast<double>(*unsigned_value);
 	else
 		fail("Expected a numeric value; booleans are not numbers");
 	if (type == kind::float32 &&

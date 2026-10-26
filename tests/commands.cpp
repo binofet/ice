@@ -1,3 +1,4 @@
+#include "command_allocations.h"
 #include "ice/commands/service.h"
 #include <cmath>
 #include <cstdio>
@@ -43,10 +44,75 @@ ice::meta::schema_descriptor number_schema() {
 request mutation(const service &owner, std::string id, std::string command) {
 	return {std::move(id), std::move(command), {}, owner.identity(), owner.revision()};
 }
+int output_transfer() {
+	using result = ice::expected<handler_result, diagnostic>;
+	static_assert(std::is_nothrow_move_constructible_v<output>);
+	static_assert(std::is_nothrow_move_assignable_v<output>);
+	static_assert(std::is_nothrow_swappable_v<output>);
+	static_assert(std::is_nothrow_move_constructible_v<result>);
+	output original{{"z", std::string(128, 'z')}, {"a", std::uint64_t(7)}};
+	output copy  = original;
+	copy.at("a") = std::uint64_t(9);
+	copy.insert({{"a", std::uint64_t(100)}, {"temporary", false}});
+	CHECK(std::get<std::uint64_t>(copy.at("a")) == 9 && copy.erase("temporary") == 1);
+	CHECK(std::get<std::uint64_t>(original.at("a")) == 7 && copy.begin()->first == "a");
+	const auto *retained = &original.at("z");
+	output      destination{{"discarded", false}};
+	command_allocations::arm();
+	output moved(std::move(original));
+	destination = std::move(moved);
+	output empty;
+	empty.swap(destination);
+	const auto move_attempts = command_allocations::attempts();
+	command_allocations::disarm();
+	CHECK(move_attempts == 0 && &empty.at("z") == retained && empty.size() == 2);
+	CHECK(original.empty() && original.begin() == original.end() && !original.contains("a"));
+	CHECK(std::as_const(original).begin() == std::as_const(original).end());
+	original.emplace("reused", true);
+	CHECK(original.size() == 1 && moved.empty() && destination.empty());
+	bool failed_copy = false;
+	command_allocations::arm();
+	try {
+		original = empty;
+	} catch (const std::bad_alloc &) {
+		failed_copy = true;
+	}
+	command_allocations::disarm();
+	CHECK(failed_copy && original.size() == 1 && original.contains("reused"));
+	output      donor{{"a", std::uint64_t(100)}, {"b", true}};
+	const auto *node = &donor.at("b");
+	command_allocations::arm();
+	empty.merge(donor);
+	const auto merge_attempts = command_allocations::attempts();
+	command_allocations::disarm();
+	CHECK(merge_attempts == 0 && &empty.at("b") == node && donor.size() == 1);
+	CHECK(std::get<std::uint64_t>(empty.at("a")) == 7);
+
+	// Stage response allocations before the host effect, then reject every allocation through
+	// explicit expected moves and the real service's validation/receipt publication boundary.
+	result prepared{handler_result{true, std::move(empty)}};
+	bool   published = false;
+	auto   owner     = service::create(
+        {{descriptor("publish", effect::mutation), [&](const ice::meta::record &) -> result {
+              command_allocations::arm();
+              published = true;
+              return std::move(prepared);
+          }}});
+	CHECK(owner);
+	auto       request              = mutation(*owner, "publication", "publish");
+	auto       receipt              = owner->invoke(request);
+	const auto publication_attempts = command_allocations::attempts();
+	command_allocations::disarm();
+	CHECK(published && publication_attempts == 0 && receipt->status == status::succeeded);
+	CHECK(receipt->changed && receipt->revision == 1 && !receipt->inspect_required);
+	CHECK(&receipt->fields.at("z") == retained && owner->invoke(request) == receipt);
+	return 0;
+}
 } // namespace
 
 int main() {
 	using namespace ice::commands;
+	CHECK(output_transfer() == 0);
 	static_assert(!std::is_copy_constructible_v<service>);
 	static_assert(std::is_nothrow_move_constructible_v<service>);
 	static_assert(std::is_same_v<decltype(std::declval<const service &>().discover()),
