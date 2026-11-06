@@ -293,7 +293,8 @@ class OwnedWorkflowTests(unittest.TestCase):
             self.assertIn('cpp: ${{ fromJSON(', text)
         else:
             self.assertIn('cpp: [20, 23]', text)
-        expected_shell = 'shell: /usr/local/libexec/ice-family-native-ci/owned-shell {0}'
+        expected_shell = ('shell: /bin/bash --noprofile --norc -e -o pipefail {0}' if repo == 'ice'
+                          else 'shell: /usr/local/libexec/ice-family-native-ci/owned-shell {0}')
         if repo == 'ice':
             jobs = self.workflow_jobs(text)
             self.assertEqual(set(jobs), {'native', 'sanitizers', 'xvfb-readiness',
@@ -322,7 +323,27 @@ class OwnedWorkflowTests(unittest.TestCase):
         self.assertNotIn('actions/setup-python', text)
         self.assertNotIn('--parallel 4', text)
 
-    def test_ice_only_fixed_metadata_commands_bypass_the_cpu_mutex(self):
+    def test_ice_jobs_and_step_overrides_do_not_reintroduce_resource_admission(self):
+        root = Path(__file__).resolve().parents[2]
+        path = root / '.github/workflows/engine-quality.yml'
+        if not path.is_file():
+            self.skipTest('ICE source workflow')
+        text = path.read_text()
+        for retired in ('owned-shell', 'flock', 'cpu-mutex', 'cpu-lock'):
+            self.assertNotIn(retired, text)
+        shell = 'shell: /bin/bash --noprofile --norc -e -o pipefail {0}'
+        for owner, job in self.workflow_jobs(text).items():
+            defaults, steps = job.split('    steps:\n', 1)
+            with self.subTest(owner=owner):
+                self.assertIn(shell, defaults)
+                for line in steps.splitlines():
+                    if line.strip().startswith('shell:'):
+                        self.assertEqual(line.strip(), shell)
+        # Per-job outputs stay in the runner's workspace, without a shared host path.
+        self.assertIn('CI_VENV: ${{ github.workspace }}/build/ci-tools/venv', text)
+        self.assertIn('CI_EVIDENCE_DIR: ${{ github.workspace }}/build/ci-evidence', text)
+
+    def test_ice_metadata_commands_retain_exact_evidence_contracts(self):
         root = Path(__file__).resolve().parents[2]
         path = root / '.github/workflows/engine-quality.yml'
         if not path.is_file():
@@ -370,12 +391,12 @@ class OwnedWorkflowTests(unittest.TestCase):
                              if line.strip().startswith('shell:')]
                 with self.subTest(owner=owner, step=name):
                     if name not in expected:
-                        self.assertEqual(overrides, [], 'Execution must inherit the owned CPU mutex')
+                        self.assertEqual(overrides, [], 'Execution inherits the job shell')
                         continue
                     self.assertEqual(overrides, [shell])
                     script = step.split('        run: |\n', 1)[1]
                     normalized = ' '.join(script.replace('\\\n', ' ').split())
-                    self.assertEqual(normalized, expected[name], 'Only the fixed metadata command may bypass')
+                    self.assertEqual(normalized, expected[name], 'Metadata command must retain its evidence contract')
                     seen.add(name)
             self.assertEqual(seen, set(expected))
             if expected:
