@@ -72,9 +72,10 @@ const action_value *routed_action_channel::find(action_id id) const {
 			return &value;
 	return nullptr;
 }
-const routed_action_channel *
-routed_action_frame::find(action_channel_id channel, action_owner owner, action_clock clock) const {
-	if (clock != this->clock || !owned(owner))
+const routed_action_channel *routed_action_frame::find(action_channel_id channel,
+                                                       action_owner      owner,
+                                                       action_clock      expected_clock) const {
+	if (expected_clock != this->clock || !owned(owner))
 		return nullptr;
 	for (const auto &sample : channels)
 		if (sample.channel == channel && sample.owner == owner)

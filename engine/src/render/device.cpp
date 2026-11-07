@@ -4,6 +4,10 @@
 #include <atomic>
 #include <limits>
 #include <set>
+#include <type_traits>
+#ifdef ICE_RENDER_VULKAN
+#include "ice/render/vulkan/device.h"
+#endif
 #ifdef ICE_RENDER_METAL
 #include "ice/render/metal/device.h"
 #endif
@@ -33,6 +37,9 @@ struct device::implementation {
 	backend_kind               kind;
 	std::uint64_t              identity = 0;
 	std::shared_ptr<const int> token    = std::make_shared<const int>(0);
+#ifdef ICE_RENDER_VULKAN
+	std::unique_ptr<vulkan::device> vulkan;
+#endif
 #ifdef ICE_RENDER_METAL
 	std::unique_ptr<metal::device> metal;
 #endif
@@ -43,6 +50,9 @@ struct device::implementation {
 struct pipeline::implementation {
 	std::shared_ptr<const int> token;
 	pipeline_options           options;
+#ifdef ICE_RENDER_VULKAN
+	std::unique_ptr<vulkan::pipeline> vulkan;
+#endif
 #ifdef ICE_RENDER_METAL
 	std::unique_ptr<metal::pipeline> metal;
 #endif
@@ -53,6 +63,9 @@ struct pipeline::implementation {
 struct mesh::implementation {
 	std::shared_ptr<const int> token;
 	vertex_layout              vertices = vertex_layout::position_normal;
+#ifdef ICE_RENDER_VULKAN
+	std::unique_ptr<vulkan::mesh> vulkan;
+#endif
 #ifdef ICE_RENDER_METAL
 	std::unique_ptr<metal::mesh> metal;
 #endif
@@ -96,6 +109,9 @@ struct presentation_surface::implementation {
 	// Destroy the native endpoint before releasing its exclusive logical-window lease.
 	std::unique_ptr<window_lease> lease;
 	std::shared_ptr<const int>    token;
+#ifdef ICE_RENDER_VULKAN
+	std::unique_ptr<vulkan::presentation_surface> vulkan;
+#endif
 #ifdef ICE_RENDER_METAL
 	std::unique_ptr<metal::presentation_surface> metal;
 #endif
@@ -105,6 +121,23 @@ struct presentation_surface::implementation {
 };
 namespace detail {
 struct batch_access {
+#ifdef ICE_RENDER_VULKAN
+	static ice::expected<std::vector<vulkan::draw_item>, diagnostic>
+	vulkan_items(const frame_batch &batch) {
+		std::vector<vulkan::draw_item> result;
+		result.reserve(batch.draws.size());
+		for (const auto &item : batch.draws) {
+			for (unsigned slot = 0; slot < 4; ++slot)
+				if (sampled_at(item, slot))
+					return failure("Vulkan first slice does not support sampled images");
+			result.push_back(
+			    {item.pipeline->implementation_->vulkan.get(),
+			     item.geometry ? item.geometry->implementation_->vulkan.get() : nullptr,
+			     item.uniforms});
+		}
+		return result;
+	}
+#endif
 	static ice::expected<void, diagnostic>
 	validate(const std::shared_ptr<const int> &token, const frame_batch &batch,
 	         color_format format = color_format::rgba8_unorm) {
@@ -189,6 +222,7 @@ render_target_description render_target::description() const {
 	return implementation_->description;
 }
 ice::expected<void, diagnostic> texture::update(const image &pixels) {
+	(void)pixels; // No Vulkan upload-texture owner exists in the first profile.
 #ifdef ICE_RENDER_METAL
 	if (implementation_->metal)
 		return implementation_->metal->update(pixels);
@@ -215,6 +249,15 @@ ice::expected<std::unique_ptr<device>, diagnostic> device::create(backend_kind b
 	} while (
 	    !next_identity.compare_exchange_weak(identity, identity + 1, std::memory_order_relaxed));
 	result->identity = identity;
+#ifdef ICE_RENDER_VULKAN
+	if (backend == backend_kind::vulkan) {
+		auto native = vulkan::device::create();
+		if (!native)
+			return ice::unexpected(native.error());
+		result->vulkan = std::move(*native);
+		return std::unique_ptr<device>(new device(std::move(result)));
+	}
+#endif
 #ifdef ICE_RENDER_METAL
 	if (backend == backend_kind::metal) {
 		auto native = metal::device::create();
@@ -241,6 +284,10 @@ ice::expected<std::unique_ptr<device>, diagnostic> device::create(backend_kind b
 	return failure("Requested graphics backend is not available in this host/build");
 }
 std::string device::name() const {
+#ifdef ICE_RENDER_VULKAN
+	if (implementation_->vulkan)
+		return implementation_->vulkan->name();
+#endif
 #ifdef ICE_RENDER_METAL
 	if (implementation_->metal)
 		return implementation_->metal->name();
@@ -252,6 +299,10 @@ std::string device::name() const {
 	return {};
 }
 std::string device::take_error() {
+#ifdef ICE_RENDER_VULKAN
+	if (implementation_->vulkan)
+		return implementation_->vulkan->take_error();
+#endif
 #ifdef ICE_RENDER_METAL
 	if (implementation_->metal)
 		return implementation_->metal->take_error();
@@ -281,6 +332,15 @@ device::prepare_pipeline(const shader_snapshot &source, const std::string &verte
 	auto result     = std::make_unique<pipeline::implementation>();
 	result->token   = implementation_->token;
 	result->options = options;
+#ifdef ICE_RENDER_VULKAN
+	if (implementation_->vulkan) {
+		auto native = implementation_->vulkan->prepare_pipeline(source, vertex_entry,
+		                                                        fragment_entry, options);
+		if (!native)
+			return ice::unexpected(native.error());
+		result->vulkan = std::move(*native);
+	}
+#endif
 #ifdef ICE_RENDER_METAL
 	if (implementation_->metal) {
 		auto native =
@@ -305,6 +365,10 @@ device::prepare_pipeline(const shader_snapshot &source, const std::string &verte
 }
 ice::expected<std::unique_ptr<render_target>, diagnostic>
 device::create_render_target(const render_target_description &description) {
+#ifdef ICE_RENDER_VULKAN
+	if (implementation_->vulkan)
+		return failure("Vulkan first slice does not support render targets/HDR");
+#endif
 	if (!detail::valid_target(description))
 		return failure("Invalid render target dimensions or color format");
 	auto result         = std::make_unique<render_target::implementation>();
@@ -433,6 +497,10 @@ ice::expected<void, diagnostic> device::flush() {
 	return failure("Explicit GL flush is unsupported by this backend/build");
 }
 ice::expected<void, diagnostic> device::wait_idle() {
+#ifdef ICE_RENDER_VULKAN
+	if (implementation_->vulkan)
+		return implementation_->vulkan->wait_idle();
+#endif
 #ifdef ICE_RENDER_METAL
 	if (implementation_->metal)
 		return implementation_->metal->wait_idle();
@@ -468,6 +536,17 @@ device::upload_mesh(const mesh_description &description, vertex_layout layout) {
 	auto result      = std::make_unique<mesh::implementation>();
 	result->token    = implementation_->token;
 	result->vertices = layout;
+#ifdef ICE_RENDER_VULKAN
+	if (implementation_->vulkan) {
+		if constexpr (std::is_same_v<mesh_description, mesh_data>) {
+			auto native = implementation_->vulkan->create_mesh(description);
+			if (!native)
+				return ice::unexpected(native.error());
+			result->vulkan = std::move(*native);
+		} else
+			return failure("Vulkan first slice does not support UV/skinned mesh layouts");
+	}
+#endif
 #ifdef ICE_RENDER_METAL
 	if (implementation_->metal) {
 		auto native = implementation_->metal->create_mesh(description);
@@ -489,6 +568,12 @@ device::upload_mesh(const mesh_description &description, vertex_layout layout) {
 	return std::unique_ptr<mesh>(new mesh(std::move(result)));
 }
 ice::expected<std::unique_ptr<texture>, diagnostic> device::create_texture(const image &pixels) {
+#ifdef ICE_RENDER_VULKAN
+	if (implementation_->vulkan) {
+		(void)pixels;
+		return failure("Vulkan first slice does not support textures");
+	}
+#endif
 	ICE_PROFILE_ZONE(upload_zone, "RHI.TextureUpload");
 	ICE_PROFILE_PLOT("RHI texture pixel bytes requested", pixels.rgba.size());
 	auto result   = std::make_unique<texture::implementation>();
@@ -521,6 +606,14 @@ device::attach(ice::platform::desktop_window &window) {
 	auto result   = std::make_unique<presentation_surface::implementation>();
 	result->token = implementation_->token;
 	result->lease = std::make_unique<window_lease>(window.id());
+#ifdef ICE_RENDER_VULKAN
+	if (implementation_->vulkan) {
+		auto native = implementation_->vulkan->attach(window);
+		if (!native)
+			return ice::unexpected(native.error());
+		result->vulkan = std::move(*native);
+	}
+#endif
 #ifdef ICE_RENDER_METAL
 	if (implementation_->metal) {
 		auto native = implementation_->metal->attach(window);
@@ -564,6 +657,15 @@ device::attach(const ice::platform::surface &target) {
 ice::expected<readback_submission, diagnostic>
 device::render_offscreen_async(const frame_batch &batch, int width, int height,
                                readback_limits limits) {
+#ifdef ICE_RENDER_VULKAN
+	if (implementation_->vulkan) {
+		(void)batch;
+		(void)width;
+		(void)height;
+		(void)limits;
+		return failure("Vulkan first slice does not support asynchronous readback");
+	}
+#endif
 	auto valid = detail::batch_access::validate(implementation_->token, batch);
 	if (!valid)
 		return ice::unexpected(valid.error());
@@ -592,6 +694,14 @@ ice::expected<image, diagnostic> device::render_offscreen(const pipeline &pipeli
 }
 ice::expected<image, diagnostic> device::render_offscreen(const frame_batch &batch, int width,
                                                           int height) {
+#ifdef ICE_RENDER_VULKAN
+	if (implementation_->vulkan) {
+		(void)batch;
+		(void)width;
+		(void)height;
+		return failure("Vulkan first slice does not support offscreen capture");
+	}
+#endif
 	auto valid = detail::batch_access::validate(implementation_->token, batch);
 	if (!valid)
 		return ice::unexpected(valid.error());
@@ -610,6 +720,10 @@ ice::expected<image, diagnostic> device::render_offscreen(const frame_batch &bat
 	return failure("Graphics backend unavailable");
 }
 bool presentation_surface::resize(int width, int height) {
+#ifdef ICE_RENDER_VULKAN
+	if (implementation_->vulkan)
+		return implementation_->vulkan->resize(width, height);
+#endif
 #ifdef ICE_RENDER_METAL
 	if (implementation_->metal)
 		return implementation_->metal->resize(width, height);
@@ -632,6 +746,14 @@ ice::expected<frame_status, diagnostic> presentation_surface::draw_batch(const f
 	if (!valid)
 		return ice::unexpected(valid.error());
 	ICE_PROFILE_PLOT("RHI surface validated draw items", batch.draws.size());
+#ifdef ICE_RENDER_VULKAN
+	if (implementation_->vulkan) {
+		auto items = detail::batch_access::vulkan_items(batch);
+		if (!items)
+			return ice::unexpected(items.error());
+		return implementation_->vulkan->draw_batch(*items, batch.clear_color);
+	}
+#endif
 #ifdef ICE_RENDER_METAL
 	if (implementation_->metal) {
 		auto items = detail::batch_access::metal_items(batch);
@@ -647,6 +769,10 @@ ice::expected<frame_status, diagnostic> presentation_surface::draw_batch(const f
 	return failure("Graphics backend unavailable");
 }
 ice::expected<void, diagnostic> presentation_surface::wait_idle() {
+#ifdef ICE_RENDER_VULKAN
+	if (implementation_->vulkan)
+		return implementation_->vulkan->wait_idle();
+#endif
 #ifdef ICE_RENDER_METAL
 	if (implementation_->metal)
 		return implementation_->metal->wait_idle();

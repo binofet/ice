@@ -210,7 +210,7 @@ void tangents(scene_primitive &primitive, int uv_set) {
 		normalize(v.tangent);
 		float b[3];
 		cross(v.normal, v.tangent, b);
-		v.tangent[3] = dot(b, bitan[i].data()) < 0 ? -1 : 1;
+		v.tangent[3] = dot(b, bitan[i].data()) < 0 ? -1.f : 1.f;
 	}
 }
 } // namespace
@@ -255,21 +255,22 @@ bool load_gltf(const std::string &uri, ice::io::resource_resolver &resolver, sce
 				buffer.data = const_cast<void *>(parsed->bin);
 				continue;
 			}
-			std::string uri = decoded_uri(buffer.uri);
-			if (uri.compare(0, 5, "data:") == 0) {
-				auto comma = uri.find(',');
+			std::string buffer_uri = decoded_uri(buffer.uri);
+			if (buffer_uri.compare(0, 5, "data:") == 0) {
+				auto comma = buffer_uri.find(',');
 				require(comma != std::string::npos &&
-				            uri.substr(0, comma).find(";base64") != std::string::npos &&
-				            buffer.size <= (uri.size() - comma - 1) / 4 * 3,
+				            buffer_uri.substr(0, comma).find(";base64") != std::string::npos &&
+				            buffer.size <= (buffer_uri.size() - comma - 1) / 4 * 3,
 				        "Invalid buffer data URI");
-				require(cgltf_load_buffer_base64(&options, buffer.size, uri.c_str() + comma + 1,
+				require(cgltf_load_buffer_base64(&options, buffer.size,
+				                                 buffer_uri.c_str() + comma + 1,
 				                                 &buffer.data) == cgltf_result_success,
 				        "Cannot decode buffer data URI");
 				buffer.data_free_method = cgltf_data_free_method_memory_free;
 			} else {
 				ice::io::resource_uri resolved;
 				std::string           error;
-				require(ice::io::resource_uri::resolve(source, uri, resolved, error),
+				require(ice::io::resource_uri::resolve(source, buffer_uri, resolved, error),
 				        "Invalid buffer URI: " + error);
 				cgltf_size size        = buffer.size;
 				auto       read_result = read_file(&options.memory, &options.file,

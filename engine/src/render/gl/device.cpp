@@ -443,8 +443,8 @@ ice::expected<std::unique_ptr<device>, diagnostic> device::create(profile api_pr
 	state->uniform_limit = std::size_t(uniform_limit);
 	state->api.GenVertexArrays(1, &state->vao);
 	state->api.GenBuffers(1, &state->uniforms);
-	if (auto error = check(*state); !error.empty())
-		return failure(error);
+	if (auto command_error = check(*state); !command_error.empty())
+		return failure(command_error);
 	// The unique owner moves into tl::expected; clang-analyzer 18 loses that ownership path.
 	// NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks)
 	return std::unique_ptr<device>(new device(std::move(state)));

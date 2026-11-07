@@ -58,16 +58,16 @@ void encode(const value &input, std::vector<std::byte> &output) {
 		tag(0);
 	} else if (auto boolean = std::get_if<bool>(&input.data)) {
 		tag(*boolean ? 2 : 1);
-	} else if (auto number = std::get_if<std::int64_t>(&input.data)) {
-		tag(*number < 0 ? 4 : 3);
-		uint(output, *number < 0 ? static_cast<std::uint64_t>(-1 - *number)
-		                         : static_cast<std::uint64_t>(*number));
-	} else if (auto number = std::get_if<std::uint64_t>(&input.data)) {
+	} else if (auto signed_number = std::get_if<std::int64_t>(&input.data)) {
+		tag(*signed_number < 0 ? 4 : 3);
+		uint(output, *signed_number < 0 ? static_cast<std::uint64_t>(-1 - *signed_number)
+		                                : static_cast<std::uint64_t>(*signed_number));
+	} else if (auto unsigned_number = std::get_if<std::uint64_t>(&input.data)) {
 		tag(3);
-		uint(output, *number);
-	} else if (auto number = std::get_if<double>(&input.data)) {
+		uint(output, *unsigned_number);
+	} else if (auto real_number = std::get_if<double>(&input.data)) {
 		tag(5);
-		auto bits = std::bit_cast<std::uint64_t>(*number);
+		auto bits = std::bit_cast<std::uint64_t>(*real_number);
 		for (unsigned i = 0; i < 8; ++i)
 			output.push_back(std::byte((bits >> (i * 8)) & 255));
 	} else if (auto string = std::get_if<std::string>(&input.data)) {

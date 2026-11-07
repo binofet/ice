@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ice/meta/schema.h"
+#include "ice/commands/output.h"
 #include <functional>
 #include <memory>
 #include <optional>
@@ -9,8 +9,6 @@
 
 namespace ice::commands {
 
-/// Bounded named scalar results; names are UTF-8 labels, never native pointers or object handles.
-using output = std::map<std::string, meta::value, std::less<>>;
 /// Declared host effect. Read-only callbacks must not change observable session state.
 enum class effect : std::uint8_t { read_only, mutation };
 /// Owned discovery data, frozen for the entire service lifetime.
