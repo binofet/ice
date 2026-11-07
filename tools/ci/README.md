@@ -265,3 +265,22 @@ tail. This adds no cache, provider route, pip capability assumption or host setu
 The exact pins, isolated environment and post-install exact-version verification
 remain required before toolchain evidence is written. This source correction does
 not replay already completed CI jobs or release any held retry action.
+
+### Verified Linux quality wheels
+
+Linux quality preparation uses the maintained family wheel-acquisition contract:
+the same four exact package versions and PyPI index, with a checked-in manifest
+of exact wheel filenames, byte counts and SHA-256 values. Completed wheels are
+verified before reuse and retained in an owned, non-shared, executor-scoped cache
+under the current account's cache directory. Private staging remains on that
+filesystem so publishing a verified wheel is atomic. Corrupt, symlinked or
+unexpected cache contents fail before installation and are not silently removed.
+
+Only missing wheels are acquired. Each needed acquisition uses the existing
+three-attempt interrupted-transport classifier under ONE shared 600-second
+budget; completed earlier downloads are not repeated. Installation into the
+fresh checkout-local venv is offline, dependency-free and hash-required. Exact
+installed versions still precede toolchain evidence. macOS retains its existing
+pinned installation path. This introduces no alternate package source, global
+installer, credential or resource admission gate. Failed or exhausted acquisition
+remains a failed required stage, regardless of later test results.

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ice/meta/scalar_fields.h"
 #include "ice/meta/schema.h"
 #include <functional>
 #include <memory>
@@ -10,7 +11,7 @@
 namespace ice::commands {
 
 /// Bounded named scalar results; names are UTF-8 labels, never native pointers or object handles.
-using output = std::map<std::string, meta::value, std::less<>>;
+using output = meta::scalar_fields;
 /// Declared host effect. Read-only callbacks must not change observable session state.
 enum class effect : std::uint8_t { read_only, mutation };
 /// Owned discovery data, frozen for the entire service lifetime.

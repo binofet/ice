@@ -1,0 +1,33 @@
+{
+  "format": "linux-x64-quality-wheels-v1",
+  "wheels": [
+    {
+      "package": "clang-format",
+      "version": "18.1.8",
+      "filename": "clang_format-18.1.8-py2.py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+      "bytes": 1677341,
+      "sha256": "2de122b8aa78ba49e326f974131caab2c79f4ae877c227cd4e3e5d82a98d21e5"
+    },
+    {
+      "package": "clang-tidy",
+      "version": "18.1.8",
+      "filename": "clang_tidy-18.1.8-py2.py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+      "bytes": 35551856,
+      "sha256": "c725a95c316d15df12f5bf7c1abfdf3cb9e4f3b9a9afb4cb6bb1e9df4e669493"
+    },
+    {
+      "package": "ninja",
+      "version": "1.13.0",
+      "filename": "ninja-1.13.0-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+      "bytes": 180716,
+      "sha256": "fb46acf6b93b8dd0322adc3a4945452a4e774b75b91293bafcc7b7f8e6517dfa"
+    },
+    {
+      "package": "libclang",
+      "version": "18.1.1",
+      "filename": "libclang-18.1.1-py2.py3-none-manylinux2010_x86_64.whl",
+      "bytes": 24515943,
+      "sha256": "c533091d8a3bbf7460a00cb6c1a71da93bffe148f172c7d03b1c31fbf8aa2a0b"
+    }
+  ]
+}

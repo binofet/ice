@@ -11,12 +11,15 @@ import re
 import shutil
 import subprocess
 import sys
+import stat
+import tempfile
 import time
 
 ROOT = Path(__file__).resolve().parents[2]
 PREFIX = Path('/opt/ice-family-ci/toolchains/native-20261018-v1')
 PACKAGES = {'clang-format': '18.1.8', 'clang-tidy': '18.1.8',
             'ninja': '1.13.0', 'libclang': '18.1.1'}
+WHEEL_MANIFEST = 'tools/ci/linux-quality-wheels.json'
 REQUIREMENTS = {'ice': 'tools/quality/requirements.txt'}
 
 
@@ -199,9 +202,10 @@ def verify_quality(repo):
     return actual
 
 
-def install_quality(command, environment):
+def install_quality(command, environment, *, deadline=None):
     """Retry only observed interrupted pip bodies within one existing 600s budget."""
-    deadline = time.monotonic() + 600
+    if deadline is None:
+        deadline = time.monotonic() + 600
     for attempt in range(1, 4):
         remaining = deadline - time.monotonic()
         if remaining <= 0:
@@ -230,6 +234,86 @@ def install_quality(command, environment):
             return
 
 
+def linux_wheel_rows():
+    manifest = json.loads((ROOT / WHEEL_MANIFEST).read_text())
+    require(manifest.get('format') == 'linux-x64-quality-wheels-v1', 'Unknown quality wheel manifest')
+    rows = manifest.get('wheels')
+    require(isinstance(rows, list) and len(rows) == len(PACKAGES)
+            and {row['package']: row['version'] for row in rows} == PACKAGES,
+            'Wheel manifest differs from exact quality pins')
+    for row in rows:
+        require(isinstance(row['bytes'], int) and 0 < row['bytes'] <= 64 * 1024 * 1024
+                and re.fullmatch(r'[0-9a-f]{64}', row['sha256'])
+                and Path(row['filename']).name == row['filename']
+                and row['filename'].startswith(row['package'].replace('-', '_') + '-' + row['version'] + '-')
+                and row['filename'].endswith('.whl'), 'Invalid pinned wheel descriptor')
+    require(sum(row['bytes'] for row in rows) <= 64 * 1024 * 1024, 'Quality wheel cache exceeds 64 MiB')
+    return rows
+
+
+def verify_wheel(path, row):
+    info = path.lstat()
+    require(stat.S_ISREG(info.st_mode) and info.st_uid == os.getuid()
+            and info.st_size == row['bytes'] and digest(path) == row['sha256'],
+            'Quality wheel size, ownership or hash differs: ' + row['filename'])
+
+
+def install_linux_quality(python, environment, deadline):
+    """Retain completed exact wheels across attempts; one unchanged 600s budget."""
+    rows = linux_wheel_rows()
+    home = Path.home()
+    require(home.is_absolute(), 'Quality cache requires an absolute HOME')
+    cache = home
+    # Independent native executors never share mutable staging/cache directories.
+    scope = hashlib.sha256(os.environ.get('RUNNER_NAME', 'standalone').encode()).hexdigest()[:16]
+    for part in ('.cache', 'ice-quality-wheels-v1', scope):
+        cache = cache / part
+        if not cache.exists() and not cache.is_symlink():
+            cache.mkdir(mode=0o700)
+        info = cache.lstat()
+        require(stat.S_ISDIR(info.st_mode) and info.st_uid == os.getuid()
+                and not info.st_mode & 0o022, 'Unsafe quality wheel cache directory')
+    require({p.name for p in cache.iterdir()} <= {r['filename'] for r in rows},
+            'Unexpected quality wheel cache entry; preserve it for investigation')
+    # Validate every existing entry before any download or installation.
+    hits = []
+    for row in rows:
+        wheel = cache / row['filename']
+        if wheel.exists() or wheel.is_symlink():
+            verify_wheel(wheel, row)
+            hits.append(row['package'])
+
+    # Publication must remain an atomic rename even when HOME and checkout are
+    # on different filesystems. Interrupted staging is retained on ambiguity.
+    with tempfile.TemporaryDirectory(prefix='.quality-wheels-', dir=cache) as directory:
+        stage = Path(directory)
+        lock = stage / 'requirements.txt'
+        download = stage / 'download'
+        download.mkdir()
+        for row in rows:
+            if row['package'] in hits:
+                continue
+            lock.write_text(row['package'] + '==' + row['version'] + ' --hash=sha256:' + row['sha256'] + '\n')
+            install_quality([str(python), '-m', 'pip', 'download', '--no-input',
+                            '--disable-pip-version-check', '--no-cache-dir', '--no-deps',
+                            '--only-binary=:all:', '--require-hashes', '--index-url', 'https://pypi.org/simple',
+                            '--dest', str(download), '-r', str(lock)],
+                           environment, deadline=deadline)
+            require({p.name for p in download.iterdir()} == {row['filename']}, 'Unexpected downloaded wheel')
+            wheel = download / row['filename']
+            verify_wheel(wheel, row)
+            wheel.chmod(0o444)
+            wheel.replace(cache / row['filename'])
+        lock.write_text(''.join((cache / row['filename']).as_uri() + ' --hash=sha256:' + row['sha256'] + '\n'
+                                for row in rows))
+        install_quality([str(python), '-m', 'pip', 'install', '--require-virtualenv', '--no-input',
+                        '--disable-pip-version-check', '--no-cache-dir', '--no-index', '--no-deps',
+                        '--only-binary=:all:', '--require-hashes', '-r', str(lock)],
+                       environment, deadline=deadline)
+    return {'mode': 'verified-linux-wheel-cache-v1', 'manifest_sha256': digest(ROOT / WHEEL_MANIFEST),
+            'cache_hits': hits, 'wheels': rows, 'budget_seconds': 600}
+
+
 def prepare(repo, profile):
     source_scope(repo)
     observed = runtime()
@@ -247,9 +331,13 @@ def prepare(repo, profile):
     environment.update(PIP_CONFIG_FILE=os.devnull, PIP_REQUIRE_VIRTUALENV='1', PYTHONNOUSERSITE='1',
                        PATH=str(venv / 'bin') + os.pathsep + os.environ['PATH'])
     python = venv / 'bin/python3'
-    install_quality([str(python), '-m', 'pip', 'install', '--require-virtualenv', '--no-input',
-                    '--disable-pip-version-check', '--no-cache-dir', '--index-url', 'https://pypi.org/simple',
-                    '-r', str(requirements)], environment)
+    wheels = None
+    if observed['system'] == 'Linux':
+        wheels = install_linux_quality(python, environment, time.monotonic() + 600)
+    else:
+        install_quality([str(python), '-m', 'pip', 'install', '--require-virtualenv', '--no-input',
+                        '--disable-pip-version-check', '--no-cache-dir', '--index-url', 'https://pypi.org/simple',
+                        '-r', str(requirements)], environment)
     versions = subprocess.check_output([str(python), '-c',
         'import importlib.metadata,json; print(json.dumps({name:importlib.metadata.version(name) for name in '
         + repr(list(PACKAGES)) + '}))'], env=environment, text=True, timeout=30)
@@ -261,6 +349,8 @@ def prepare(repo, profile):
                 'profile': profile, 'runtime': observed, 'commands': commands,
                 'source_id': digest(source), 'requirements_sha256': digest(requirements),
                 'packages': dict(PACKAGES), 'venv': 'build/ci-tools/venv'}
+    if wheels is not None:
+        metadata['wheel_preparation'] = wheels
     path = output / 'toolchain.json'
     require(not path.exists(), 'Refuse an existing toolchain evidence record')
     path.write_text(json.dumps(metadata, indent=2, allow_nan=False) + '\n')

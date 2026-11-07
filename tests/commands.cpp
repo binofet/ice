@@ -1,10 +1,13 @@
+#include "action_router/allocations.h"
 #include "ice/commands/service.h"
+#include "ice/script/lua_program.h"
 #include <cmath>
 #include <cstdio>
 #include <limits>
 #include <stdexcept>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 #define CHECK(expression)                                                                          \
 	do {                                                                                           \
@@ -47,6 +50,114 @@ request mutation(const service &owner, std::string id, std::string command) {
 
 int main() {
 	using namespace ice::commands;
+	static_assert(std::is_nothrow_move_constructible_v<output>);
+	static_assert(std::is_nothrow_move_assignable_v<output>);
+	static_assert(std::is_nothrow_move_constructible_v<handler_result>);
+	using checked_result = ice::expected<handler_result, diagnostic>;
+	static_assert(std::is_same_v<output, ice::script::scalar_record>);
+	using script_result = ice::expected<ice::script::scalar_record, ice::script::diagnostic>;
+	static_assert(std::is_nothrow_move_constructible_v<script_result>);
+	static_assert(std::is_nothrow_move_constructible_v<checked_result>);
+	static_assert(std::is_nothrow_move_assignable_v<output>);
+	output prepared{{"owned", std::string(200, 'x')}};
+	output independent   = prepared;
+	prepared.at("owned") = std::int64_t(7);
+	CHECK(std::get<std::string>(independent.at("owned")).size() == 200);
+	const auto    *owned_address = &independent.at("owned");
+	handler_result ready{true, std::move(independent)};
+	output         published;
+	ice::test::route_allocations::arm(0);
+	checked_result checked(std::move(ready));
+	checked_result transferred(std::move(checked));
+
+	published.swap(transferred->fields);
+	const bool move_allocated = ice::test::route_allocations::fired();
+	ice::test::route_allocations::disarm();
+	CHECK(!move_allocated && std::get<std::string>(published.at("owned")).size() == 200);
+	CHECK(&published.at("owned") == owned_address);
+	output script_prepared{{"script", std::string(200, 's')}};
+	ice::test::route_allocations::arm(0);
+	script_result script_checked(std::move(script_prepared));
+	script_result script_transferred(std::move(script_checked));
+	const bool    script_allocated = ice::test::route_allocations::fired();
+	ice::test::route_allocations::disarm();
+	CHECK(!script_allocated &&
+	      std::get<std::string>(script_transferred->at("script")).size() == 200);
+	CHECK(ready.fields.empty() && ready.fields.begin() == ready.fields.end());
+	ready.fields["reused"] = true;
+	CHECK(std::get<bool>(ready.fields.at("reused")));
+	output destination{{"unchanged", false}};
+	bool   copy_failed = false;
+	ice::test::route_allocations::arm(0);
+	try {
+		destination = published;
+	} catch (const std::bad_alloc &) {
+		copy_failed = true;
+	}
+	ice::test::route_allocations::disarm();
+	CHECK(copy_failed && destination.size() == 1 && !std::get<bool>(destination.at("unchanged")));
+	CHECK(std::get<std::string>(published.at("owned")).size() == 200);
+	output ordered{{"z", std::int64_t(3)}, {"a", std::int64_t(1)}, {"a", std::int64_t(2)}};
+	CHECK(ordered.size() == 2 && ordered.begin()->first == "a");
+	const output &read_only = ordered;
+	CHECK(read_only.find(std::string_view("z")) != read_only.end());
+	CHECK(read_only.find(std::string_view("absent")) == read_only.end());
+	output reassigned{{"discarded", false}};
+	ice::test::route_allocations::arm(0);
+	reassigned                      = std::move(ordered);
+	const bool assignment_allocated = ice::test::route_allocations::fired();
+	ice::test::route_allocations::disarm();
+	CHECK(!assignment_allocated && reassigned.size() == 2 && ordered.empty());
+	CHECK(ordered.find("missing") == ordered.end());
+	output      nodes{{"duplicate", std::int64_t(1)}, {"transfer", std::int64_t(2)}};
+	output      receiver{{"duplicate", std::int64_t(3)}};
+	const auto *node_address = &nodes.at("transfer");
+	ice::test::route_allocations::arm(0);
+	receiver.merge(nodes);
+	const bool merge_allocated = ice::test::route_allocations::fired();
+	ice::test::route_allocations::disarm();
+	CHECK(!merge_allocated);
+	CHECK(nodes.size() == 1 && receiver.size() == 2);
+	CHECK(&receiver.at("transfer") == node_address);
+	auto node = receiver.extract(receiver.find("transfer"));
+	CHECK(!node.empty());
+	ice::test::route_allocations::arm(0);
+	auto       inserted         = nodes.insert(std::move(node));
+	const bool insert_allocated = ice::test::route_allocations::fired();
+	ice::test::route_allocations::disarm();
+	CHECK(!insert_allocated);
+	CHECK(inserted.inserted && &nodes.at("transfer") == node_address);
+	CHECK(nodes.extract("absent").empty());
+	receiver.merge(output{{"temporary", true}});
+	receiver.try_emplace("prepared").first->second = false;
+	auto filtered                                  = receiver;
+	CHECK(filtered.erase_if([](const auto &item) { return item.first == "duplicate"; }) == 1);
+	CHECK(receiver.find("duplicate") != receiver.end());
+	auto   bridged = receiver.copy_fields();
+	output restored(bridged);
+	CHECK(restored.size() == receiver.size() && restored.erase("prepared") == 1);
+	std::vector<output> buffer;
+	buffer.reserve(1);
+	buffer.push_back(output{{"first", true}});
+	output next{{"second", false}};
+	ice::test::route_allocations::arm(1); // Only vector storage growth may allocate.
+	buffer.push_back(std::move(next));
+	const bool relocation_allocated = ice::test::route_allocations::fired();
+	ice::test::route_allocations::disarm();
+	CHECK(!relocation_allocated && buffer.size() == 2);
+	ice::test::route_allocations::arm(0);
+	buffer.erase(buffer.begin());
+	const bool compaction_allocated = ice::test::route_allocations::fired();
+	ice::test::route_allocations::disarm();
+	CHECK(!compaction_allocated && buffer.size() == 1 && buffer.front().contains("second"));
+	output augmented;
+	auto   added = augmented.insert_or_assign(std::string("field"), std::int64_t(1));
+	CHECK(added.second && std::get<std::int64_t>(added.first->second) == 1);
+	const auto *augmentation_address = &added.first->second;
+	auto        replaced             = augmented.insert_or_assign("field", std::int64_t(2));
+	CHECK(!replaced.second && augmented.size() == 1);
+	CHECK(&replaced.first->second == augmentation_address &&
+	      std::get<std::int64_t>(augmented.at("field")) == 2);
 	static_assert(!std::is_copy_constructible_v<service>);
 	static_assert(std::is_nothrow_move_constructible_v<service>);
 	static_assert(std::is_same_v<decltype(std::declval<const service &>().discover()),
