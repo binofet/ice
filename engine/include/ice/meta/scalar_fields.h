@@ -113,6 +113,10 @@ public:
 	template <class... Args> auto try_emplace(Args &&...args) {
 		return writable().try_emplace(std::forward<Args>(args)...);
 	}
+	/// Insert or replace a named scalar; preparation may allocate or throw.
+	template <class Key, class Mapped> auto insert_or_assign(Key &&key, Mapped &&mapped) {
+		return writable().insert_or_assign(std::forward<Key>(key), std::forward<Mapped>(mapped));
+	}
 	/// Whether a named field exists, with transparent key lookup.
 	template <class Key> bool contains(const Key &key) const { return find(key) != end(); }
 	/// Insert a field range, retaining existing values for duplicate names.

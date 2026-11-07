@@ -150,6 +150,14 @@ int main() {
 	const bool compaction_allocated = ice::test::route_allocations::fired();
 	ice::test::route_allocations::disarm();
 	CHECK(!compaction_allocated && buffer.size() == 1 && buffer.front().contains("second"));
+	output augmented;
+	auto   added = augmented.insert_or_assign(std::string("field"), std::int64_t(1));
+	CHECK(added.second && std::get<std::int64_t>(added.first->second) == 1);
+	const auto *augmentation_address = &added.first->second;
+	auto        replaced             = augmented.insert_or_assign("field", std::int64_t(2));
+	CHECK(!replaced.second && augmented.size() == 1);
+	CHECK(&replaced.first->second == augmentation_address &&
+	      std::get<std::int64_t>(augmented.at("field")) == 2);
 	static_assert(!std::is_copy_constructible_v<service>);
 	static_assert(std::is_nothrow_move_constructible_v<service>);
 	static_assert(std::is_same_v<decltype(std::declval<const service &>().discover()),
