@@ -1,6 +1,7 @@
 #pragma once
 #include "ice/core/expected.h"
 #include "ice/io/resource_uri.h"
+#include "ice/meta/scalar_fields.h"
 #include "ice/meta/schema.h"
 #include <cstddef>
 #include <cstdint>
@@ -17,7 +18,7 @@ namespace ice::script {
 /// 4096-byte UTF-8 strings and 64 KiB total names/string/scalar bytes. No NUL or
 /// nonfinite numbers. Null is unsupported (Lua nil is absence); uint64 must fit
 /// int64 and returns as int64. Stable object identities should be strings.
-using scalar_record = std::map<std::string, ice::meta::value, std::less<>>;
+using scalar_record = ice::meta::scalar_fields;
 /// Distinguish rejected host requests from source, VM and output-contract failures.
 enum class error_code {
 	invalid_limits,

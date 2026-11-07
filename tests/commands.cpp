@@ -1,5 +1,6 @@
 #include "action_router/allocations.h"
 #include "ice/commands/service.h"
+#include "ice/script/lua_program.h"
 #include <cmath>
 #include <cstdio>
 #include <limits>
@@ -53,6 +54,9 @@ int main() {
 	static_assert(std::is_nothrow_move_assignable_v<output>);
 	static_assert(std::is_nothrow_move_constructible_v<handler_result>);
 	using checked_result = ice::expected<handler_result, diagnostic>;
+	static_assert(std::is_same_v<output, ice::script::scalar_record>);
+	using script_result = ice::expected<ice::script::scalar_record, ice::script::diagnostic>;
+	static_assert(std::is_nothrow_move_constructible_v<script_result>);
 	static_assert(std::is_nothrow_move_constructible_v<checked_result>);
 	static_assert(std::is_nothrow_move_assignable_v<output>);
 	output prepared{{"owned", std::string(200, 'x')}};
@@ -71,6 +75,14 @@ int main() {
 	ice::test::route_allocations::disarm();
 	CHECK(!move_allocated && std::get<std::string>(published.at("owned")).size() == 200);
 	CHECK(&published.at("owned") == owned_address);
+	output script_prepared{{"script", std::string(200, 's')}};
+	ice::test::route_allocations::arm(0);
+	script_result script_checked(std::move(script_prepared));
+	script_result script_transferred(std::move(script_checked));
+	const bool    script_allocated = ice::test::route_allocations::fired();
+	ice::test::route_allocations::disarm();
+	CHECK(!script_allocated &&
+	      std::get<std::string>(script_transferred->at("script")).size() == 200);
 	CHECK(ready.fields.empty() && ready.fields.begin() == ready.fields.end());
 	ready.fields["reused"] = true;
 	CHECK(std::get<bool>(ready.fields.at("reused")));

@@ -133,10 +133,12 @@ the source. Extracted nodes retain ownership and insertion reports an unconsumed
 node on collision. Transfer between prepared outputs does not allocate or copy
 mapped values.
 
-The owned type is not a `std::map` alias. Replace `std::erase_if(fields, predicate)`
+`commands::output` and `script::scalar_record` remain aliases of the same public
+`meta::scalar_fields` owned type. Checked scalar-record callbacks can return
+prepared outputs without a conversion or copying bridge. The owned type is not a
+`std::map` alias. Replace `std::erase_if(fields, predicate)`
 with `fields.erase_if(predicate)`; no overload is added to namespace `std`.
 `output::map_type` names the scalar-map bridge. `copy_fields()` creates an
-independent owned map for interfaces requiring that type, including checked
-scalar-record callbacks. This bridge is fallible preparation even when called on
-an rvalue; it does not promise allocation-free conversion or copying after a
+independent owned map when an interface explicitly requires a native map. This
+bridge is fallible preparation even when called on an rvalue; it does not promise allocation-free conversion or copying after a
 host effect. Construction from a scalar map is likewise ordinary preparation.
