@@ -111,3 +111,32 @@ successful no-ops, exact retry identity, conflicting reuse, cache eviction,
 ordinary host failures, exception/invalid-output invalidation, callback lifetime,
 reentrant rejection and service movement. It is a CPU-only CTest in both supported
 C++ language modes.
+
+## Prepared output ownership
+
+`output` owns its ordered, unique-key scalar fields through independent storage.
+Constructing an empty output prepares that storage and may allocate. Initializer
+lists, insertion, copying and `copy_fields()` are ordinary fallible preparation;
+complete them before publishing a host effect. Copies never share mutable fields
+with retained receipts.
+
+Moving an `output` transfers storage without allocation, including on standard
+libraries whose native map move can allocate. Move construction, move assignment
+and member `swap` are genuinely `noexcept`. A moved-from output is empty and
+iterable; reusing it for insertion may allocate and belongs to preparation.
+`handler_result` and its checked success/failure return can therefore transfer a
+prepared successful response after publication without moving a native map.
+
+Lookup, iteration, insertion and node transfer retain ordered associative
+semantics. Merging transfers only nonduplicate nodes; duplicate nodes remain in
+the source. Extracted nodes retain ownership and insertion reports an unconsumed
+node on collision. Transfer between prepared outputs does not allocate or copy
+mapped values.
+
+The owned type is not a `std::map` alias. Replace `std::erase_if(fields, predicate)`
+with `fields.erase_if(predicate)`; no overload is added to namespace `std`.
+`output::map_type` names the scalar-map bridge. `copy_fields()` creates an
+independent owned map for interfaces requiring that type, including checked
+scalar-record callbacks. This bridge is fallible preparation even when called on
+an rvalue; it does not promise allocation-free conversion or copying after a
+host effect. Construction from a scalar map is likewise ordinary preparation.
