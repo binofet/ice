@@ -262,7 +262,8 @@ bool load_gltf(const std::string &uri, ice::io::resource_resolver &resolver, sce
 				            buffer_uri.substr(0, comma).find(";base64") != std::string::npos &&
 				            buffer.size <= (buffer_uri.size() - comma - 1) / 4 * 3,
 				        "Invalid buffer data URI");
-				require(cgltf_load_buffer_base64(&options, buffer.size, buffer_uri.c_str() + comma + 1,
+				require(cgltf_load_buffer_base64(&options, buffer.size,
+				                                 buffer_uri.c_str() + comma + 1,
 				                                 &buffer.data) == cgltf_result_success,
 				        "Cannot decode buffer data URI");
 				buffer.data_free_method = cgltf_data_free_method_memory_free;
