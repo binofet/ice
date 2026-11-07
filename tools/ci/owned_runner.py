@@ -11,6 +11,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 
 ROOT = Path(__file__).resolve().parents[2]
 PREFIX = Path('/opt/ice-family-ci/toolchains/native-20261018-v1')
@@ -198,6 +199,37 @@ def verify_quality(repo):
     return actual
 
 
+def install_quality(command, environment):
+    """Retry only observed interrupted pip bodies within one existing 600s budget."""
+    deadline = time.monotonic() + 600
+    for attempt in range(1, 4):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError('Quality dependency preparation exhausted its 600s budget')
+        try:
+            result = subprocess.run(command, env=environment, check=True,
+                                    timeout=remaining, stdout=subprocess.PIPE,
+                                    stderr=subprocess.STDOUT, text=True)
+        except subprocess.TimeoutExpired as error:
+            output = error.stdout or ''
+            if isinstance(output, bytes):
+                output = output.decode('utf-8', errors='replace')
+            print(output[-1024 * 1024:], flush=True)
+            raise
+        except subprocess.CalledProcessError as error:
+            output = error.stdout or ''
+            print('Quality dependency attempt ' + str(attempt) + ' failed: ' +
+                  str(error.returncode), flush=True)
+            print(output[-1024 * 1024:], flush=True)
+            interrupted = (error.returncode == 2 and 'BrokenPipeError' in output
+                           and 'ProtocolError' in output)
+            if not interrupted or attempt == 3:
+                raise
+        else:
+            print((getattr(result, 'stdout', None) or '')[-1024 * 1024:], flush=True)
+            return
+
+
 def prepare(repo, profile):
     source_scope(repo)
     observed = runtime()
@@ -215,9 +247,9 @@ def prepare(repo, profile):
     environment.update(PIP_CONFIG_FILE=os.devnull, PIP_REQUIRE_VIRTUALENV='1', PYTHONNOUSERSITE='1',
                        PATH=str(venv / 'bin') + os.pathsep + os.environ['PATH'])
     python = venv / 'bin/python3'
-    subprocess.run([str(python), '-m', 'pip', 'install', '--require-virtualenv', '--no-input',
+    install_quality([str(python), '-m', 'pip', 'install', '--require-virtualenv', '--no-input',
                     '--disable-pip-version-check', '--no-cache-dir', '--index-url', 'https://pypi.org/simple',
-                    '-r', str(requirements)], env=environment, check=True, timeout=600)
+                    '-r', str(requirements)], environment)
     versions = subprocess.check_output([str(python), '-c',
         'import importlib.metadata,json; print(json.dumps({name:importlib.metadata.version(name) for name in '
         + repr(list(PACKAGES)) + '}))'], env=environment, text=True, timeout=30)
