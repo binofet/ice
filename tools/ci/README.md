@@ -253,3 +253,15 @@ migration-branch workflow is separately privileged YAML; checkout of default
 `gate.py` alone does not authorize its steps. `refresh --publish` retains its bulk
 open-PR scope. Bootstrap/dispatch trust, current native review/head/base/artifacts,
 protected statuses and default selector activation remain independent review gates.
+
+### Interrupted quality dependency downloads
+
+ICE's pinned project-venv pip install retains its existing single 600-second total
+budget. It may make up to three attempts only when pip exits 2 and reports both
+`BrokenPipeError` and `ProtocolError`, matching the observed interrupted wheel-body
+failures. Each process gets only the remaining deadline; deterministic failures,
+timeouts and exhaustion remain failed. Each failed attempt retains a bounded log
+tail. This adds no cache, provider route, pip capability assumption or host setup.
+The exact pins, isolated environment and post-install exact-version verification
+remain required before toolchain evidence is written. This source correction does
+not replay already completed CI jobs or release any held retry action.
