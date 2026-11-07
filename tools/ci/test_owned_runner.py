@@ -161,7 +161,7 @@ class OwnedRunnerTests(unittest.TestCase):
                         self.assertEqual(kwargs['env']['PIP_CONFIG_FILE'], os.devnull)
                         self.assertEqual(kwargs['env']['PIP_REQUIRE_VIRTUALENV'], '1')
                 with patch.object(owned, 'ROOT', root), patch.dict(os.environ, environment, clear=True), \
-                        patch.object(owned, 'runtime', return_value=self.observed()), \
+                        patch.object(owned, 'runtime', return_value=self.observed('Darwin')), \
                         patch.object(owned, 'toolchain', return_value=self.commands(repo)), \
                         patch.object(owned.subprocess, 'run', side_effect=command) as run, \
                         patch.object(owned.subprocess, 'check_output', return_value=json.dumps(owned.PACKAGES)):
