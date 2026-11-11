@@ -72,11 +72,13 @@ native auto-merge with `expectedHeadOid` while the required contexts are pending
 GitHub strict branch protection performs integration after they pass. A refused
 enrollment fails both contexts. An already enrolled MERGE request needs no
 second mutation. Before sending a request, the gate records one attempt on the
-exact head in a separate status context keyed by PR and base. The gate reports
-a confirmed stop before submission separately from an unknown response. Both
-retain the reservation because commit status metadata cannot authenticate a
-workflow-specific release receipt. The original owner can reconcile the
-reserved pair. A later refresh can recognize visible native enrollment. This path leaves branch updates, dispatch, review creation,
+exact head in a separate status context keyed by PR and base. The gate finishes
+preflight before reserving, then submits the expected-head request without
+another preflight read. Separate provider calls leave a race for changes after
+the last read. An unconfirmed reservation write stops submission. An observed
+reservation prevents replay while enrollment is absent, including after a lost
+response. The original owner can reconcile the reserved pair. A later refresh
+can recognize visible native enrollment. This path leaves branch updates, dispatch, review creation,
 settings and direct merge outside the controller. The separately reviewed
 read-only installation can still publish status evidence with its existing
 authorization.

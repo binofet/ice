@@ -448,25 +448,18 @@ def enroll(api, context, authorize, fresh):
          "native_enrollment_attempt_already_recorded")
 
     authorize()
-    need(live_pr(api.call(base + f"/pulls/{number}"), repo, number) == context,
-         "pr_changed_before_enrollment_reservation")
+    fresh()
+    final = api.call(base + f"/pulls/{number}")
+    need(live_pr(final, repo, number) == context and final.get("node_id") == live["node_id"],
+         "pr_changed_before_native_enrollment")
+    if final.get("auto_merge") is not None:
+        need(final["auto_merge"].get("merge_method") == "merge", "native_merge_method_differs")
+        return {"state": "already_enrolled"}
+
     api.call(base + f"/statuses/{context['head']}", {
         "context": attempt, "state": "success",
         "description": "Enrollment attempt reserved; this is not a review or CI result",
     })
-    try:
-        authorize()
-        fresh()
-        final = api.call(base + f"/pulls/{number}")
-        need(live_pr(final, repo, number) == context and final.get("node_id") == live["node_id"],
-             "pr_changed_before_native_enrollment")
-        if final.get("auto_merge") is not None:
-            need(final["auto_merge"].get("merge_method") == "merge", "native_merge_method_differs")
-            return {"state": "already_enrolled"}
-    except (ValueError, KeyError, TypeError, OSError) as error:
-        # Commit statuses do not authenticate a workflow-specific release
-        # receipt. Keep the reservation even when we know no request was sent.
-        raise ValueError(f"native_enrollment_stopped_before_submission: {error}") from error
     try:
         result = api.call("graphql", {"query": query, "variables": {"pr": live["node_id"], "head": context["head"]}})
     except (ValueError, KeyError, TypeError, OSError) as error:
