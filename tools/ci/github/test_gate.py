@@ -154,7 +154,7 @@ class GateTests(unittest.TestCase):
             self.lose_response = False
             self.attempts = []
             self.withdraw_at_reservation = False
-            self.method_at_reservation = None
+            self.method_during_freshness = None
             self.withdraw_during_final_quality = False
             self.new_attempt_on_zip = False
             self.merge_after_statuses = False
@@ -168,8 +168,6 @@ class GateTests(unittest.TestCase):
                 self.attempts.append(dict(data, creator={"login": "github-actions[bot]"}))
                 if self.withdraw_at_reservation:
                     self.reviews = [review(state="DISMISSED")]
-                if self.method_at_reservation:
-                    self.pr["auto_merge"] = {"merge_method": self.method_at_reservation}
                 return {"id": 12345}
             if path == "graphql":
                 self.mutations.append(data)
@@ -193,6 +191,8 @@ class GateTests(unittest.TestCase):
         def pages(self, path, field=None, maximum=500):
             if path.endswith("/status"):
                 return deepcopy(self.attempts[-1:])
+            if "/runs?" in path and self.attempts and self.method_during_freshness:
+                self.pr["auto_merge"] = {"merge_method": self.method_during_freshness}
             if "/runs?" in path and self.withdraw_during_final_quality and len(self.statuses) == 3:
                 self.reviews = [review(state="DISMISSED")]
             return super().pages(path, field, maximum)
@@ -213,28 +213,43 @@ class GateTests(unittest.TestCase):
         self.assertEqual(len(api.mutations), 1)
         self.assertEqual(len(api.attempts), 1)
 
-    def test_confirmed_pre_send_abort_can_recheck_same_pair(self):
+    def test_confirmed_pre_send_abort_leaves_reservation_fail_closed(self):
         api = self.EnrollmentAPI()
         api.withdraw_at_reservation = True
         result = gate.gate(api, "ice", 7, True, integrate=True)
         self.assertEqual(result["integration"]["state"], "blocked")
         self.assertEqual(api.mutations, [])
-        self.assertEqual(api.attempts[-1]["description"], "Enrollment stopped before request submission")
+        self.assertIn("native_enrollment_stopped_before_submission", result["integration"]["diagnostic"])
         api.withdraw_at_reservation = False
         api.reviews = [review()]
         result = gate.gate(api, "ice", 7, True, integrate=True)
-        self.assertEqual(result["integration"]["state"], "enrolled")
-        self.assertEqual(len(api.mutations), 1)
+        self.assertEqual(result["integration"]["diagnostic"], "native_enrollment_attempt_already_recorded")
+        self.assertEqual(api.mutations, [])
+        self.assertEqual(len(api.attempts), 1)
+
+    def test_rejected_checkout_cannot_write_after_reservation(self):
+        api = self.EnrollmentAPI()
+
+        def authorize():
+            if api.attempts:
+                raise ValueError("trusted_source_is_dirty")
+
+        context = gate.live_pr(api.pr, "ice", 7)
+        with self.assertRaisesRegex(ValueError, "stopped_before_submission: trusted_source_is_dirty"):
+            gate.enroll(api, context, authorize, lambda: None)
+        self.assertEqual(len(api.attempts), 1)
+        self.assertEqual(api.mutations, [])
+        self.assertEqual(api.statuses, [])
 
     def test_final_pr_read_honors_new_native_enrollment(self):
         for method, state in (("squash", "blocked"), ("merge", "already_enrolled")):
             with self.subTest(method=method):
                 api = self.EnrollmentAPI()
-                api.method_at_reservation = method
+                api.method_during_freshness = method
                 result = gate.gate(api, "ice", 7, True, integrate=True)
                 self.assertEqual(result["integration"]["state"], state)
                 self.assertEqual(api.mutations, [])
-                self.assertEqual(api.attempts[-1]["description"], "Enrollment stopped before request submission")
+                self.assertEqual(len(api.attempts), 1)
 
     def test_withdrawal_during_final_quality_read_blocks_merge_releasing_status(self):
         api = self.EnrollmentAPI()

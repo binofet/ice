@@ -443,37 +443,30 @@ def enroll(api, context, authorize, fresh):
     # Reserve this exact pair before sending the mutation. The workflow's
     # serialized writer and this durable receipt also cover a lost response.
     attempt = f"family-native-enrollment-attempt/{number}/{context['base']}"
-    status_path = base + f"/statuses/{context['head']}"
-    aborted = "Enrollment stopped before request submission"
     statuses = api.pages(base + f"/commits/{context['head']}/status", "statuses")
-    records = [row for row in statuses if row.get("context") == attempt]
-    need(not records or (len(records) == 1 and records[0].get("description") == aborted
-                         and records[0].get("creator", {}).get("login") == "github-actions[bot]"),
+    need(not any(row.get("context") == attempt for row in statuses),
          "native_enrollment_attempt_already_recorded")
-
-    def record(description):
-        api.call(status_path, {"context": attempt, "state": "success", "description": description})
 
     authorize()
     need(live_pr(api.call(base + f"/pulls/{number}"), repo, number) == context,
          "pr_changed_before_enrollment_reservation")
-    record("Enrollment attempt reserved; this is not a review or CI result")
+    api.call(base + f"/statuses/{context['head']}", {
+        "context": attempt, "state": "success",
+        "description": "Enrollment attempt reserved; this is not a review or CI result",
+    })
     try:
         authorize()
+        fresh()
         final = api.call(base + f"/pulls/{number}")
         need(live_pr(final, repo, number) == context and final.get("node_id") == live["node_id"],
              "pr_changed_before_native_enrollment")
-        fresh()
         if final.get("auto_merge") is not None:
             need(final["auto_merge"].get("merge_method") == "merge", "native_merge_method_differs")
-    except (ValueError, KeyError, TypeError, OSError):
-        # No mutation has been sent. If this receipt cannot be written, the
-        # existing reservation still conservatively blocks another attempt.
-        record(aborted)
-        raise
-    if final.get("auto_merge") is not None:
-        record(aborted)
-        return {"state": "already_enrolled"}
+            return {"state": "already_enrolled"}
+    except (ValueError, KeyError, TypeError, OSError) as error:
+        # Commit statuses do not authenticate a workflow-specific release
+        # receipt. Keep the reservation even when we know no request was sent.
+        raise ValueError(f"native_enrollment_stopped_before_submission: {error}") from error
     try:
         result = api.call("graphql", {"query": query, "variables": {"pr": live["node_id"], "head": context["head"]}})
     except (ValueError, KeyError, TypeError, OSError) as error:
