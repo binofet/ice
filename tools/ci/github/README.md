@@ -3,7 +3,7 @@
 This is independently authored source adapted from the reviewed Cosmotomata
 control/review pattern. No Cosmotomata code, repository identity, policy, pin,
 credential or runner is reused. Nothing in this directory registers a runner,
-changes settings, performs a merge or authorizes a release.
+changes settings, calls a direct merge endpoint or authorizes a release.
 
 The fixed repository is `binofet/ice`40782766/master/public.
 Automatic integration accepts only open, non-draft, same-repository, non-fork PRs
@@ -57,12 +57,30 @@ association is the upload receipt; an author-written `publication.json` is not.
 
 On publication the controller refreshes current head/base before every status
 write. `reviewed-head` and `source-quality` start pending, then independently pass
-or fail. A base/head change prevents stale success. Expensive artifact collection finishes before either success. Native review is
-re-fetched immediately before each success write and after publication; a changed
-review revokes both contexts. Subsequent edits trigger refresh. Root must serialize
-integration and enforce exact-head/current-base checks at merge; status publication
-cannot atomically lock a future review edit or target update. This script never
-calls a merge endpoint.
+or fail. Expensive artifact collection finishes before either success. Native
+review is re-fetched immediately before each success write and after publication.
+A changed review revokes both contexts.
+
+The serialized trusted workflow runs `refresh --publish --integrate`. It
+authenticates current master and its ancestry in the exact PR head, then
+rechecks the current review and latest successful quality attempt. It requests
+native auto-merge with `expectedHeadOid` while the required contexts are pending.
+GitHub strict branch protection performs integration after they pass. A refused
+enrollment fails both contexts. An already enrolled MERGE request needs no
+second mutation. Before sending a request, the gate records one attempt on the
+exact head in a separate status context keyed by PR and base. This context records the
+reservation only. A later refresh can observe an enrollment that became visible
+after a lost response. While enrollment remains absent, that pair stays blocked
+for the original owner to reconcile. This path leaves branch updates, dispatch, review creation,
+settings and direct merge outside the controller. The separately reviewed
+read-only installation can still publish status evidence with its existing
+authorization.
+
+The first installation must land through the existing repository-owner route
+with exact-head native enrollment and the same required checks. Until then, the
+trusted workflow executes the installed master controller. After installation,
+verify the next eligible PR's native enrollment, merge actor, master
+advancement and exact post-merge quality separately.
 
 Generate ICE workflows with `gate.py templates --repo ice
 --output NEW_DIRECTORY`. The new directory receives only that fixed repository

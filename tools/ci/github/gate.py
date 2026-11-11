@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Trusted ICE GitHub gates. No PR checkout/import, shell, merge or release capability.
+"""Trusted ICE GitHub gates. No PR checkout/import, direct merge or release capability.
 
 Independently authored using the reviewed Cosmotomata control/review pattern;
 no Cosmotomata code, identities, policies, pins or credentials are copied.
@@ -66,10 +66,9 @@ def policy(repo):
     return repo, POLICIES[repo]
 
 
-def live_pr(value, repo, number):
+def pr_identity(value, repo, number):
     _, config = policy(repo)
-    need(value.get("number") == number and value.get("state") == "open" and value.get("draft") is False,
-         "open_nondraft_pr_required")
+    need(value.get("number") == number, "wrong_pull_request")
     for side in ("head", "base"):
         part = value.get(side, {})
         native = part.get("repo", {})
@@ -78,6 +77,12 @@ def live_pr(value, repo, number):
              and isinstance(part.get("sha"), str) and OID.fullmatch(part["sha"]), "same_repository_exact_source_required")
     need(value["base"].get("ref") == config["branch"], "wrong_target_branch")
     return {"repo": repo, "pr": number, "head": value["head"]["sha"], "base": value["base"]["sha"]}
+
+
+def live_pr(value, repo, number):
+    need(value.get("state") == "open" and value.get("draft") is False,
+         "open_nondraft_pr_required")
+    return pr_identity(value, repo, number)
 
 
 def review_body(repo, number, head, base, text, decision="approved"):
@@ -285,10 +290,16 @@ class API:
                     process.wait()
                     raise ValueError("bounded_github_request_exceeded")
                 time.sleep(.05)
-            need(process.returncode == 0, "github_request_failed")
             output.seek(0)
             raw = output.read(MAX_ZIP + 1)
             need(len(raw) <= MAX_ZIP, "github_response_too_large")
+            if process.returncode != 0:
+                if path == "graphql" and raw:
+                    failure = decode(raw)
+                    if (isinstance(failure, dict) and isinstance(failure.get("errors"), list)
+                            and failure["errors"] and not failure.get("data")):
+                        return failure
+                raise ValueError("github_request_failed")
             return raw if binary else decode(raw)
 
     def pages(self, path, field=None, maximum=500):
@@ -304,7 +315,7 @@ class API:
         raise ValueError("github_page_bound_exceeded")
 
 
-def quality(api, context):
+def quality_run(api, context):
     repo, config = policy(context["repo"])
     base = f"repos/binofet/{repo}"
     workflow = api.call(base + "/actions/workflows/" + config["workflow"])
@@ -318,6 +329,15 @@ def quality(api, context):
     run = max(runs, key=lambda r: r["id"])
     need(run.get("head_sha") == context["head"] and run.get("status") == "completed"
          and run.get("conclusion") == "success", "latest_quality_run_not_successful")
+    need(type(run.get("id")) is int and type(run.get("run_attempt")) is int and run["run_attempt"] > 0,
+         "quality_run_identity_missing")
+    return run
+
+
+def quality(api, context):
+    repo, config = policy(context["repo"])
+    base = f"repos/binofet/{repo}"
+    run = quality_run(api, context)
     jobs = api.pages(base + f"/actions/runs/{run['id']}/attempts/{run['run_attempt']}/jobs", "jobs")
     skipped_jobs = config.get("skipped_jobs", [])
     possible_jobs = [config['jobs'] + skipped_jobs]
@@ -392,7 +412,69 @@ def execution(api, repo, install=None, expected=None):
          "trusted_source_is_dirty")
 
 
-def gate(api, repo, number, publish=False, authorize=lambda: None):
+def enroll(api, context, authorize, fresh):
+    """Enroll native auto-merge while our required statuses are still pending.
+
+    Native strict protection performs the merge, never a caller's manual merge.
+    No branch update, dispatch, review synthesis or repository-setting mutation.
+    """
+    repo, number = context["repo"], context["pr"]
+    authorize()
+    base = f"repos/binofet/{repo}"
+    live = api.call(base + f"/pulls/{number}")
+    need(live_pr(live, repo, number) == context, "pr_changed_before_native_enrollment")
+    _, config = policy(repo)
+    target = api.call(base + "/git/ref/heads/" + config["branch"])
+    need(target.get("object", {}).get("sha") == context["base"], "target_changed_before_native_enrollment")
+    comparison = api.call(base + "/compare/" + context["base"] + "..." + context["head"] + "?per_page=1")
+    need(comparison.get("merge_base_commit", {}).get("sha") == context["base"],
+         "current_base_refresh_required")
+    fresh()
+    authorize()
+    live = api.call(base + f"/pulls/{number}")
+    need(live_pr(live, repo, number) == context,
+         "pr_changed_before_native_enrollment")
+    need(isinstance(live.get("node_id"), str) and live["node_id"], "native_pr_node_required")
+    query = """mutation($pr:ID!,$head:GitObjectID!){enablePullRequestAutoMerge(input:{pullRequestId:$pr,expectedHeadOid:$head,mergeMethod:MERGE}){pullRequest{id autoMergeRequest{mergeMethod}}}}"""
+    # Already-enrolled is idempotent; do not replace another merge method.
+    if live.get("auto_merge") is not None:
+        need(live["auto_merge"].get("merge_method") == "merge", "native_merge_method_differs")
+        return {"state": "already_enrolled"}
+    # Reserve this exact pair before sending the mutation. The workflow's
+    # serialized writer and this durable receipt also cover a lost response.
+    attempt = f"family-native-enrollment-attempt/{number}/{context['base']}"
+    statuses = api.pages(base + f"/commits/{context['head']}/status", "statuses")
+    need(not any(row.get("context") == attempt for row in statuses),
+         "native_enrollment_attempt_already_recorded")
+    authorize()
+    need(live_pr(api.call(base + f"/pulls/{number}"), repo, number) == context,
+         "pr_changed_before_enrollment_reservation")
+    api.call(base + f"/statuses/{context['head']}", {
+        "context": attempt, "state": "success",
+        "description": "Enrollment attempt reserved; this is not a review or CI result",
+    })
+    fresh()
+    authorize()
+    need(live_pr(api.call(base + f"/pulls/{number}"), repo, number) == context,
+         "pr_changed_before_native_enrollment")
+    try:
+        result = api.call("graphql", {"query": query, "variables": {"pr": live["node_id"], "head": context["head"]}})
+    except (ValueError, KeyError, TypeError, OSError) as error:
+        raise ValueError("native_enrollment_outcome_unknown") from error
+    if isinstance(result, dict) and isinstance(result.get("errors"), list) and result["errors"] and not result.get("data"):
+        raise ValueError("native_enrollment_refused")
+    try:
+        need(isinstance(result, dict) and not result.get("errors"), "native_enrollment_outcome_unknown")
+        returned = result["data"]["enablePullRequestAutoMerge"]["pullRequest"]
+        need(returned["id"] == live["node_id"] and returned["autoMergeRequest"]["mergeMethod"] == "MERGE",
+             "native_enrollment_outcome_unknown")
+    except (KeyError, TypeError) as error:
+        raise ValueError("native_enrollment_outcome_unknown") from error
+    return {"state": "enrolled", "head": context["head"], "base": context["base"]}
+
+
+def gate(api, repo, number, publish=False, authorize=lambda: None, *, integrate=False):
+    need(not integrate or publish, "native_integration_requires_publication")
     context = live_pr(api.call(f"repos/binofet/{repo}/pulls/{number}"), repo, number)
     def status(name, state, description):
         if publish:
@@ -415,9 +497,15 @@ def gate(api, repo, number, publish=False, authorize=lambda: None):
         except (ValueError, KeyError, TypeError, OSError, ET.ParseError, zipfile.BadZipFile) as error:
             results[name] = {"state": "failure", "diagnostic": str(error)[:2000]}
     expected_review = results["reviewed-head"].get("evidence")
+    expected_quality = results["source-quality"].get("evidence")
     def fresh_review():
         need(expected_review is not None and expected_review == review_check(),
              "native_review_changed_during_collection_or_publication")
+        if integrate and expected_quality is not None:
+            current = quality_run(api, context)
+            need((current["id"], current["run_attempt"]) ==
+                 (expected_quality["run_id"], expected_quality["attempt"]),
+                 "quality_run_or_attempt_changed_during_collection_or_publication")
     # Collect expensive artifacts FIRST. No earlier approval success may survive a
     # withdrawal while downloads run, or authorize a later CI success from that run.
     if expected_review is not None:
@@ -428,6 +516,13 @@ def gate(api, repo, number, publish=False, authorize=lambda: None):
                 results[name] = {"state": "failure", "diagnostic": str(error)[:2000]}
     elif publish:
         results["source-quality"] = {"state": "failure", "diagnostic": "current_approval_required_before_ci_success"}
+    if integrate and all(results[name]["state"] == "success" for name in ("reviewed-head", "source-quality")):
+        try:
+            results["integration"] = enroll(api, context, authorize, fresh_review)
+        except (ValueError, KeyError, TypeError, OSError) as error:
+            results["integration"] = {"state": "blocked", "diagnostic": str(error)[:2000]}
+            for name in ("reviewed-head", "source-quality"):
+                results[name] = {"state": "failure", "diagnostic": str(error)[:2000]}
     if publish:
         try:
             for name in ("reviewed-head", "source-quality"):
@@ -438,7 +533,13 @@ def gate(api, repo, number, publish=False, authorize=lambda: None):
             for name in ("reviewed-head", "source-quality"):
                 results[name] = {"state": "failure", "diagnostic": str(error)[:2000]}
                 status(name, "failure", str(error)[:140])
-    need(live_pr(api.call(f"repos/binofet/{repo}/pulls/{number}"), repo, number) == context, "pr_changed_after_gate")
+    final = api.call(f"repos/binofet/{repo}/pulls/{number}")
+    if (integrate and final.get("merged") is True
+            and results.get("integration", {}).get("state") in ("enrolled", "already_enrolled")
+            and all(results[name]["state"] == "success" for name in ("reviewed-head", "source-quality"))):
+        need(pr_identity(final, repo, number) == context, "pr_changed_after_gate")
+    else:
+        need(live_pr(final, repo, number) == context, "pr_changed_after_gate")
     return results
 
 
@@ -447,6 +548,8 @@ def write_summary(rows):
     for row in rows:
         context = row["context"]
         url = f"https://github.com/binofet/{context['repo']}/pull/{context['pr']}"
+        if "integration" in row:
+            lines.append("Native integration: `" + json.dumps(row["integration"], sort_keys=True).replace("`", "") + "`.")
         review = row["reviewed-head"]
         review_status = review["state"]
         if review.get("evidence"):
@@ -532,12 +635,16 @@ def main(argv=None):
     parser.add_argument("--decision", choices=("approved", "rejected"), default="approved")
     parser.add_argument("--text-file", type=Path)
     parser.add_argument("--publish", action="store_true")
+    parser.add_argument("--integrate", action="store_true")
     parser.add_argument("--install-manifest", type=Path)
     parser.add_argument("--install-sha256")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args(argv)
     try:
         repo, _ = policy(args.repo)
+        need(not args.integrate or (args.mode == "refresh" and args.publish
+                                    and args.install_manifest is None and args.install_sha256 is None),
+             "native_integration_requires_trusted_refresh")
         if args.mode == "templates":
             need(args.output and not args.publish, "new_template_output_required")
             print(json.dumps(generate_templates(repo, args.output)))
@@ -559,7 +666,7 @@ def main(argv=None):
             path = Path(os.environ.get("GITHUB_EVENT_PATH", ""))
             need(path.is_file() and path.stat().st_size <= 1024 * 1024, "bounded_native_event_required")
             numbers = refresh_numbers(api, repo, decode(path.read_bytes()))
-        rows = [gate(api, repo, number, args.publish, authorize) for number in numbers]
+        rows = [gate(api, repo, number, args.publish, authorize, integrate=args.integrate) for number in numbers]
         write_summary(rows)
         print(json.dumps(rows, sort_keys=True))
         return 0 if all(r[name]["state"] == "success" for r in rows for name in ("reviewed-head", "source-quality")) else 1
