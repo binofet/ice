@@ -142,6 +142,185 @@ class FakeAPI:
 
 
 class GateTests(unittest.TestCase):
+    class EnrollmentAPI(FakeAPI):
+        def __init__(self):
+            super().__init__(standards="day-cpp23-v1")
+            self.pr["node_id"] = "fixture-pr"
+            self.target = BASE
+            self.ancestor = BASE
+            self.mutations = []
+            self.states_at_enrollment = []
+            self.refuse = False
+            self.lose_response = False
+            self.attempts = []
+            self.reservation_lookup_seen = False
+            self.fail_preflight = False
+            self.lose_reservation_response = False
+            self.method_during_freshness = None
+            self.withdraw_during_final_quality = False
+            self.new_attempt_on_zip = False
+            self.merge_after_statuses = False
+
+        def call(self, path, data=None, binary=False):
+            if path == "repos/binofet/ice/git/ref/heads/master":
+                return {"object": {"sha": self.target}}
+            if path == f"repos/binofet/ice/compare/{BASE}...{HEAD}?per_page=1":
+                return {"merge_base_commit": {"sha": self.ancestor}}
+            if "/statuses/" in path and data["context"].startswith("family-native-enrollment-attempt/"):
+                self.attempts.append(dict(data, creator={"login": "github-actions[bot]"}))
+                if self.lose_reservation_response:
+                    raise OSError("lost reservation response")
+                return {"id": 12345}
+            if path == "graphql":
+                self.mutations.append(data)
+                self.states_at_enrollment = [status["state"] for _, status in self.statuses]
+                if self.lose_response:
+                    raise OSError("lost response")
+                if self.refuse:
+                    return {"errors": [{"message": "refused"}]}
+                self.pr["auto_merge"] = {"merge_method": "merge"}
+                return {"data": {"enablePullRequestAutoMerge": {"pullRequest": {
+                    "id": "fixture-pr", "autoMergeRequest": {"mergeMethod": "MERGE"},
+                }}}}
+            result = super().call(path, data, binary)
+            if path.endswith("/zip") and self.new_attempt_on_zip:
+                self.runs[0]["run_attempt"] = 2
+            if (self.merge_after_statuses and len(self.statuses) == 4
+                    and self.statuses[-1][1]["state"] == "success"):
+                self.pr.update(state="closed", merged=True)
+            return result
+
+        def pages(self, path, field=None, maximum=500):
+            if path.endswith("/status"):
+                self.reservation_lookup_seen = True
+                return deepcopy(self.attempts[-1:])
+            if "/runs?" in path and self.reservation_lookup_seen and self.fail_preflight:
+                raise OSError("transient preflight failure")
+            if "/runs?" in path and self.reservation_lookup_seen and self.method_during_freshness:
+                self.pr["auto_merge"] = {"merge_method": self.method_during_freshness}
+            if "/runs?" in path and self.withdraw_during_final_quality and len(self.statuses) == 3:
+                self.reviews = [review(state="DISMISSED")]
+            return super().pages(path, field, maximum)
+
+    def test_lost_enrollment_response_is_not_replayed_before_or_after_late_readback(self):
+        api = self.EnrollmentAPI()
+        api.lose_response = True
+        result = gate.gate(api, "ice", 7, True, integrate=True)
+        self.assertEqual(result["integration"]["diagnostic"], "native_enrollment_outcome_unknown")
+        self.assertEqual(api.attempts[0]["context"], "family-native-enrollment-attempt/7/" + BASE)
+        result = gate.gate(api, "ice", 7, True, integrate=True)
+        self.assertEqual(result["integration"]["diagnostic"], "native_enrollment_attempt_already_recorded")
+        self.assertEqual(result["source-quality"]["state"], "failure")
+        api.pr["auto_merge"] = {"merge_method": "merge"}
+        result = gate.gate(api, "ice", 7, True, integrate=True)
+        self.assertEqual(result["integration"]["state"], "already_enrolled")
+        self.assertEqual(result["source-quality"]["state"], "success")
+        self.assertEqual(len(api.mutations), 1)
+        self.assertEqual(len(api.attempts), 1)
+
+    def test_transient_preflight_failure_leaves_pair_eligible(self):
+        api = self.EnrollmentAPI()
+        api.fail_preflight = True
+        result = gate.gate(api, "ice", 7, True, integrate=True)
+        self.assertEqual(result["integration"]["diagnostic"], "transient preflight failure")
+        self.assertEqual(api.attempts, [])
+        self.assertEqual(api.mutations, [])
+        api.fail_preflight = False
+        result = gate.gate(api, "ice", 7, True, integrate=True)
+        self.assertEqual(result["integration"]["state"], "enrolled")
+        self.assertEqual(len(api.attempts), 1)
+        self.assertEqual(len(api.mutations), 1)
+
+    def test_lost_reservation_response_stops_dispatch_and_preserves_observed_hold(self):
+        api = self.EnrollmentAPI()
+        api.lose_reservation_response = True
+        result = gate.gate(api, "ice", 7, True, integrate=True)
+        self.assertEqual(result["integration"]["diagnostic"], "lost reservation response")
+        result = gate.gate(api, "ice", 7, True, integrate=True)
+        self.assertEqual(result["integration"]["diagnostic"], "native_enrollment_attempt_already_recorded")
+        self.assertEqual(len(api.attempts), 1)
+        self.assertEqual(api.mutations, [])
+
+    def test_rejected_checkout_cannot_reserve(self):
+        api = self.EnrollmentAPI()
+
+        def authorize():
+            if api.reservation_lookup_seen:
+                raise ValueError("trusted_source_is_dirty")
+
+        context = gate.live_pr(api.pr, "ice", 7)
+        with self.assertRaisesRegex(ValueError, "trusted_source_is_dirty"):
+            gate.enroll(api, context, authorize, lambda: None)
+        self.assertEqual(api.attempts, [])
+        self.assertEqual(api.mutations, [])
+        self.assertEqual(api.statuses, [])
+
+    def test_final_pr_read_honors_new_native_enrollment(self):
+        for method, state in (("squash", "blocked"), ("merge", "already_enrolled")):
+            with self.subTest(method=method):
+                api = self.EnrollmentAPI()
+                api.method_during_freshness = method
+                result = gate.gate(api, "ice", 7, True, integrate=True)
+                self.assertEqual(result["integration"]["state"], state)
+                self.assertEqual(api.mutations, [])
+                self.assertEqual(api.attempts, [])
+
+    def test_withdrawal_during_final_quality_read_blocks_merge_releasing_status(self):
+        api = self.EnrollmentAPI()
+        api.withdraw_during_final_quality = True
+        result = gate.gate(api, "ice", 7, True, integrate=True)
+        self.assertEqual(result["source-quality"]["state"], "failure")
+        self.assertEqual([item["state"] for _, item in api.statuses if item["context"] == "source-quality"],
+                         ["pending", "failure"])
+
+    def test_exact_current_candidate_enrolls_before_success_and_can_merge_natively(self):
+        api = self.EnrollmentAPI()
+        api.merge_after_statuses = True
+        result = gate.gate(api, "ice", 7, True, integrate=True)
+        self.assertEqual(result["integration"]["state"], "enrolled")
+        self.assertFalse(result["merge_performed"])
+        self.assertEqual(len(api.mutations), 1)
+        self.assertEqual(api.states_at_enrollment, ["pending", "pending"])
+        self.assertIn("expectedHeadOid:$head", api.mutations[0]["query"])
+        self.assertEqual(api.mutations[0]["variables"], {"pr": "fixture-pr", "head": HEAD})
+        self.assertEqual([status["state"] for _, status in api.statuses],
+                         ["pending", "pending", "success", "success"])
+
+    def test_stale_target_ancestry_review_or_attempt_blocks_enrollment(self):
+        for field, value in (("target", "d" * 40), ("ancestor", "d" * 40),
+                             ("withdraw_on_zip", True), ("new_attempt_on_zip", True)):
+            with self.subTest(field=field):
+                api = self.EnrollmentAPI()
+                setattr(api, field, value)
+                result = gate.gate(api, "ice", 7, True, integrate=True)
+                self.assertEqual(api.mutations, [])
+                for name in ("reviewed-head", "source-quality"):
+                    self.assertEqual(result[name]["state"], "failure")
+
+    def test_refused_enrollment_fails_closed_and_existing_enrollment_is_idempotent(self):
+        api = self.EnrollmentAPI()
+        api.refuse = True
+        result = gate.gate(api, "ice", 7, True, integrate=True)
+        self.assertEqual(result["integration"]["state"], "blocked")
+        self.assertEqual(result["integration"]["diagnostic"], "native_enrollment_refused")
+        self.assertEqual(len(api.mutations), 1)
+        self.assertEqual([status["state"] for _, status in api.statuses],
+                         ["pending", "pending", "failure", "failure"])
+        api = self.EnrollmentAPI()
+        api.pr["auto_merge"] = {"merge_method": "merge"}
+        result = gate.gate(api, "ice", 7, True, integrate=True)
+        self.assertEqual(result["integration"]["state"], "already_enrolled")
+        self.assertEqual(api.mutations, [])
+
+    def test_integration_cli_refuses_audit_and_readonly_installation(self):
+        for args in (["gate", "--pr", "7", "--publish"], ["refresh"],
+                     ["refresh", "--publish", "--install-manifest", "manifest.json"]):
+            with self.subTest(args=args), patch("builtins.print") as output, patch.object(gate, "API") as api:
+                result = gate.main(args + ["--repo", "ice", "--integrate"])
+                self.assertEqual(result, 1)
+                self.assertIn("native_integration_requires_trusted_refresh", output.call_args.args[0])
+                api.assert_not_called()
+
     def test_new_day_accepts_exact_three_profiles_and_two_skipped_manual_jobs(self):
         api=FakeAPI(standards='day-cpp23-v1')
         self.assertEqual(len(api.jobs), 5)
@@ -483,6 +662,12 @@ class GateTests(unittest.TestCase):
                 self.assertIn("github.repository == 'binofet/" + repo + "'", signal)
                 self.assertNotIn("__REPOSITORY__", control + signal)
                 self.assertNotIn("pull_request.head", control + signal)
+                self.assertIn("contents: write # native expected-head auto-merge enrollment", control)
+                self.assertIn("pull-requests: read", control)
+                self.assertIn("actions: read", control)
+                self.assertIn("--publish --integrate", control)
+                installed = Path(gate.__file__).resolve().parents[3] / ".github/workflows/family-gate.yml"
+                self.assertEqual(control, installed.read_text())
                 with self.assertRaises(ValueError):
                     gate.generate_templates(repo, output)
             with self.assertRaises(ValueError):

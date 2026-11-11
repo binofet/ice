@@ -11,7 +11,7 @@ on:
     branches: [master]
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write # native expected-head auto-merge enrollment
   actions: read
   pull-requests: read
   statuses: write
@@ -44,4 +44,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           test -n "$GH_TOKEN"
-          /opt/ice-family-ci/toolchains/native-20261018-v1/bin/python3.12 tools/ci/github/gate.py refresh --repo "$GITHUB_REPOSITORY" --publish
+          /opt/ice-family-ci/toolchains/native-20261018-v1/bin/python3.12 tools/ci/github/gate.py refresh --repo "$GITHUB_REPOSITORY" --publish --integrate
