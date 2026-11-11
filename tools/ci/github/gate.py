@@ -443,20 +443,37 @@ def enroll(api, context, authorize, fresh):
     # Reserve this exact pair before sending the mutation. The workflow's
     # serialized writer and this durable receipt also cover a lost response.
     attempt = f"family-native-enrollment-attempt/{number}/{context['base']}"
+    status_path = base + f"/statuses/{context['head']}"
+    aborted = "Enrollment stopped before request submission"
     statuses = api.pages(base + f"/commits/{context['head']}/status", "statuses")
-    need(not any(row.get("context") == attempt for row in statuses),
+    records = [row for row in statuses if row.get("context") == attempt]
+    need(not records or (len(records) == 1 and records[0].get("description") == aborted
+                         and records[0].get("creator", {}).get("login") == "github-actions[bot]"),
          "native_enrollment_attempt_already_recorded")
+
+    def record(description):
+        api.call(status_path, {"context": attempt, "state": "success", "description": description})
+
     authorize()
     need(live_pr(api.call(base + f"/pulls/{number}"), repo, number) == context,
          "pr_changed_before_enrollment_reservation")
-    api.call(base + f"/statuses/{context['head']}", {
-        "context": attempt, "state": "success",
-        "description": "Enrollment attempt reserved; this is not a review or CI result",
-    })
-    fresh()
-    authorize()
-    need(live_pr(api.call(base + f"/pulls/{number}"), repo, number) == context,
-         "pr_changed_before_native_enrollment")
+    record("Enrollment attempt reserved; this is not a review or CI result")
+    try:
+        authorize()
+        final = api.call(base + f"/pulls/{number}")
+        need(live_pr(final, repo, number) == context and final.get("node_id") == live["node_id"],
+             "pr_changed_before_native_enrollment")
+        fresh()
+        if final.get("auto_merge") is not None:
+            need(final["auto_merge"].get("merge_method") == "merge", "native_merge_method_differs")
+    except (ValueError, KeyError, TypeError, OSError):
+        # No mutation has been sent. If this receipt cannot be written, the
+        # existing reservation still conservatively blocks another attempt.
+        record(aborted)
+        raise
+    if final.get("auto_merge") is not None:
+        record(aborted)
+        return {"state": "already_enrolled"}
     try:
         result = api.call("graphql", {"query": query, "variables": {"pr": live["node_id"], "head": context["head"]}})
     except (ValueError, KeyError, TypeError, OSError) as error:
@@ -499,13 +516,13 @@ def gate(api, repo, number, publish=False, authorize=lambda: None, *, integrate=
     expected_review = results["reviewed-head"].get("evidence")
     expected_quality = results["source-quality"].get("evidence")
     def fresh_review():
-        need(expected_review is not None and expected_review == review_check(),
-             "native_review_changed_during_collection_or_publication")
         if integrate and expected_quality is not None:
             current = quality_run(api, context)
             need((current["id"], current["run_attempt"]) ==
                  (expected_quality["run_id"], expected_quality["attempt"]),
                  "quality_run_or_attempt_changed_during_collection_or_publication")
+        need(expected_review is not None and expected_review == review_check(),
+             "native_review_changed_during_collection_or_publication")
     # Collect expensive artifacts FIRST. No earlier approval success may survive a
     # withdrawal while downloads run, or authorize a later CI success from that run.
     if expected_review is not None:
@@ -532,11 +549,16 @@ def gate(api, repo, number, publish=False, authorize=lambda: None, *, integrate=
         except (ValueError, KeyError, TypeError, OSError) as error:
             for name in ("reviewed-head", "source-quality"):
                 results[name] = {"state": "failure", "diagnostic": str(error)[:2000]}
-                status(name, "failure", str(error)[:140])
+            try:
+                for name in ("reviewed-head", "source-quality"):
+                    status(name, "failure", str(error)[:140])
+            except (ValueError, KeyError, TypeError, OSError) as recovery_error:
+                results["status_recovery"] = {
+                    "state": "unconfirmed", "diagnostic": str(recovery_error)[:2000],
+                }
     final = api.call(f"repos/binofet/{repo}/pulls/{number}")
     if (integrate and final.get("merged") is True
-            and results.get("integration", {}).get("state") in ("enrolled", "already_enrolled")
-            and all(results[name]["state"] == "success" for name in ("reviewed-head", "source-quality"))):
+            and results.get("integration", {}).get("state") in ("enrolled", "already_enrolled")):
         need(pr_identity(final, repo, number) == context, "pr_changed_after_gate")
     else:
         need(live_pr(final, repo, number) == context, "pr_changed_after_gate")

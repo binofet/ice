@@ -153,6 +153,9 @@ class GateTests(unittest.TestCase):
             self.refuse = False
             self.lose_response = False
             self.attempts = []
+            self.withdraw_at_reservation = False
+            self.method_at_reservation = None
+            self.withdraw_during_final_quality = False
             self.new_attempt_on_zip = False
             self.merge_after_statuses = False
 
@@ -162,7 +165,11 @@ class GateTests(unittest.TestCase):
             if path == f"repos/binofet/ice/compare/{BASE}...{HEAD}?per_page=1":
                 return {"merge_base_commit": {"sha": self.ancestor}}
             if "/statuses/" in path and data["context"].startswith("family-native-enrollment-attempt/"):
-                self.attempts.append(data)
+                self.attempts.append(dict(data, creator={"login": "github-actions[bot]"}))
+                if self.withdraw_at_reservation:
+                    self.reviews = [review(state="DISMISSED")]
+                if self.method_at_reservation:
+                    self.pr["auto_merge"] = {"merge_method": self.method_at_reservation}
                 return {"id": 12345}
             if path == "graphql":
                 self.mutations.append(data)
@@ -185,7 +192,9 @@ class GateTests(unittest.TestCase):
 
         def pages(self, path, field=None, maximum=500):
             if path.endswith("/status"):
-                return deepcopy(self.attempts)
+                return deepcopy(self.attempts[-1:])
+            if "/runs?" in path and self.withdraw_during_final_quality and len(self.statuses) == 3:
+                self.reviews = [review(state="DISMISSED")]
             return super().pages(path, field, maximum)
 
     def test_lost_enrollment_response_is_not_replayed_before_or_after_late_readback(self):
@@ -203,6 +212,37 @@ class GateTests(unittest.TestCase):
         self.assertEqual(result["source-quality"]["state"], "success")
         self.assertEqual(len(api.mutations), 1)
         self.assertEqual(len(api.attempts), 1)
+
+    def test_confirmed_pre_send_abort_can_recheck_same_pair(self):
+        api = self.EnrollmentAPI()
+        api.withdraw_at_reservation = True
+        result = gate.gate(api, "ice", 7, True, integrate=True)
+        self.assertEqual(result["integration"]["state"], "blocked")
+        self.assertEqual(api.mutations, [])
+        self.assertEqual(api.attempts[-1]["description"], "Enrollment stopped before request submission")
+        api.withdraw_at_reservation = False
+        api.reviews = [review()]
+        result = gate.gate(api, "ice", 7, True, integrate=True)
+        self.assertEqual(result["integration"]["state"], "enrolled")
+        self.assertEqual(len(api.mutations), 1)
+
+    def test_final_pr_read_honors_new_native_enrollment(self):
+        for method, state in (("squash", "blocked"), ("merge", "already_enrolled")):
+            with self.subTest(method=method):
+                api = self.EnrollmentAPI()
+                api.method_at_reservation = method
+                result = gate.gate(api, "ice", 7, True, integrate=True)
+                self.assertEqual(result["integration"]["state"], state)
+                self.assertEqual(api.mutations, [])
+                self.assertEqual(api.attempts[-1]["description"], "Enrollment stopped before request submission")
+
+    def test_withdrawal_during_final_quality_read_blocks_merge_releasing_status(self):
+        api = self.EnrollmentAPI()
+        api.withdraw_during_final_quality = True
+        result = gate.gate(api, "ice", 7, True, integrate=True)
+        self.assertEqual(result["source-quality"]["state"], "failure")
+        self.assertEqual([item["state"] for _, item in api.statuses if item["context"] == "source-quality"],
+                         ["pending", "failure"])
 
     def test_exact_current_candidate_enrolls_before_success_and_can_merge_natively(self):
         api = self.EnrollmentAPI()

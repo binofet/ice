@@ -58,8 +58,12 @@ association is the upload receipt; an author-written `publication.json` is not.
 On publication the controller refreshes current head/base before every status
 write. `reviewed-head` and `source-quality` start pending, then independently pass
 or fail. Expensive artifact collection finishes before either success. Native
-review is re-fetched immediately before each success write and after publication.
-A changed review revokes both contexts.
+review is re-fetched after quality lookups as the last check before each success
+write, then rechecked after publication. If the gate detects changed evidence,
+it attempts to replace both contexts with failures while the same PR is open
+and the checkout remains authorized. GitHub may merge between the last read
+and the final success write or its recheck. These calls cannot atomically bind
+the review to status publication or undo a merge.
 
 The serialized trusted workflow runs `refresh --publish --integrate`. It
 authenticates current master and its ancestry in the exact PR head, then
@@ -68,10 +72,11 @@ native auto-merge with `expectedHeadOid` while the required contexts are pending
 GitHub strict branch protection performs integration after they pass. A refused
 enrollment fails both contexts. An already enrolled MERGE request needs no
 second mutation. Before sending a request, the gate records one attempt on the
-exact head in a separate status context keyed by PR and base. This context records the
-reservation only. A later refresh can observe an enrollment that became visible
-after a lost response. While enrollment remains absent, that pair stays blocked
-for the original owner to reconcile. This path leaves branch updates, dispatch, review creation,
+exact head in a separate status context keyed by PR and base. A confirmed
+pre-submission stop is recorded separately and allows a fresh decision. A
+reservation without that confirmation blocks another request while enrollment
+remains absent. A later refresh can recognize an enrollment that became visible
+after a lost response. This path leaves branch updates, dispatch, review creation,
 settings and direct merge outside the controller. The separately reviewed
 read-only installation can still publish status evidence with its existing
 authorization.
