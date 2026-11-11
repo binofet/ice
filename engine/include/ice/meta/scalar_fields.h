@@ -34,8 +34,8 @@ public:
 	using iterator = storage::iterator;
 	/// Immutable ordered field iterator.
 	using const_iterator = storage::const_iterator;
-	/// Prepare an empty owned field collection; allocation failure propagates.
-	scalar_fields() : fields_(std::make_unique<storage>()) {}
+	/// Create an empty result without allocation. Inserting fields may allocate.
+	scalar_fields() noexcept = default;
 	/// Prepare owned fields; allocation failure leaves the caller's state unchanged.
 	scalar_fields(std::initializer_list<value_type> fields)
 	    : fields_(std::make_unique<storage>(fields)) {}

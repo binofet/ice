@@ -50,6 +50,7 @@ request mutation(const service &owner, std::string id, std::string command) {
 
 int main() {
 	using namespace ice::commands;
+	static_assert(std::is_nothrow_default_constructible_v<output>);
 	static_assert(std::is_nothrow_move_constructible_v<output>);
 	static_assert(std::is_nothrow_move_assignable_v<output>);
 	static_assert(std::is_nothrow_move_constructible_v<handler_result>);
@@ -59,6 +60,43 @@ int main() {
 	static_assert(std::is_nothrow_move_constructible_v<script_result>);
 	static_assert(std::is_nothrow_move_constructible_v<checked_result>);
 	static_assert(std::is_nothrow_move_assignable_v<output>);
+	// Staged handlers construct this success after publishing the effect.
+	bool empty_result_allocated = false;
+	ice::test::route_allocations::arm(0);
+	try {
+		checked_result result = handler_result{true, {}};
+		CHECK(result->changed && result->fields.empty());
+		CHECK(result->fields.begin() == result->fields.end());
+	} catch (const std::bad_alloc &) {
+		empty_result_allocated = true;
+	}
+	const bool allocation_attempted = ice::test::route_allocations::fired();
+	ice::test::route_allocations::disarm();
+	CHECK(!empty_result_allocated && !allocation_attempted);
+
+	output lazy;
+	bool   first_write_failed = false;
+	ice::test::route_allocations::arm(0);
+	try {
+		lazy.try_emplace("prepared", true);
+	} catch (const std::bad_alloc &) {
+		first_write_failed = true;
+	}
+	ice::test::route_allocations::disarm();
+	CHECK(first_write_failed && lazy.empty());
+	CHECK(lazy.try_emplace("prepared", true).second);
+	CHECK(std::get<bool>(lazy.at("prepared")));
+
+	output node_source{{"transfer", true}};
+	output node_destination{output::map_type{}};
+	auto   prepared_node = node_source.extract("transfer");
+	ice::test::route_allocations::arm(0);
+	auto       node_result    = node_destination.insert(std::move(prepared_node));
+	const bool node_allocated = ice::test::route_allocations::fired();
+	ice::test::route_allocations::disarm();
+	CHECK(!node_allocated && node_result.inserted && node_source.empty());
+	CHECK(std::get<bool>(node_destination.at("transfer")));
+
 	output prepared{{"owned", std::string(200, 'x')}};
 	output independent   = prepared;
 	prepared.at("owned") = std::int64_t(7);
