@@ -389,14 +389,21 @@ os.execv('/bin/bash',['/bin/bash','--noprofile','--norc','-e','-o','pipefail',*s
                 self.assertTrue((root/'ready').exists(), 'fixture command reached readiness')
                 self.assertEqual(os.getpgid(child.pid), child.pid)
 
-                def launch(*args, **kwargs):
-                    # run() has installed its handlers by the time it launches.
-                    os.kill(os.getpid(), signal.SIGTERM)
-                    return child
+                set_blocking = os.set_blocking
 
-                with patch.object(run_stage.subprocess, 'Popen', side_effect=launch) as spawn:
-                    with patch.object(run_stage, 'CANCEL_GRACE_SECONDS', 3):
-                        result = run_stage.run('cancel-fixture', command, root, 2)
+                def cancel_after_registration(fd, blocking):
+                    set_blocking(fd, blocking)
+                    # The supervisor has stored the child and started its
+                    # watchdog before it configures the child's stdout pipe.
+                    self.assertEqual(fd, child.stdout.fileno())
+                    os.kill(os.getpid(), signal.SIGTERM)
+
+                with (patch.object(run_stage.subprocess, 'Popen', return_value=child) as spawn,
+                      patch.object(run_stage.os, 'set_blocking',
+                                   side_effect=cancel_after_registration) as configure_pipe,
+                      patch.object(run_stage, 'CANCEL_GRACE_SECONDS', 3)):
+                    result = run_stage.run('cancel-fixture', command, root, 2)
+                configure_pipe.assert_called_once()
                 spawn.assert_called_once_with(command, stdout=subprocess.PIPE,
                                               stderr=subprocess.STDOUT, start_new_session=True)
                 record = json.loads((root/'cancel-fixture.json').read_text())
