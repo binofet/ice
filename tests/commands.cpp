@@ -87,6 +87,16 @@ int main() {
 	CHECK(lazy.try_emplace("prepared", true).second);
 	CHECK(std::get<bool>(lazy.at("prepared")));
 
+	output node_source{{"transfer", true}};
+	output node_destination{output::map_type{}};
+	auto   prepared_node = node_source.extract("transfer");
+	ice::test::route_allocations::arm(0);
+	auto       node_result    = node_destination.insert(std::move(prepared_node));
+	const bool node_allocated = ice::test::route_allocations::fired();
+	ice::test::route_allocations::disarm();
+	CHECK(!node_allocated && node_result.inserted && node_source.empty());
+	CHECK(std::get<bool>(node_destination.at("transfer")));
+
 	output prepared{{"owned", std::string(200, 'x')}};
 	output independent   = prepared;
 	prepared.at("owned") = std::int64_t(7);

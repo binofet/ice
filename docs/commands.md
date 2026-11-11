@@ -115,10 +115,11 @@ C++ language modes.
 ## Prepared output ownership
 
 `output` owns its ordered, unique-key scalar fields through independent storage.
-Constructing an empty output prepares that storage and may allocate. Initializer
-lists, insertion, copying and `copy_fields()` are ordinary fallible preparation;
-complete them before publishing a host effect. Copies never share mutable fields
-with retained receipts.
+Default construction creates an empty result without allocating. First insertion
+into a default or moved-from output may allocate storage. Initializer lists,
+insertion, copying and `copy_fields()` are fallible preparation. Complete them
+before publishing a host effect. Copies own their fields independently of retained
+receipts.
 
 Moving an `output` transfers storage without allocation, including on standard
 libraries whose native map move can allocate. Move construction, move assignment
@@ -130,8 +131,10 @@ prepared successful response after publication without moving a native map.
 Lookup, iteration, insertion and node transfer retain ordered associative
 semantics. Merging transfers only nonduplicate nodes; duplicate nodes remain in
 the source. Extracted nodes retain ownership and insertion reports an unconsumed
-node on collision. Transfer between prepared outputs does not allocate or copy
-mapped values.
+node on collision. Before publishing an effect, prepare an empty destination
+with `output destination{output::map_type{}};`. This construction may allocate.
+After preparation, node insertion and merge can transfer fields into that
+destination without allocating or copying mapped values.
 
 `commands::output` and `script::scalar_record` remain aliases of the same public
 `meta::scalar_fields` owned type. Checked scalar-record callbacks can return
