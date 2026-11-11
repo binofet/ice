@@ -10,6 +10,9 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
+
+import run_stage
 
 if os.name != 'nt':
     import fcntl
@@ -372,10 +375,41 @@ os.execv('/bin/bash',['/bin/bash','--noprofile','--norc','-e','-o','pipefail',*s
                 self.assertTrue(record['cleanup_escalated'])
 
     def test_cancellation_does_not_extend_existing_deadline(self):
-        record = self.fixture(signal.SIGTERM, mode='stubborn', driver=True,
-                              grace=3, timeout=2)
-        self.assertTrue(record['timed_out'])
-        self.assertLess(record['duration_seconds'], 3)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            command = [sys.executable, '-c', CHILD, str(root), 'stubborn']
+            child = subprocess.Popen(command, stdout=subprocess.PIPE,
+                                     stderr=subprocess.STDOUT, start_new_session=True)
+            try:
+                # Establish the real child before starting the two-second stage
+                # deadline. Interpreter startup is not the behavior under test.
+                until = time.monotonic() + FIXTURE_STARTUP_SECONDS
+                while not (root/'ready').exists() and child.poll() is None and time.monotonic() < until:
+                    time.sleep(.01)
+                self.assertTrue((root/'ready').exists(), 'fixture command reached readiness')
+                self.assertEqual(os.getpgid(child.pid), child.pid)
+
+                def launch(*args, **kwargs):
+                    # run() has installed its handlers by the time it launches.
+                    os.kill(os.getpid(), signal.SIGTERM)
+                    return child
+
+                with patch.object(run_stage.subprocess, 'Popen', side_effect=launch) as spawn:
+                    with patch.object(run_stage, 'CANCEL_GRACE_SECONDS', 3):
+                        result = run_stage.run('cancel-fixture', command, root, 2)
+                spawn.assert_called_once_with(command, stdout=subprocess.PIPE,
+                                              stderr=subprocess.STDOUT, start_new_session=True)
+                record = json.loads((root/'cancel-fixture.json').read_text())
+                self.assertEqual(result, 143)
+                self.assertEqual(record['cancellation_signal'], signal.SIGTERM)
+                self.assertEqual(record['process_exit_code'], -signal.SIGKILL)
+                self.assertTrue(record['timed_out'] and record['cleanup_escalated'])
+                self.assertLess(record['duration_seconds'], 3)
+            finally:
+                if child.poll() is None:
+                    child.kill()
+                child.wait(timeout=3)
+                child.stdout.close()
 
     def test_previous_handlers_are_restored_after_cancellation(self):
         self.fixture(signal.SIGTERM, driver=True)

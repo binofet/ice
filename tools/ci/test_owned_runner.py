@@ -378,9 +378,12 @@ class OwnedWorkflowTests(unittest.TestCase):
                     self.assertEqual(normalized, expected[name], 'Only the fixed metadata command may bypass')
                     seen.add(name)
             self.assertEqual(seen, set(expected))
-            if expected:
-                minutes = 60 if owner == 'native' else 30
-                self.assertIn(f'    timeout-minutes: {minutes}\n', job)
+            if owner == 'native':
+                trial = "github.event_name == 'pull_request' && github.event.pull_request.number == 28"
+                self.assertIn("timeout-minutes: ${{ matrix.os == 'macos-15' && " + trial + " && 95 || 60 }}", job)
+                self.assertIn("MAC_BUILD_TIMEOUT_SECONDS: ${{ " + trial + " && 2700 || 1800 }}", job)
+            elif expected:
+                self.assertIn('    timeout-minutes: 30\n', job)
 
 
     def test_ice_manual_diagnostic_route_is_exact_and_cannot_replace_normal_quality(self):
