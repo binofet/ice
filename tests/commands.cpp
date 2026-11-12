@@ -103,7 +103,9 @@ int main() {
 	CHECK(std::get<std::string>(independent.at("owned")).size() == 200);
 	const auto    *owned_address = &independent.at("owned");
 	handler_result ready{true, std::move(independent)};
-	output         published;
+	// Keep a reference to inspect the documented moved-from field state.
+	output &moved_from_fields = ready.fields;
+	output  published;
 	ice::test::route_allocations::arm(0);
 	checked_result checked(std::move(ready));
 	checked_result transferred(std::move(checked));
@@ -121,9 +123,9 @@ int main() {
 	ice::test::route_allocations::disarm();
 	CHECK(!script_allocated &&
 	      std::get<std::string>(script_transferred->at("script")).size() == 200);
-	CHECK(ready.fields.empty() && ready.fields.begin() == ready.fields.end());
-	ready.fields["reused"] = true;
-	CHECK(std::get<bool>(ready.fields.at("reused")));
+	CHECK(moved_from_fields.empty() && moved_from_fields.begin() == moved_from_fields.end());
+	moved_from_fields["reused"] = true;
+	CHECK(std::get<bool>(moved_from_fields.at("reused")));
 	output destination{{"unchanged", false}};
 	bool   copy_failed = false;
 	ice::test::route_allocations::arm(0);
@@ -145,8 +147,8 @@ int main() {
 	reassigned                      = std::move(ordered);
 	const bool assignment_allocated = ice::test::route_allocations::fired();
 	ice::test::route_allocations::disarm();
-	CHECK(!assignment_allocated && reassigned.size() == 2 && ordered.empty());
-	CHECK(ordered.find("missing") == ordered.end());
+	CHECK(!assignment_allocated && reassigned.size() == 2 && read_only.empty());
+	CHECK(read_only.find("missing") == read_only.end());
 	output      nodes{{"duplicate", std::int64_t(1)}, {"transfer", std::int64_t(2)}};
 	output      receiver{{"duplicate", std::int64_t(3)}};
 	const auto *node_address = &nodes.at("transfer");

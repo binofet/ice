@@ -79,7 +79,7 @@ struct routed_action_frame {
 	/// Return only the exact currently owning lifetime, in the matching clock domain. Unowned,
 	/// wrong-generation or wrong-clock reads return null. Retirements are explicitly separate.
 	const routed_action_channel *find(action_channel_id channel, action_owner owner,
-	                                  action_clock clock) const;
+	                                  action_clock requested_clock) const;
 };
 /// Compare-and-stage one ownership change. The epoch guards the active channel lease rather
 /// than a scene revision. desired={0,0} explicitly revokes a lease.
