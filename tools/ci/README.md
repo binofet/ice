@@ -202,30 +202,25 @@ same selectors. No hosted fallback exists. Source job guards exclude fork heads;
 these guards/labels are not an isolation boundary against modified untrusted
 workflow code. Nova owns provider approval, repository/UID isolation and host trust.
 
-Candidate build, test and quality steps use `/usr/local/libexec/ice-family-native-ci/owned-shell {0}`.
-It inherits the environment and serializes run children with a 1200-second lock wait;
-it is not a security sandbox or CPU quota and does not coordinate human build/GPU
-use. Compile worker budgets are Linux2/Mac10, including the Rust proof's nested
+Candidate build, test, quality and control steps use
+`/bin/bash --noprofile --norc -e -o pipefail {0}`. Independent jobs run under
+OS scheduling without a host-wide CPU mutex, lock wait, slot token or resource
+admission broker. Preserve separate runner workspaces and mutable build, cache,
+temporary and evidence directories for concurrent jobs; the relative `build/`
+paths belong to each job's isolated workspace. Serialize only actual conflicting
+writes or stores, not independent compilation, tests or evidence finalization.
+No installed runner/wrapper or unknown running job is changed by this source
+configuration. Existing runner identities, permissions and source/evidence checks
+remain required; the retired CPU wrapper was not an isolation boundary.
+
+Compile worker budgets remain Linux2/Mac10, including the Rust proof's nested
 build through `CMAKE_BUILD_PARALLEL_LEVEL`. CTest and API workers remain two.
-Automatic author-owned jobs follow the existing shared runner limits;
-this source configuration changes no host allocation. The nightly API audit receives
-`--workers "$CI_API_PARALLEL"` explicitly; its default outside
-that invocation remains four workers. Direct Rust proof compilation passes
-`-Ccodegen-units=1` on its actual compiler command.
+This source configuration changes no host allocation. The nightly API audit receives
+`--workers "$CI_API_PARALLEL"` explicitly; its default outside that invocation
+remains four workers. Direct Rust proof compilation passes `-Ccodegen-units=1`
+on its actual compiler command. Job timeouts remain unchanged. Metadata-step
+shell overrides use the same plain Bash as other steps and grant no extra authority.
 
-Only fixed source-identification, CTest `--show-only=json-v1` inventory, report-summary
-and upload-receipt commands override that default with plain Bash. They retain
-the same dedicated source-runner UID, workspace, permissions and source/evidence
-checks; the wrapper only adds a CPU mutex and never changes execution identity.
-They are not control-account jobs. This avoids spending the job deadline waiting
-to record already completed work: one Linux job spent 3180 seconds waiting for
-the mutex and only 418 seconds executing its measured stages. A regression
-allowlist checks the complete command of every override and keeps all actual
-builds, tests and quality checks under the mutex. Job timeouts remain unchanged.
-
-Trusted gate and review-signal control jobs instead use
-`/bin/bash --noprofile --norc -e -o pipefail {0}`. Control accounts intentionally
-have no shared CPU-lock access and must not invoke the candidate wrapper.
 Fresh dedicated-UID checkout steps set `set-safe-directory: false`, preserving
 normal Git ownership checks and avoiding checkout's global safe-directory write.
 Pinned checkout actions and `persist-credentials: false` remain unchanged.

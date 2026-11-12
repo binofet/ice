@@ -63,7 +63,7 @@ jobs:
             runner: [self-hosted, macOS, ARM64, ice.cpu]
     defaults:
       run:
-        shell: /usr/local/libexec/ice-family-native-ci/owned-shell {0}
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
     env:
       CI_OWNED_RUNNER: '1'
       CI_VENV: ${{ github.workspace }}/build/ci-tools/venv
@@ -338,7 +338,7 @@ jobs:
     timeout-minutes: 30
     defaults:
       run:
-        shell: /usr/local/libexec/ice-family-native-ci/owned-shell {0}
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
     env:
       CI_OWNED_RUNNER: '1'
       CI_VENV: ${{ github.workspace }}/build/ci-tools/venv
@@ -467,7 +467,7 @@ jobs:
     timeout-minutes: 1
     defaults:
       run:
-        shell: /usr/local/libexec/ice-family-native-ci/owned-shell {0}
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
     steps:
       - name: Stop before checkout, display startup or build
         run: |
@@ -486,7 +486,7 @@ jobs:
     timeout-minutes: 5
     defaults:
       run:
-        shell: /usr/local/libexec/ice-family-native-ci/owned-shell {0}
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
     env:
       CI_OWNED_RUNNER: '1'
       CI_BOOTSTRAP_PYTHON: /opt/ice-family-ci/toolchains/native-20261018-v1/bin/python3.12
