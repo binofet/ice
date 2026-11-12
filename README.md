@@ -3,8 +3,9 @@
 ICE (Infinite Combustion Engine) is a C++20/23 playground engine for native rendering, simulations, live data and
 language experiments. This is a breaking rebuild: the fixed-function renderer and
 abandoned compatibility APIs have been removed. Native Metal and OpenGL 4.1+ core
-backends now share a small programmable rendering interface. Vulkan and D3D12 remain
-planned. Indexed meshes, explicit depth/blending and procedural overlays share one
+backends now share a small programmable rendering interface. An optional
+[first Win32 Vulkan slice](docs/vulkan-first-slice.md) uses that interface for bounded mesh
+presentation; full Vulkan rendering and D3D12 remain planned. Indexed meshes, explicit depth/blending and procedural overlays share one
 render pass on both backends.
 
 ## Build
